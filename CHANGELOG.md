@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta5e — CURRENT (2026-08-30)
+
+- Identified remaining diagnostic latency as likely DataLake open/SAH Pool readiness rather than query scanning.
+- Step 1 now warms and retains one read-only DataLake handle in the persistent Worker.
+- Step 2 reuses that handle and runs only sqlite_master + LIMIT 1, avoiding a second DB open.
+- No DataLake mutation, migration, import or delete.
+
+
 ## Web/PWA v7d-beta5d — CURRENT (2026-08-30)
 
 - Removed `MIN(date)` / `MAX(date)` scans over the multi-million-row `bars_daily` table from the emergency read-only diagnostic.

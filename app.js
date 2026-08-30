@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7d-beta5db");
+ const w=new Worker("./sqlite-worker.js?v=v7d-beta5eb");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -673,7 +673,7 @@ async function jqRunDiag(buttonId,resultId,label,fn){
 if($("poolProbeBtn")) $("poolProbeBtn").onclick=()=>jqRunDiag("poolProbeBtn","poolProbeResult","超軽量read-only診断中（全件走査なし）",async()=>{
  const r=await workerCall("market-fast-health",60000,null);
  box("poolProbeResult",r.ok?"pass":"fail",
-   `${r.ok?"PASS":"FAIL"}\nDB: ${r.marketName||"-"}\nテーブル: ${r.tableOk?"YES":"NO"}\n期間参考: ${r.minDate||"-"} ～ ${r.maxDate||"-"} (${r.dateSource||"参考"})\nサンプル: ${r.sample?JSON.stringify(r.sample):"なし"}\n所要: ${((r.elapsedMs||0)/1000).toFixed(2)}秒`);
+   `${r.ok?"PASS":"FAIL"}\nDB: ${r.marketName||"-"}\nテーブル: ${r.tableOk?"YES":"NO"}\nDB再Open: なし（①で開いたhandleを再利用）\nサンプル: ${r.sample?JSON.stringify(r.sample):"なし"}\n所要: ${((r.elapsedMs||0)/1000).toFixed(2)}秒`);
 });
 
 if($("writeGateBtn")){
@@ -685,3 +685,11 @@ if($("writeGateBtn")){
    finally{ jqDiagBusy=false; $("writeGateBtn").disabled=false; }
  };
 }
+
+
+if($("poolDiagBtn")) $("poolDiagBtn").addEventListener("click",async()=>{
+ try{
+   const r=await workerCall("market-warm-open",180000,null);
+   window.__jqMarketWarm=true;
+ }catch(e){window.__jqMarketWarm=false;}
+});

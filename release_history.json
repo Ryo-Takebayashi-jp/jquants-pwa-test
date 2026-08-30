@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta5d",
+    "version": "v7d-beta5e",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-26"
+    "migration_version": "history-27"
   },
   "releases": [
     {
@@ -583,6 +583,19 @@
         "Use sqlite_master + one-row LIMIT sample for health",
         "Use checkpoint/sync_log only as optional date-range references",
         "No DataLake writes, migrations, imports or deletes"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta5e",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Warm-open DataLake once and reuse persistent read-only handle",
+      "changes": [
+        "Step 1 warms and retains DataLake handle in persistent SQLite Worker",
+        "Step 2 reuses already-open handle instead of reopening SAH Pool DB",
+        "Step 2 query reduced to sqlite_master + LIMIT 1",
+        "No DataLake mutation/migration/import/delete"
       ]
     }
   ]

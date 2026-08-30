@@ -123,6 +123,20 @@ function sampleRows(db,table,limit=3){
  const out=[]; db.exec({sql:`SELECT * FROM ${qident(table)} LIMIT ${Number(limit)}`,rowMode:"object",callback:r=>out.push(r)}); return out;
 }
 
+
+let cachedMarketDb=null;
+let cachedMarketDbName=null;
+function closeCachedMarketDb(){
+ try{cachedMarketDb?.close()}catch(_){}
+ cachedMarketDb=null; cachedMarketDbName=null;
+}
+function getCachedMarketDb(p,name){
+ if(cachedMarketDb && cachedMarketDbName===name) return cachedMarketDb;
+ closeCachedMarketDb();
+ cachedMarketDb=new p.OpfsSAHPoolDb(name,"r");
+ cachedMarketDbName=name;
+ return cachedMarketDb;
+}
 self.onmessage=async e=>{
  const requestId=(e.data||{}).requestId;
  const originalPostMessage=self.postMessage.bind(self);
@@ -144,27 +158,21 @@ if(cmd==="backup-create"){
  self.postMessage({ok:qc==="ok",type:"result",backupName,qc,rows,minDate,maxDate,dbBytes:pc*ps,elapsedMs:Math.round(performance.now()-t0)});return;
 }
 
+if(cmd==="market-warm-open"){
+ const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+ const h=getCachedMarketDb(p,marketName);
+ const schema=Number(scalar(h,"PRAGMA schema_version")||0);
+ self.postMessage({ok:true,type:"result",marketName,schema,poolFiles:p.getFileNames(),
+   elapsedMs:Math.round(performance.now()-t0)});
+ return;
+}
 if(cmd==="market-fast-health"){
  const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
- db=new p.OpfsSAHPoolDb(marketName,"r");
- const tableOk=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)===1;
- const sample=execRows(db,"SELECT code,date,c FROM bars_daily LIMIT 1")[0]||null;
- let maxDate=null,minDate=null,source="sample";
- try{
-   const cp=execRows(db,`SELECT last_success_date FROM web_sync_checkpoint
-     WHERE dataset IN ('bars_daily_auto','bars_daily_jquants','bars_daily_backfill')
-     AND last_success_date IS NOT NULL
-     ORDER BY last_success_date DESC LIMIT 1`);
-   if(cp.length){maxDate=cp[0].last_success_date;source="checkpoint";}
- }catch(_){}
- try{
-   const sl=execRows(db,`SELECT MIN(sync_date) AS min_date, MAX(sync_date) AS max_date
-     FROM sync_log WHERE dataset='bars_daily' AND status='OK'`);
-   if(sl.length){minDate=sl[0].min_date||null; if(!maxDate)maxDate=sl[0].max_date||null; if(minDate||maxDate)source+=" + sync_log";}
- }catch(_){}
- db.close(); db=null;
- self.postMessage({ok:tableOk&&!!sample,type:"result",marketName,tableOk,sample,minDate,maxDate,dateSource:source,
-   poolFiles:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});
+ const h=getCachedMarketDb(p,marketName);
+ const tableOk=Number(scalar(h,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)===1;
+ const sample=execRows(h,"SELECT code,date,c FROM bars_daily LIMIT 1")[0]||null;
+ self.postMessage({ok:tableOk&&!!sample,type:"result",marketName,tableOk,sample,
+   poolFiles:p.getFileNames(),reusedOpenHandle:true,elapsedMs:Math.round(performance.now()-t0)});
  return;
 }
 
