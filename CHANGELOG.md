@@ -1,5 +1,14 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta4e — CURRENT (2026-08-30)
+
+Non-destructive SAH Pool emergency diagnostics.
+
+- Reports SAH Pool capacity and logical filenames without opening the market DB.
+- Separately probes candidate logical filenames read-only and reports table count, `bars_daily` presence, row count and date range.
+- Diagnostic commands perform no writes, imports, migrations, deletes, or checkpoint changes.
+
+
 ## Web/PWA v7d-beta4d — CURRENT (2026-08-30)
 
 Hotfix for the remaining DataLake state regression.

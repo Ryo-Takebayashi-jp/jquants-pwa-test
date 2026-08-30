@@ -533,3 +533,32 @@ ${lastGapPlan.length?"もう一度②で続行できます。":"この検出範�
 成功済み日までは保存済みです。再実行で続行できます。
 ${e}`)}
 };
+
+if($("poolDiagBtn")) $("poolDiagBtn").onclick=async()=>{
+ box("poolDiagResult","run","Pool状態を取得中…DBは開きません。");
+ try{const r=await workerCall("pool-diagnostic",120000,s=>box("poolDiagResult","run",s.detail||s.stage));
+ box("poolDiagResult","pass",`PASS
+SQLite: ${r.sqliteVersion}
+VFS: ${r.vfsName}
+Pool capacity: ${r.capacity}
+要求DB名: ${r.requested}
+Pool内ファイル数: ${r.files.length}
+Pool内論理ファイル:
+${r.files.length?r.files.map((x,i)=>`${i+1}. ${x}`).join("\n"):"（なし）"}
+完全一致: ${r.exactRaw?"YES":"NO"}
+スラッシュ除外一致: ${r.exactBase.length?r.exactBase.join(", "):"なし"}
+所要: ${(r.elapsedMs/1000).toFixed(2)}秒`)}
+ catch(e){box("poolDiagResult","fail","FAIL\n"+e)}
+};
+if($("poolProbeBtn")) $("poolProbeBtn").onclick=async()=>{
+ box("poolProbeResult","run","read-only診断中…書込みはしません。");
+ try{const r=await workerCall("pool-probe-candidates",300000,s=>box("poolProbeResult","run",s.detail||s.stage));
+ const lines=r.probes.map((p,i)=>p.open==="PASS"
+ ?`${i+1}. ${p.candidate}\nOPEN PASS / tables=${p.tables} / bars_daily=${p.hasBars?"YES":"NO"}${p.hasBars?` / rows=${Number(p.bars||0).toLocaleString()} / ${p.minDate}～${p.maxDate}`:""}`
+ :`${i+1}. ${p.candidate}\nOPEN FAIL / ${p.error}`);
+ const market=r.probes.find(p=>p.open==="PASS"&&p.hasBars);
+ box("poolProbeResult",market?"pass":"fail",`${market?"MARKET DATALAKE FOUND":"MARKET DATALAKE NOT FOUND"}
+${lines.join("\n\n")}
+${market?`有効候補: ${market.candidate}`:"結果をスクショで送ってください。"}`)}
+ catch(e){box("poolProbeResult","fail","FAIL\n"+e)}
+};

@@ -119,7 +119,37 @@ function sampleRows(db,table,limit=3){
 self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
  const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
  if(cmd==="init"){self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,vfs,poolClass:!!p.OpfsSAHPoolDb,capacity:p.getCapacity(),files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
- if(cmd==="import"){if(!d.file)throw new Error("File missing"); const out=await importFile(d.file,name); self.postMessage({ok:true,type:"result",...out,vfsName:p.vfsName,files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
+ 
+  if(cmd==="pool-diagnostic"){
+    const files=poolFileNamesSafe(p);
+    const requested=name, base=String(requested||"").replace(/^\/+/,"");
+    const normalized=files.map(f=>({raw:f,base:String(f).replace(/^\/+/,"")}));
+    self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,
+      capacity:p.getCapacity(),requested,base,files,normalized,
+      exactRaw:files.includes(requested),exactBase:normalized.filter(x=>x.base===base).map(x=>x.raw),
+      elapsedMs:Math.round(performance.now()-t0)});return;
+  }
+  if(cmd==="pool-probe-candidates"){
+    const files=poolFileNamesSafe(p);
+    const requested=name, base=String(requested||"").replace(/^\/+/,"");
+    const candidates=[]; const add=x=>{if(x&&!candidates.includes(x))candidates.push(x)};
+    add(requested); add("/"+base); add(base);
+    for(const f of files){add(f);add(f.startsWith("/")?f:"/"+f)}
+    const probes=[];
+    for(const candidate of candidates){
+      let q=null;
+      try{
+        q=new p.OpfsSAHPoolDb(candidate,"r");
+        const tables=Number(scalar(q,"SELECT COUNT(*) FROM sqlite_master WHERE type='table'")||0);
+        const hasBars=Number(scalar(q,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)>0;
+        let bars=null,minDate=null,maxDate=null;
+        if(hasBars){bars=Number(scalar(q,"SELECT COUNT(*) FROM bars_daily")||0);minDate=scalar(q,"SELECT MIN(date) FROM bars_daily");maxDate=scalar(q,"SELECT MAX(date) FROM bars_daily")}
+        q.close();q=null; probes.push({candidate,open:"PASS",tables,hasBars,bars,minDate,maxDate});
+      }catch(err){try{if(q)q.close()}catch(_){} probes.push({candidate,open:"FAIL",error:String(err?.message||err)})}
+    }
+    self.postMessage({ok:true,type:"result",requested,files,candidates,probes,elapsedMs:Math.round(performance.now()-t0)});return;
+  }
+  if(cmd==="import"){if(!d.file)throw new Error("File missing"); const out=await importFile(d.file,name); self.postMessage({ok:true,type:"result",...out,vfsName:p.vfsName,files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
  if(cmd==="smoke-write"){
    const smoke="/jq_sah_smoke.sqlite";
    try{if(p.getFileNames().includes(smoke))p.unlink(smoke)}catch(_){}
