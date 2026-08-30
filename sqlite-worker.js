@@ -246,10 +246,10 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
    self.postMessage({ok:true,type:"result",stats:stats[0]||{},checkpoint,jqcheckpoint,syncLog:syncLog[0]||{},elapsedMs:Math.round(performance.now()-t0)});return;
  }
  if(cmd==="bars-auto-no-data"){
-   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
    const payload=e.data.payload||{}, day=payload.date;
    if(!day)throw new Error("date missing");
-   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
    db.exec("BEGIN IMMEDIATE");
    try{
      db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
@@ -279,8 +279,24 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
    self.postMessage({ok:true,type:"result",checkpoint:cp,elapsedMs:Math.round(performance.now()-t0)});return;
  }
 
+ 
+ if(cmd==="write-gate-test"){
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+   db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
+   const sample=execRows(db,"SELECT code,date,c FROM bars_daily ORDER BY date DESC, code LIMIT 1");
+   if(!sample.length)throw new Error("bars_daily sample missing");
+   const r=sample[0], before=Number(scalar(db,"SELECT COUNT(*) FROM bars_daily")||0);
+   db.exec("BEGIN IMMEDIATE");
+   try{
+     db.exec({sql:"UPDATE bars_daily SET c=c WHERE code=? AND date=?",bind:[r.code,r.date]});
+     db.exec("COMMIT");
+   }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
+   const after=Number(scalar(db,"SELECT COUNT(*) FROM bars_daily")||0);
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",marketName,sample:r,before,after,unchanged:before===after,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
  if(cmd==="jquants-bars-write"){
-   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
    const payload=e.data.payload||{}, day=payload.date, rows=payload.rows||[];
    if(!day)throw new Error("date missing");
    db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);

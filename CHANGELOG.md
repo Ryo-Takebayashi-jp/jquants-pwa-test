@@ -1,5 +1,17 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta4f — CURRENT (2026-08-30)
+
+Real J-Quants write-path hotfix.
+
+- The beta4e screenshot pinpointed the failure at the writable open in `jquants-bars-write`. Code audit found a regression: that block opened `marketName` without defining it after the filename-resolver refactor.
+- `jquants-bars-write` now resolves the existing SAH Pool market DB first, then opens that resolved logical name writable.
+- Removed the stale exact logical-filename gate from this real write path.
+- The 0-row holiday/non-trading checkpoint path now uses the same resolved market DB.
+- Added a safe write-gate test: it performs a same-value UPDATE on one existing row inside a transaction and verifies total row count is unchanged.
+- Existing DataLake contents and checkpoints require no re-import or migration.
+
+
 ## Web/PWA v7d-beta4e — CURRENT (2026-08-30)
 
 Non-destructive SAH Pool emergency diagnostics.

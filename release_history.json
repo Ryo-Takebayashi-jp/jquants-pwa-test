@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta4e",
+    "version": "v7d-beta4f",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-19"
+    "migration_version": "history-20"
   },
   "releases": [
     {
@@ -483,6 +483,21 @@
         "DB-free pool filename/capacity diagnostic",
         "Read-only candidate probe with bars_daily metadata",
         "No writes/imports/migrations/deletes/checkpoint changes"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta4f",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Fix undefined marketName in real J-Quants write path + safe write gate",
+      "changes": [
+        "Fix jquants-bars-write regression: define marketName via resolveExistingMarketDb before writable open",
+        "Remove stale exact logical-filename gate from the real write path",
+        "Add idempotent same-value UPDATE write-gate test before network sync",
+        "Audit production commands for marketName definition",
+        "No DataLake re-import required",
+        "Fix the 0-row holiday/non-trading checkpoint path to use the same resolved market DB"
       ]
     }
   ]

@@ -562,3 +562,17 @@ ${lines.join("\n\n")}
 ${market?`有効候補: ${market.candidate}`:"結果をスクショで送ってください。"}`)}
  catch(e){box("poolProbeResult","fail","FAIL\n"+e)}
 };
+
+if($("writeGateBtn")) $("writeGateBtn").onclick=async()=>{
+ box("writeGateResult","run","既存1行を同値UPDATEして書込み経路を確認中…行数・価格は変更しません。");
+ try{
+   const r=await workerCall("write-gate-test",180000,s=>box("writeGateResult","run",s.detail||s.stage));
+   box("writeGateResult",r.unchanged?"pass":"fail",`${r.unchanged?"PASS":"FAIL"}
+DB: ${r.marketName}
+sample: ${r.sample.date} / ${r.sample.code} / C=${r.sample.c}
+rows before: ${Number(r.before).toLocaleString()}
+rows after: ${Number(r.after).toLocaleString()}
+行数不変: ${r.unchanged?"YES":"NO"}
+所要: ${(r.elapsedMs/1000).toFixed(2)}秒`);
+ }catch(e){box("writeGateResult","fail","FAIL\n"+e)}
+};
