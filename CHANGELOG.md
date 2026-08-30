@@ -1,5 +1,15 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta4b — CURRENT (2026-08-30)
+
+Hotfix for beta4 startup failure.
+
+- Fixed a malformed multiline JavaScript string in the fast-gap-fill error handler. This syntax error stopped `app.js` from parsing, which made every button appear unresponsive even after reload.
+- Added a visible JavaScript boot/error indicator so future startup failures are immediately distinguishable from SQLite/API failures.
+- No change to the 1.12GB SAH Pool DataLake, DB schema, checkpoints, or stored market data.
+- No re-import required.
+
+
 ## Web/PWA v7d-beta4 — CURRENT (2026-08-30)
 
 High-speed historical backfill.

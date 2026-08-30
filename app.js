@@ -1,3 +1,17 @@
+
+window.addEventListener("error",(ev)=>{
+  try{
+    const el=document.getElementById("appBootStatus");
+    if(el){ el.className="result fail"; el.textContent="JavaScript ERROR\n"+(ev.message||"unknown"); }
+  }catch(_){}
+});
+window.addEventListener("unhandledrejection",(ev)=>{
+  try{
+    const el=document.getElementById("appBootStatus");
+    if(el){ el.className="result fail"; el.textContent="Promise ERROR\n"+String(ev.reason||"unknown"); }
+  }catch(_){}
+});
+
 const DBNAME="jq_market_v7c.sqlite";
 const $=id=>document.getElementById(id);
 const state={env:null,imported:null,smoke:null,opened:null,quick:null};
@@ -514,7 +528,7 @@ Safariを前面表示のままにしてください`);
 0件/休場候補: ${out.filter(x=>x.rows===0).length}
 残り穴候補: ${lastGapPlan.length}
 ${lastGapPlan.length?"もう一度②で続行できます。":"この検出範囲は完了。"}`);
- }catch(e){box("fastGapFillResult","fail","FAIL
+ }catch(e){box("fastGapFillResult","fail",`FAIL
 成功済み日までは保存済みです。再実行で続行できます。
-"+e)}
+${e}`)}
 };

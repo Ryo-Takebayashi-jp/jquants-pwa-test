@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta4",
+    "version": "v7d-beta4b",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-15"
+    "migration_version": "history-16"
   },
   "releases": [
     {
@@ -431,6 +431,19 @@
         "Estimate 20/250/1600-day runtime from measured device speed",
         "Add high-speed gap-fill batches up to 120 candidate days with live ETA",
         "Preserve raw_json, checkpoints, SAH Pool identity and no whole-DB RAM expansion"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta4b",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Hotfix for beta4 fatal JavaScript startup error",
+      "changes": [
+        "Fix invalid multiline JavaScript string in fast-gap-fill error handler that prevented all button handlers from loading",
+        "Add visible boot-error indicator for JavaScript and unhandled Promise failures",
+        "Keep beta4 prepared-statement fast writer and existing SAH Pool/DataLake unchanged",
+        "No DataLake re-import or migration required"
       ]
     }
   ]
