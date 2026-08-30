@@ -1,0 +1,249 @@
+{
+  "format_version": 1,
+  "updated_at": "2026-08-30",
+  "policy": {
+    "layers": [
+      "CHANGELOG.md",
+      "release_history.json",
+      "UI release history"
+    ],
+    "ui_metadata": [
+      "Version",
+      "Build date",
+      "Schema version",
+      "Migration version"
+    ],
+    "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
+  },
+  "current": {
+    "product": "Web/PWA",
+    "version": "v7c-r2",
+    "build_date": "2026-08-30",
+    "schema_version": "market-poc7c",
+    "migration_version": "history-2"
+  },
+  "releases": [
+    {
+      "product": "Web/PWA",
+      "version": "v1",
+      "date": "2026-08-30",
+      "status": "PASS",
+      "summary": "Local-first feasibility check",
+      "changes": [
+        "OPFS availability check",
+        "SQLite-WASM feasibility check",
+        "Web Worker check",
+        "Direct J-Quants API/CORS/authentication check"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v2",
+      "date": "2026-08-30",
+      "status": "PASS",
+      "summary": "Persistence and capacity feasibility",
+      "changes": [
+        "512MB OPFS test",
+        "1,000,000-row SQLite test",
+        "Real J-Quants data persistence",
+        "PWA reopen and local analysis persistence"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v3",
+      "date": "2026-08-30",
+      "status": "SUPERSEDED",
+      "summary": "Production-like small DataLake",
+      "changes": [
+        "Equities master",
+        "Full-market daily bars",
+        "Financial summary",
+        "sync_log and resumable sync",
+        "429 backoff",
+        "Local screening"
+      ],
+      "notes": "Initial build had an INSERT column-count defect; fixed in v3b."
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v3b",
+      "date": "2026-08-30",
+      "status": "PASS",
+      "summary": "v3 INSERT fix",
+      "changes": [
+        "Fixed bars_daily INSERT from 18 placeholders to explicit 17-column insert",
+        "Retried ERROR sync dates without DB reset"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v4",
+      "date": "2026-08-30",
+      "status": "PASS",
+      "summary": "Portable DataLake",
+      "changes": [
+        "SQLite Export/Import",
+        "PRAGMA quick_check",
+        "Required table validation",
+        "Migration marker",
+        "Two-step market deletion confirmation",
+        "Resume after import"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v5",
+      "date": "2026-08-30",
+      "status": "PASS",
+      "summary": "Private-data security PoC",
+      "changes": [
+        "market/private DB separation",
+        "Private tables for Portfolio/Trades/Discovery/Watchlist",
+        "PBKDF2-SHA256 + AES-GCM encrypted private backup",
+        "Private import validation",
+        "Migration history",
+        "Strong private deletion confirmation"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v6",
+      "date": "2026-08-30",
+      "status": "LIMIT_FOUND",
+      "summary": "Long backfill endurance",
+      "changes": [
+        "Long backfill with month/year chunks",
+        "Resume and synced-day skip",
+        "429 exponential backoff",
+        "Retry ERROR dates",
+        "Duration/API calls/DB size endurance logs"
+      ],
+      "notes": "Safari repeatedly crashed after market DB grew to about 1.12GB. Root cause strongly points to the sql.js whole-DB RAM load/export persistence model."
+    },
+    {
+      "product": "Web/PWA",
+      "version": "Rescue v1",
+      "date": "2026-08-30",
+      "status": "PASS",
+      "summary": "DataLake rescue",
+      "changes": [
+        "No SQLite/WASM startup",
+        "OPFS file existence/size/header check",
+        "Direct SQLite file backup to Files"
+      ],
+      "notes": "1.12GB DataLake survived with a valid SQLite header and was successfully rescued."
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7a",
+      "date": "2026-08-30",
+      "status": "PASS",
+      "summary": "Direct OPFS feasibility",
+      "changes": [
+        "Worker + SyncAccessHandle random-access test",
+        "No whole-file ArrayBuffer load",
+        "Existing 1.12GB DataLake preserved"
+      ],
+      "notes": "GitHub Pages did not satisfy the crossOriginIsolated/SharedArrayBuffer requirements for official SQLite-WASM OPFS VFS."
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7b",
+      "date": "2026-08-30",
+      "status": "PASS",
+      "summary": "Cloudflare Pages / COOP-COEP",
+      "changes": [
+        "Added _headers",
+        "crossOriginIsolated PASS",
+        "SharedArrayBuffer PASS",
+        "Direct OPFS PASS",
+        "Rescued 1.12GB SQLite header PASS"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7c-r1",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Streaming import + official SQLite-WASM direct OPFS open",
+      "changes": [
+        "Streaming import of rescued SQLite into Cloudflare-side OPFS",
+        "Official @sqlite.org/sqlite-wasm in Worker",
+        "Direct read-only open of OPFS SQLite",
+        "Optional quick_check",
+        "Added formal release-history management"
+      ]
+    },
+    {
+      "product": "Desktop/J-Quants Converter",
+      "version": "5.0.0-alpha23b",
+      "date": null,
+      "status": "BASELINE",
+      "summary": "v2 final regression baseline",
+      "changes": [
+        "Screening/AI Screening regression baseline",
+        "Discovery duplicate check",
+        "Seasonality",
+        "Watchlist Re-Evaluation",
+        "JQP payout validation",
+        "Separated Watchlist import from Discovery"
+      ]
+    },
+    {
+      "product": "Desktop/J-Quants Converter",
+      "version": "5.0.0-alpha24",
+      "date": null,
+      "status": "PASS",
+      "summary": "Management Guidance Phase 1 + privacy",
+      "changes": [
+        "Management Guidance history/summary",
+        "AI-only guidance features with no score impact",
+        "Private-data distribution hardening",
+        "Distribution builder version integration"
+      ]
+    },
+    {
+      "product": "Desktop/J-Quants Converter",
+      "version": "5.0.0-alpha25",
+      "date": null,
+      "status": "PASS",
+      "summary": "Unified investment tracking input",
+      "changes": [
+        "investment_tracking_input.csv unified import",
+        "TRACK_ONLY/WATCH/ACTIONABLE/WATCH_ONLY routing",
+        "Watchlist UPSERT with lifecycle preservation",
+        "Compatibility importers retained"
+      ]
+    },
+    {
+      "product": "Desktop/J-Quants Converter",
+      "version": "5.0.0-alpha25b",
+      "date": null,
+      "status": "PASS",
+      "summary": "ReferencePrice integrity",
+      "changes": [
+        "Resolve ReferencePrice from DataLake using StartDate + Code",
+        "Prefer exact close or previous business day",
+        "CSV ReferencePrice used as fallback only",
+        "Auto-repair existing Watchlist ReferencePrice without changing thesis/state"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7c-r2",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Same-origin SQLite-WASM asset proxy + detailed Worker diagnostics",
+      "changes": [
+        "Added Cloudflare Pages Function /sqlite/* proxy for official sqlite-wasm assets",
+        "Browser now loads index.mjs, sqlite3.wasm and OPFS proxy worker from pages.dev same origin",
+        "Preserves SQLite 3.53 ?vfs=opfs query parameter",
+        "Added SQLite asset self-test",
+        "Added detailed Worker startup stage/error reporting",
+        "Keeps 1.12GB streaming-imported OPFS DB intact"
+      ],
+      "notes": "v7c-r1 streaming import passed but SQLite-WASM Direct Open failed at Worker startup."
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
-  "name": "J-Quants Local-first PWA v7c SQLite OPFS",
-  "short_name": "JQ PWA v7c",
+  "name": "J-Quants Local-first PWA v7c-r2",
+  "short_name": "JQ v7c-r2",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#08111f",

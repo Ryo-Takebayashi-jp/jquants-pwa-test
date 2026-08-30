@@ -25,3 +25,37 @@ PoC v6で1.12GB付近で落ちた旧sql.js方式を捨て、
 SQLite-WASM:
 @sqlite.org/sqlite-wasm 3.53.0-build1
 CDNからES Moduleとして読み込む。
+
+
+## Formal release-history management (added 2026-08-30)
+
+From v7c-r1, release history is managed in three layers:
+
+1. `CHANGELOG.md` — human-readable history
+2. `release_history.json` — machine-readable history
+3. Web/PWA UI — recent releases + build metadata
+
+UI build metadata:
+- Version: v7c-r1
+- Build date: 2026-08-30
+- Schema version: market-poc7c
+- Migration version: history-1
+
+Desktop/J-Quants Converter historical baseline entries are also included in the unified logical history.
+Future desktop packages should ship the same two history files and append desktop releases rather than overwrite them.
+
+
+## v7c-r2
+
+v7c-r1 の `Worker error` 切り分け版。
+
+Cloudflare Pages Functions の `/sqlite/*` を使い、公式 `@sqlite.org/sqlite-wasm@3.53.0-build1`
+の `index.mjs` / `sqlite3.wasm` / `sqlite3-opfs-async-proxy.js` をブラウザからは
+`jquants-pwa-test.pages.dev` の同一オリジン資産として読み込みます。
+
+テスト順:
+1. 前提確認
+2. 既にv7c-r1で1.12GB Import済みなら再Import不要
+3. 「SQLite assetsを確認」
+4. 3資産すべてPASSなら Direct Open
+5. エラー時は Stage と詳細をスクショ

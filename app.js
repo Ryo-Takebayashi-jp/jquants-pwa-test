@@ -76,21 +76,65 @@ SQLite header: ${sqliteHeaderOk(outHead)?"PASS":"FAIL"}
  finally{$("importBtn").disabled=false}
 }
 
-function workerCall(cmd,timeoutMs=180000){
+function workerCall(cmd,timeoutMs=180000,onStatus=null){
  return new Promise((resolve,reject)=>{
-  const w=new Worker("./sqlite-worker.js",{type:"module"});
+  const w=new Worker("./sqlite-worker.js");
   const timer=setTimeout(()=>{w.terminate();reject(new Error("タイムアウト"))},timeoutMs);
-  w.onmessage=e=>{clearTimeout(timer);w.terminate();e.data?.ok?resolve(e.data):reject(new Error(e.data?.error||"Worker失敗"))};
-  w.onerror=e=>{clearTimeout(timer);w.terminate();reject(new Error(e.message||"Worker error"))};
+  w.onmessage=e=>{
+    const d=e.data||{};
+    if(d.type==="status"){
+      if(onStatus)onStatus(d);
+      return;
+    }
+    clearTimeout(timer);w.terminate();
+    d.ok?resolve(d):reject(new Error(
+      `[${d.stage||"worker"}] ${d.error||"Worker失敗"}`+
+      (d.filename?`
+${d.filename}:${d.lineno||0}:${d.colno||0}`:"")
+    ));
+  };
+  w.onerror=e=>{
+    clearTimeout(timer);w.terminate();
+    reject(new Error(
+      `Worker script error: ${e.message||"unknown"}
+`+
+      `${e.filename||""}:${e.lineno||0}:${e.colno||0}`
+    ));
+  };
   w.postMessage({cmd,dbName:"/"+DBNAME});
  });
 }
+
+
+async function sqliteProxyCheck(){
+ try{
+  const targets=[
+   ["/sqlite/index.mjs","text/javascript"],
+   ["/sqlite/sqlite3.wasm","application/wasm"],
+   ["/sqlite/sqlite3-opfs-async-proxy.js?vfs=opfs","text/javascript"]
+  ];
+  const lines=[];
+  for(const [url,expect] of targets){
+    const r=await fetch(url,{cache:"no-store"});
+    const ct=r.headers.get("content-type")||"";
+    const prox=r.headers.get("x-jq-sqlite-proxy")||"-";
+    if(!r.ok)throw new Error(`${url}: HTTP ${r.status}`);
+    lines.push(`${url}: PASS / ${ct} / proxy=${prox}`);
+  }
+  box("proxyResult","pass","Same-origin SQLite assets: PASS\\n"+lines.join("\\n"));
+ }catch(e){
+  box("proxyResult","fail","Same-origin SQLite assets: FAIL\\n"+e);
+ }
+}
+$("proxyBtn").onclick=sqliteProxyCheck;
 
 async function openDb(){
  box("openResult","run","SQLite-WASMを起動してDBを開いています…");
  try{
   const f=await existingOpfsFile(); if(!f)throw new Error("Import済みDBがありません。先にStep 2を実行してください。");
-  const r=await workerCall("open",180000);
+  const r=await workerCall("open",180000,(s)=>{
+   box("openResult","run",`SQLite-WASM起動中…\nStage: ${s.stage}\n${s.detail||""}`);
+  });
   state.opened=r;
   box("openResult","pass",
 `PASS
@@ -111,7 +155,9 @@ DB全体RAM展開: なし`);
 async function quickCheck(){
  box("quickResult","run","quick_check実行中… 1GB超のため時間がかかる場合があります。");
  try{
-  const r=await workerCall("quick",600000);
+  const r=await workerCall("quick",600000,(s)=>{
+   box("quickResult","run",`quick_check準備/実行中…\nStage: ${s.stage}\n${s.detail||""}`);
+  });
   state.quick=r;
   box("quickResult",r.quick==="ok"?"pass":"warn",
 `quick_check: ${r.quick}
@@ -137,4 +183,25 @@ $("importBtn").onclick=importDb;
 $("openBtn").onclick=openDb;
 $("quickBtn").onclick=quickCheck;
 $("summaryBtn").onclick=summary;
+
+async function showHistory(){
+ try{
+  const r=await fetch("./release_history.json",{cache:"no-store"});
+  if(!r.ok)throw new Error(`HTTP ${r.status}`);
+  const j=await r.json();
+  const recent=(j.releases||[]).slice(-8).reverse();
+  const lines=[
+    `Version: ${j.current?.version||"-"}`,
+    `Build date: ${j.current?.build_date||"-"}`,
+    `Schema version: ${j.current?.schema_version||"-"}`,
+    `Migration version: ${j.current?.migration_version||"-"}`,
+    "",
+    "最近の更新:"
+  ];
+  for(const x of recent) lines.push(`• ${x.product} ${x.version} [${x.status}] — ${x.summary}`);
+  box("historyResult","pass",lines.join("\n"));
+ }catch(e){box("historyResult","fail","更新履歴の読み込みFAIL\n"+e)}
+}
+$("historyBtn").onclick=showHistory;
+
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(()=>{}));
