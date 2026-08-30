@@ -1,8 +1,8 @@
 {
-  "name": "J-Quants DataLake Rescue v1",
-  "short_name": "JQ Rescue",
+  "name": "J-Quants Local-first PWA v7a Direct OPFS",
+  "short_name": "JQ PWA v7a",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#0b1220",
-  "theme_color": "#0b1220"
+  "background_color": "#08111f",
+  "theme_color": "#08111f"
 }
