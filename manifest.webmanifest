@@ -1,0 +1,9 @@
+{
+  "name": "J-Quants Local PWA Feasibility Tester",
+  "short_name": "JQ PWA Test",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "description": "Local-first J-Quants PWA feasibility tester"
+}
