@@ -3,102 +3,137 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0f172a" />
+  <meta name="theme-color" content="#0b1220" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="JQ PWA PoC2" />
+  <meta name="apple-mobile-web-app-title" content="JQ PWA PoC3" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <title>J-Quants Local PWA PoC v2</title>
+  <title>J-Quants Local-first PWA PoC v3</title>
   <style>
     :root{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;color-scheme:light dark}
     body{margin:0;background:#f3f4f6;color:#111827}
-    header{padding:22px 18px 16px;background:#0f172a;color:white}
+    header{padding:22px 18px 16px;background:#0b1220;color:white}
     header h1{margin:0 0 6px;font-size:21px}
-    header p{margin:0;opacity:.84;font-size:13px;line-height:1.55}
-    main{max-width:900px;margin:0 auto;padding:16px}
-    .notice{background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:14px}
+    header p{margin:0;opacity:.85;font-size:13px;line-height:1.55}
+    main{max-width:920px;margin:0 auto;padding:16px}
+    .notice{background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:14px}
+    .warnbox{background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:14px}
     .grid{display:grid;gap:12px}
     .card{background:white;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
     .card h2{margin:0 0 7px;font-size:17px}
     .desc{font-size:13px;color:#4b5563;line-height:1.55;margin-bottom:12px}
-    button{width:100%;border:0;border-radius:12px;padding:13px 14px;font-size:15px;font-weight:700;background:#0f172a;color:white}
+    button{width:100%;border:0;border-radius:12px;padding:13px 14px;font-size:15px;font-weight:700;background:#0b1220;color:white}
     button.secondary{background:#e5e7eb;color:#111827}
+    button.danger{background:#991b1b}
     button:disabled{opacity:.5}
-    input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:10px;padding:10px;font-size:15px;background:white;color:#111827}
-    textarea{min-height:75px}
+    input,select{width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:10px;padding:10px;font-size:15px;background:white;color:#111827}
     label{display:block;font-size:12px;color:#4b5563;margin:9px 0 5px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .result{margin-top:12px;border-radius:12px;padding:11px;font-size:13px;line-height:1.55;white-space:pre-wrap;background:#f9fafb;min-height:44px;overflow-wrap:anywhere}
     .pass{background:#ecfdf5;color:#065f46}.fail{background:#fef2f2;color:#991b1b}.warn{background:#fffbeb;color:#92400e}.running{background:#eff6ff;color:#1e40af}
+    .meter{height:7px;background:#e5e7eb;border-radius:100px;overflow:hidden;margin-top:8px}.meter>div{height:100%;width:0;background:#0b1220;transition:width .15s}
     .small{font-size:12px;color:#6b7280;line-height:1.55}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .meter{height:7px;background:#e5e7eb;border-radius:100px;overflow:hidden;margin-top:8px}.meter>div{height:100%;width:0%;background:#0f172a;transition:width .15s}
-    table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}th,td{border-bottom:1px solid #e5e7eb;padding:7px 4px;text-align:right}th:first-child,td:first-child{text-align:left}
+    table{width:100%;border-collapse:collapse;font-size:11px;margin-top:10px}th,td{border-bottom:1px solid #e5e7eb;padding:6px 3px;text-align:right}th:first-child,td:first-child{text-align:left}
     footer{padding:18px 4px 35px;color:#6b7280;font-size:12px;line-height:1.55}
     @media(prefers-color-scheme:dark){
-      body{background:#0b1020;color:#f9fafb}.card{background:#111827}.desc,.small,label,footer{color:#9ca3af}.result{background:#0f172a}
-      input,select,textarea{background:#0f172a;color:#f9fafb;border-color:#374151}button.secondary{background:#374151;color:#f9fafb}
-      .notice{background:#2b1d0e;border-color:#7c4a17;color:#fed7aa}.meter{background:#374151}.meter>div{background:#f9fafb}
-      th,td{border-color:#374151}
+      body{background:#08101e;color:#f9fafb}.card{background:#111827}.desc,.small,label,footer{color:#9ca3af}.result{background:#0f172a}
+      input,select{background:#0f172a;color:#f9fafb;border-color:#374151}button.secondary{background:#374151;color:#f9fafb}
+      .notice{background:#0c2340;border-color:#1d4ed8;color:#bfdbfe}.warnbox{background:#2b1d0e;border-color:#7c4a17;color:#fed7aa}
+      .meter{background:#374151}.meter>div{background:#f9fafb}th,td{border-color:#374151}
     }
   </style>
 </head>
 <body>
 <header>
-  <h1>J-Quants Local-first PWA PoC v2</h1>
-  <p>実運用サイズ負荷 + J-Quants実データ → ローカルDB保存 → 再読込 → 簡易分析までをiPhoneだけで確認します。</p>
+  <h1>J-Quants Local-first PWA PoC v3</h1>
+  <p>小型本番DataLake：銘柄Master + 全市場日足の段階同期 + 財務サマリー + 差分更新 + 再開 + 簡易Screening。</p>
 </header>
 <main>
   <div class="notice">
-    APIキーは保存しません。J-Quantsから取得したPoC用日足データだけ、iPhone内のOPFSに <b>jq_poc_market.sqlite</b> として保存します。
-    「PoC DBを削除」でいつでも消せます。
+    v2で「iPhone内OPFSへSQLiteを永続保存し、再起動後に読み直して分析」までPASSしました。
+    v3では <b>全市場を日付単位で同期</b> して、小型の本番DataLake構造を検証します。
   </div>
+  <div class="warnbox">
+    APIキーは保存しません。同期は日付ごとにコミットするので、中断しても次回は未同期日だけ再開します。
+    J-Quantsのレート制限を避けるため、リクエスト間隔と429時の待機を入れています。
+  </div>
+
   <div class="grid">
     <section class="card">
-      <h2>A. 実運用サイズ負荷テスト</h2>
-      <div class="desc">前回の強化版。512MB OPFSと100万行SQLiteを実行します。</div>
-      <button id="heavyBtn">512MB + 100万行テスト</button>
-      <div class="meter"><div id="heavyMeter"></div></div>
-      <div id="heavyResult" class="result">未実行</div>
+      <h2>1. DataLake初期化 / 状態確認</h2>
+      <div class="desc">OPFS内に <b>jq_poc3_datalake.sqlite</b> を作ります。既にあれば再利用します。</div>
+      <button id="initBtn">DataLakeを初期化 / 開く</button>
+      <button id="inspectBtn" class="secondary" style="margin-top:8px;">現在のDB状態を確認</button>
+      <div id="initResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>B. J-Quants実データ → Local DataLake PoC</h2>
-      <div class="desc">複数銘柄の日足をJ-Quants APIから直接取得し、SQLiteへ格納してOPFSへ永続保存します。</div>
+      <h2>2. APIキー + 銘柄Master同期</h2>
+      <div class="desc">上場銘柄Masterを取得し、ローカルDBへUPSERTします。</div>
       <label for="apiKey">J-Quants APIキー（保存しません）</label>
       <input id="apiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="APIキー" />
-      <label for="codes">コード（カンマ区切り）</label>
-      <textarea id="codes">8697,7203,6758,9984,8306</textarea>
-      <div class="small">最初は5銘柄で十分。コードは4桁でも5桁でも可。API側に合わせてそのまま送信します。</div>
-      <button id="fetchBtn" style="margin-top:11px;">取得してローカルDBへ保存</button>
-      <div class="meter"><div id="fetchMeter"></div></div>
-      <div id="fetchResult" class="result">未実行</div>
+      <button id="masterBtn" style="margin-top:10px;">銘柄Masterを同期</button>
+      <div id="masterResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>C. OPFSから再読込 + 簡易Screening</h2>
-      <div class="desc">保存済みSQLiteをiPhone内から読み直し、5日/25日移動平均・20営業日騰落率・20日平均出来高を計算します。</div>
-      <button id="analyzeBtn">保存DBを読み込んで分析</button>
-      <div id="analysisResult" class="result">未実行</div>
-      <div id="tableWrap"></div>
+      <h2>3. 全市場日足を段階同期</h2>
+      <div class="desc">指定期間を1日ずつ取得します。土日・休場日は0件でも同期済みとして記録。途中停止後も続きから再開できます。</div>
+      <div class="row">
+        <div>
+          <label for="startDate">開始日</label>
+          <input id="startDate" type="date" />
+        </div>
+        <div>
+          <label for="endDate">終了日</label>
+          <input id="endDate" type="date" />
+        </div>
+      </div>
+      <label for="delayMs">リクエスト間隔</label>
+      <select id="delayMs">
+        <option value="350">350ms</option>
+        <option value="600" selected>600ms（推奨）</option>
+        <option value="1000">1000ms（慎重）</option>
+      </select>
+      <button id="barsBtn" style="margin-top:10px;">日足同期を開始 / 再開</button>
+      <button id="stopBtn" class="secondary" style="margin-top:8px;">現在の日付処理後に停止</button>
+      <div class="meter"><div id="barsMeter"></div></div>
+      <div id="barsResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>D. 永続性確認</h2>
-      <div class="desc">ページを閉じたりホーム画面へ戻った後でもDBが残っているか確認するための情報です。</div>
-      <button id="inspectBtn">ローカルDB状態を確認</button>
-      <button id="deleteBtn" class="secondary" style="margin-top:8px;">PoC DBを削除</button>
-      <div id="inspectResult" class="result">未実行</div>
+      <h2>4. 財務サマリーを段階同期</h2>
+      <div class="desc">同じ期間についてfins/summaryを日付単位で取得します。プラン・API仕様上取得不可の場合は日足PoCと切り分けて表示します。</div>
+      <button id="finsBtn">財務サマリー同期を開始 / 再開</button>
+      <div class="meter"><div id="finsMeter"></div></div>
+      <div id="finsResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>PoC v2 判定</h2>
+      <h2>5. 簡易Screening Core</h2>
+      <div class="desc">ローカルDBだけを使い、最新25営業日以上ある銘柄を対象にSMA5/25・20D騰落率・平均出来高・簡易スコアを計算します。</div>
+      <button id="screenBtn">ローカルScreeningを実行</button>
+      <div id="screenResult" class="result">未実行</div>
+      <div id="screenTable"></div>
+    </section>
+
+    <section class="card">
+      <h2>6. 差分更新テスト</h2>
+      <div class="desc">同じ期間を再同期して「既に同期済みの日付をスキップ」できるか確認します。</div>
+      <button id="deltaBtn">差分更新チェック</button>
+      <div id="deltaResult" class="result">未実行</div>
+    </section>
+
+    <section class="card">
+      <h2>PoC v3 総合判定</h2>
       <button id="summaryBtn" class="secondary">総合判定</button>
       <button id="exportBtn" class="secondary" style="margin-top:8px;">結果JSONを保存</button>
+      <button id="deleteBtn" class="danger" style="margin-top:8px;">PoC v3 DataLakeを削除</button>
       <div id="summaryResult" class="result">未判定</div>
     </section>
   </div>
   <footer>
-    推奨順序：A → B → C → D → 総合判定。Bで保存後、一度PWAを閉じて再起動し、C/Dが通れば「ローカルDataLake永続化」まで確認できます。
+    最初は直近30〜45暦日で十分です。ここがPASSしたら、次のPoCで長期バックフィル/Standard需給/現行Screening Core移植へ進みます。
   </footer>
 </main>
 <script src="./app.js"></script>

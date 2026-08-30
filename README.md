@@ -1,25 +1,40 @@
-# J-Quants Local-first PWA PoC v2
+# J-Quants Local-first PWA PoC v3
 
-v1で OPFS / SQLite-WASM / Web Worker / J-Quants API direct CORS がすべてPASSしたため、
-v2では次を実機確認します。
+v2で以下がiPhone実機PASS:
+- 512MB OPFS
+- SQLite-WASM 100万行
+- J-Quants API直接接続
+- 実日足 → SQLite → OPFS永続保存
+- PWA再起動後のDB再読込
+- ブラウザ内分析
 
-1. 512MB OPFS書込
-2. SQLite-WASM 100万行
-3. J-Quants日足を複数銘柄直接取得
-4. SQLiteへ格納
-5. SQLiteバイナリをOPFSへ永続保存
-6. PWA再起動後にOPFSから再読込
-7. SMA5/SMA25/20D騰落率/20日平均出来高をブラウザ内計算
+v3は「小型本番DataLake」です。
 
-## 更新方法
-GitHub Pagesの既存 `jquants-pwa-test` リポジトリへ、
-このZIPの `index.html / app.js / manifest.webmanifest / service-worker.js / README.md`
-を上書きコミットします。
+## 実装
+- equities/master
+- equities/bars/daily を日付単位で全市場同期
+- fins/summary を日付単位で同期
+- SQLite/OPFS永続化
+- sync_log による同期済み日スキップ
+- 1日単位コミットによる中断/再開
+- 429指数バックオフ
+- Local-only簡易Screening
 
-公開後、iPhone PWAを完全終了して再起動してください。
-古い画面が残る場合はSafariでページを再読み込みしてからホーム画面版を再起動してください。
+## 推奨実機テスト
+1. GitHub Pagesの既存リポジトリへ5ファイルを上書きしてCommit
+2. iPhone PWAを完全終了 → 再起動
+3. 「1. DataLake初期化」
+4. APIキー入力
+5. 「2. 銘柄Master同期」
+6. 期間は初期値（直近45暦日）のまま「3. 全市場日足」
+7. 「4. 財務」
+8. 「5. 簡易Screening」
+9. 「6. 差分更新」
+10. 総合判定をスクショ
 
-## セキュリティ
-APIキーは保存しません。
-実データPoC DBはiPhone内OPFSにのみ保存します。
-削除ボタンで `jq_poc_market.sqlite` を消せます。
+APIキーは保存しません。入力欄はPWA再起動で消えます。
+PoC DBはiPhoneのOPFSにのみ保存されます。
+
+## 注意
+J-Quants APIにはレート制限があります。広い期間を一気に試さず、
+まず30〜45暦日でPoCしてください。

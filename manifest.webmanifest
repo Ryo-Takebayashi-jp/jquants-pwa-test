@@ -1,9 +1,9 @@
 {
-  "name": "J-Quants Local-first PWA PoC v2",
-  "short_name": "JQ PWA PoC2",
+  "name": "J-Quants Local-first PWA PoC v3",
+  "short_name": "JQ PWA PoC3",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
-  "description": "J-Quants local-first PWA heavy load and local DataLake proof of concept"
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "description": "Small production-like local DataLake PoC for J-Quants"
 }
