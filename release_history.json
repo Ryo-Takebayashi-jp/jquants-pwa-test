@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-alpha1",
+    "version": "v7d-alpha2",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-7"
+    "migration_version": "history-8"
   },
   "releases": [
     {
@@ -307,6 +307,21 @@
         "Transactional checkpoint UPSERT",
         "Worker-restart resume test",
         "Preserve SAH Pool and rescue-import architecture"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-alpha2",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Production sync-engine precursor: schema probe + date transactions + checkpoint resume",
+      "changes": [
+        "Probe actual 1.12GB DataLake schema",
+        "Date-scoped BEGIN IMMEDIATE/COMMIT engine",
+        "Checkpoint after each committed date",
+        "Worker-restart resume to next date",
+        "No whole-DB RAM export",
+        "J-Quants network fetch intentionally deferred until write engine real-device PASS"
       ]
     }
   ]

@@ -201,3 +201,29 @@ async function showHistory(){
 $("historyBtn").onclick=showHistory;
 
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(()=>{}));
+
+$("schemaBtn").onclick=async()=>{
+ box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
+ try{
+  const r=await workerCall("schema-probe",180000);
+  state.schemaProbe=r;
+  const summary=r.tables.map(t=>`${t}: cols=${r.details[t].columns.length} / PK=[${r.details[t].pk.join(",")}] / date=[${r.details[t].dateCols.join(",")}]`).join("\n");
+  box("schemaResult","pass",`PASS\nテーブル数: ${r.tables.length}\n${summary}`);
+ }catch(e){box("schemaResult","fail","FAIL\n"+e)}
+};
+$("batchBtn").onclick=async()=>{
+ box("batchResult","run","日付単位Transaction/Commit/Checkpointテスト中…");
+ try{
+  const r=await workerCall("date-batch-test",180000,s=>box("batchResult","run",`Stage: ${s.stage}\n${s.detail||""}`));
+  state.batch=r;
+  box("batchResult","pass",`PASS\n4日ではなく初期3日を日単位Commit\nDB行数: ${r.count}\nCheckpoint: ${JSON.stringify(r.checkpoint,null,2)}\nDB全体RAM展開: なし`);
+ }catch(e){box("batchResult","fail","FAIL\n"+e)}
+};
+$("batchResumeBtn").onclick=async()=>{
+ box("batchResumeResult","run","新WorkerでCheckpointを読んで次日を追記中…");
+ try{
+  const r=await workerCall("date-batch-resume",180000);
+  state.batchResume=r;
+  box("batchResumeResult","pass",`PASS\nResume元: ${r.resumedFrom}\n次日Commit: ${r.next}\n累計行数: ${r.count}\n${JSON.stringify(r.checkpoint,null,2)}`);
+ }catch(e){box("batchResumeResult","fail","FAIL\n"+e)}
+};

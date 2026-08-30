@@ -88,3 +88,8 @@ r3ではSQLite 3.53で追加された `opfs-wl` に絞って初期化します�
 r6で1.12GB DataLakeのImport/Open/quick_checkが実機PASSしたため、Direct-write基盤へ移行。
 既存DataLakeへ小さなruntime管理テーブルだけを追加し、トランザクション書込みとWorker再起動後のcheckpoint復元を検証する。
 J-Quants API同期は次段階。まず巨大DBを再exportせず安全に追記・再開できることを確定する。
+
+## v7d-alpha2
+実運用同期エンジンの前段。既存1.12GB DataLakeの実スキーマをブラウザ上で検査し、
+日付単位transaction/commit/checkpoint/Worker再起動resumeを直接SQLite-WASMで検証する。
+このゲートがPASSしたら次版でJ-Quants API取得を接続する。

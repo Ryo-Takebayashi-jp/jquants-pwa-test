@@ -45,6 +45,49 @@ function ensureRuntimeTables(db){
    VALUES(?,?,?)`,bind:["v7d-runtime-1",new Date().toISOString(),"SQLite-WASM direct-write runtime tables"]});
 }
 
+
+function qident(x){return '"'+String(x).replaceAll('"','""')+'"'}
+function tableInfo(db,table){
+ const rows=[]; db.exec({sql:`PRAGMA table_info(${qident(table)})`,rowMode:"object",callback:r=>rows.push(r)});
+ return rows;
+}
+function primaryKeyCols(info){
+ return info.filter(r=>Number(r.pk)>0).sort((a,b)=>Number(a.pk)-Number(b.pk)).map(r=>r.name);
+}
+function dateLikeCols(info){
+ return info.map(r=>r.name).filter(n=>/^(date|Date|trade_date|TradeDate)$/i.test(n));
+}
+function ensureV7dTables(db){
+ db.exec(`CREATE TABLE IF NOT EXISTS web_sync_checkpoint(
+   dataset TEXT PRIMARY KEY,
+   last_success_date TEXT,
+   updated_at TEXT NOT NULL,
+   status TEXT NOT NULL DEFAULT 'OK',
+   rows_written INTEGER NOT NULL DEFAULT 0,
+   note TEXT
+ )`);
+ db.exec(`CREATE TABLE IF NOT EXISTS web_sync_run(
+   run_id TEXT PRIMARY KEY,
+   dataset TEXT NOT NULL,
+   started_at TEXT NOT NULL,
+   finished_at TEXT,
+   status TEXT NOT NULL,
+   rows_written INTEGER NOT NULL DEFAULT 0,
+   last_date TEXT,
+   error TEXT
+ )`);
+ db.exec(`CREATE TABLE IF NOT EXISTS web_runtime_migrations(
+   migration_id TEXT PRIMARY KEY,
+   applied_at TEXT NOT NULL,
+   detail TEXT
+ )`);
+ db.exec({sql:`INSERT OR IGNORE INTO web_runtime_migrations(migration_id,applied_at,detail)
+   VALUES(?,?,?)`,bind:["v7d-alpha2-runtime",new Date().toISOString(),"direct-write + checkpoint + date-batch engine"]});
+}
+function sampleRows(db,table,limit=3){
+ const out=[]; db.exec({sql:`SELECT * FROM ${qident(table)} LIMIT ${Number(limit)}`,rowMode:"object",callback:r=>out.push(r)}); return out;
+}
+
 self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
  const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
  if(cmd==="init"){self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,vfs,poolClass:!!p.OpfsSAHPoolDb,capacity:p.getCapacity(),files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
@@ -67,6 +110,78 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
    const value=String(scalar(db,"SELECT value FROM smoke_test LIMIT 1")||"");
    db.close();db=null;
    self.postMessage({ok:true,type:"result",smoke,rows,value,persisted:rows===1&&value==="SAHPOOL-PERSIST-OK",elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+
+
+ if(cmd==="schema-probe"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"r");
+   const tables=[];db.exec({sql:"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",rowMode:"array",callback:r=>tables.push(r[0])});
+   const details={};
+   for(const t of tables){
+     const info=tableInfo(db,t);
+     details[t]={columns:info.map(x=>x.name),pk:primaryKeyCols(info),dateCols:dateLikeCols(info),sample:sampleRows(db,t,1)};
+   }
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",tables,details,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="date-batch-test"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   db.exec(`CREATE TABLE IF NOT EXISTS web_daily_batch_probe(
+     date TEXT NOT NULL, code TEXT NOT NULL, close REAL, volume REAL,
+     PRIMARY KEY(date,code)
+   )`);
+   const runId=`probe-${Date.now()}`, days=["2026-08-27","2026-08-28","2026-08-29"];
+   db.exec({sql:"INSERT INTO web_sync_run(run_id,dataset,started_at,status) VALUES(?,?,?,?)",
+     bind:[runId,"web_daily_batch_probe",new Date().toISOString(),"RUNNING"]});
+   let total=0;
+   for(const day of days){
+     db.exec("BEGIN IMMEDIATE");
+     try{
+       for(let i=0;i<5;i++){
+         const code=String(9000+i);
+         db.exec({sql:`INSERT INTO web_daily_batch_probe(date,code,close,volume) VALUES(?,?,?,?)
+           ON CONFLICT(date,code) DO UPDATE SET close=excluded.close,volume=excluded.volume`,
+           bind:[day,code,100+i,1000+i]});
+         total++;
+       }
+       db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
+         VALUES(?,?,?,?,?,?)
+         ON CONFLICT(dataset) DO UPDATE SET last_success_date=excluded.last_success_date,
+         updated_at=excluded.updated_at,status=excluded.status,rows_written=excluded.rows_written,note=excluded.note`,
+         bind:["web_daily_batch_probe",day,new Date().toISOString(),"OK",total,"date-commit checkpoint"]});
+       db.exec("COMMIT");
+       status("date-commit",`${day}: committed`);
+     }catch(e){try{db.exec("ROLLBACK")}catch(_){} throw e}
+   }
+   db.exec({sql:"UPDATE web_sync_run SET finished_at=?,status='OK',rows_written=?,last_date=? WHERE run_id=?",
+     bind:[new Date().toISOString(),total,days.at(-1),runId]});
+   const count=Number(scalar(db,"SELECT COUNT(*) FROM web_daily_batch_probe")||0);
+   const checkpoint=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='web_daily_batch_probe'");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",count,total,checkpoint,runId,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="date-batch-resume"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='web_daily_batch_probe'");
+   if(!cp.length)throw new Error("date-batch checkpoint missing");
+   const last=cp[0].last_success_date;
+   const next="2026-08-30";
+   db.exec("BEGIN IMMEDIATE");
+   try{
+     for(let i=0;i<5;i++) db.exec({sql:`INSERT INTO web_daily_batch_probe(date,code,close,volume) VALUES(?,?,?,?)
+       ON CONFLICT(date,code) DO UPDATE SET close=excluded.close,volume=excluded.volume`,
+       bind:[next,String(9000+i),200+i,2000+i]});
+     db.exec({sql:`UPDATE web_sync_checkpoint SET last_success_date=?,updated_at=?,rows_written=rows_written+5,note=? WHERE dataset=?`,
+       bind:[next,new Date().toISOString(),`resumed after ${last}`,"web_daily_batch_probe"]});
+     db.exec("COMMIT");
+   }catch(e){try{db.exec("ROLLBACK")}catch(_){} throw e}
+   const count=Number(scalar(db,"SELECT COUNT(*) FROM web_daily_batch_probe")||0);
+   const checkpoint=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='web_daily_batch_probe'");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",resumedFrom:last,next,count,checkpoint,elapsedMs:Math.round(performance.now()-t0)});return;
  }
 
  if(cmd==="runtime-migrate"){

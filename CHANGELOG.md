@@ -1,5 +1,17 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-alpha2 — CURRENT (2026-08-30)
+
+Production sync-engine precursor
+
+- Inspect the actual 1.12GB DataLake schema in SQLite-WASM
+- Add date-scoped transactional write batches
+- Persist a checkpoint only after each date commits successfully
+- Resume from the checkpoint after a fresh Worker starts
+- Keep the full database out of RAM and never call `db.export()`
+- J-Quants network ingestion is deliberately the next gate after this real-device write/resume test
+
+
 ## Web/PWA v7d-alpha1 — CURRENT (2026-08-30)
 
 Direct-write DataLake runtime foundation
