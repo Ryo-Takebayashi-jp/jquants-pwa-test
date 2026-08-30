@@ -5,64 +5,61 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08111f">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>J-Quants PWA v7a Direct OPFS</title>
+<title>J-Quants PWA v7b Cloudflare</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
-main{max-width:850px;margin:auto;padding:16px}.notice,.warn,.card{border-radius:16px;padding:16px;margin-bottom:12px}
-.notice{background:#eff6ff;border:1px solid #bfdbfe;font-size:13px;line-height:1.6}.warn{background:#fff7ed;border:1px solid #fed7aa;font-size:13px;line-height:1.6}
+main{max-width:850px;margin:auto;padding:16px}.notice,.warnbox,.card{border-radius:16px;padding:16px;margin-bottom:12px}
+.notice{background:#eff6ff;border:1px solid #bfdbfe;font-size:13px;line-height:1.6}.warnbox{background:#fff7ed;border:1px solid #fed7aa;font-size:13px;line-height:1.6}
 .card{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08)}h2{font-size:17px;margin:0 0 8px}.desc{font-size:13px;color:#4b5563;line-height:1.55;margin-bottom:12px}
 button{width:100%;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:700;background:#08111f;color:#fff}.secondary{background:#e5e7eb;color:#111827;margin-top:8px}
+input[type=file]{width:100%;box-sizing:border-box;padding:10px;border:1px solid #d1d5db;border-radius:10px}
 .result{margin-top:12px;border-radius:12px;padding:11px;font-size:13px;line-height:1.6;white-space:pre-wrap;background:#f9fafb;overflow-wrap:anywhere}
-.pass{background:#ecfdf5;color:#065f46}.warnr{background:#fffbeb;color:#92400e}.fail{background:#fef2f2;color:#991b1b}
+.pass{background:#ecfdf5;color:#065f46}.warn{background:#fffbeb;color:#92400e}.fail{background:#fef2f2;color:#991b1b}
 footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </style>
 </head>
 <body>
-<header>
-<h1>J-Quants Local-first PWA v7a</h1>
-<p>Direct OPFS / SQLite-WASM移行前提チェック。旧sql.jsの「DB全体をRAMへ展開→全体export」をやめるための第一段階。</p>
-</header>
+<header><h1>J-Quants Local-first PWA v7b</h1><p>Cloudflare Pages / COOP・COEP確認版。公式SQLite-WASM OPFS VFSへ進むための配信環境テスト。</p></header>
 <main>
 <div class="notice">
-今回の目的は、<b>1.12GBで落ちた旧方式を使わず</b>、WorkerからOPFSへランダムアクセスできることを実機確認することです。
-既存の <code>jq_poc3_datalake.sqlite</code> は読み書きしません。
+この版には <b>_headers</b> を追加しています。Cloudflare Pagesで配信すると
+COOP/COEPヘッダーを付与し、<b>crossOriginIsolated + SharedArrayBuffer</b> を有効化できるか確認します。
 </div>
-<div class="warn">
-公式SQLite-WASMのOPFS VFSは Worker と SharedArrayBuffer を利用し、配信側の COOP/COEP ヘッダーが重要です。
-GitHub Pages上でその条件が満たせるかも同時に確認します。
+<div class="warnbox">
+GitHub PagesとCloudflare Pagesは<b>別オリジン</b>です。そのためGitHub Pages側OPFSの1.12GB DataLakeはCloudflare側から直接見えません。
+保存済みのレスキューSQLiteを後段でImportして引き継ぎます。v7bではまず配信環境だけ合格させます。
 </div>
 
 <section class="card">
-<h2>1. Web実行環境チェック</h2>
-<div class="desc">crossOriginIsolated、SharedArrayBuffer、OPFS、Worker、Service Workerなどを確認します。</div>
-<button id="envBtn">実行環境を確認</button>
+<h2>1. Cloudflare配信環境チェック</h2>
+<div class="desc">現在URLと、Secure Context / crossOriginIsolated / SharedArrayBuffer / OPFS / Worker を確認します。</div>
+<button id="envBtn">配信環境を確認</button>
 <div id="envResult" class="result">未実行</div>
 </section>
 
 <section class="card">
-<h2>2. Direct OPFSランダムアクセス試験</h2>
-<div class="desc">Worker内のSyncAccessHandleを使い、64MBのテストファイルへ先頭・中央・末尾だけ直接書き込み/読出しします。ファイル全体はRAMへ載せません。</div>
+<h2>2. Direct OPFS再確認</h2>
+<div class="desc">Worker + SyncAccessHandleで64MBテストファイルの一部だけ直接読み書きします。</div>
 <button id="directBtn">64MB Direct OPFSテスト</button>
 <div id="directResult" class="result">未実行</div>
 </section>
 
 <section class="card">
-<h2>3. 既存DataLake保全チェック</h2>
-<div class="desc">既存1.12GB SQLiteの存在と容量だけ確認します。DBは開きません。</div>
-<button id="existingBtn" class="secondary">既存DataLakeを軽量確認</button>
-<div id="existingResult" class="result">未実行</div>
+<h2>3. レスキューSQLiteの軽量確認（任意）</h2>
+<div class="desc">Filesに退避した .sqlite を選択すると、ファイル全体を読み込まず先頭16バイトだけ確認します。まだOPFSへImportしません。</div>
+<input id="fileInput" type="file" accept=".sqlite,application/vnd.sqlite3,application/octet-stream">
+<button id="fileBtn" class="secondary">選択ファイルを軽量確認</button>
+<div id="fileResult" class="result">未実行</div>
 </section>
 
 <section class="card">
-<h2>4. v7a総合判定</h2>
+<h2>4. v7b総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
-<footer>
-Direct OPFSテスト用ファイルは終了後に自動削除します。既存market/private DBには触れません。
-</footer>
+<footer>この版では既存SQLiteをOPFSへImportしません。まずCloudflare環境の前提条件を確定します。</footer>
 </main>
 <script src="./app.js"></script>
 </body>

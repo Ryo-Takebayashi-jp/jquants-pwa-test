@@ -1,23 +1,32 @@
-# J-Quants Local-first PWA v7a
+# J-Quants Local-first PWA v7b Cloudflare
 
 目的:
-PoC v6で1.12GB付近に達した際のSafari/WASMクラッシュを受け、
-旧sql.js方式（DB全体をRAMへ読み込み、db.export()で全体保存）を廃止するための前提PoC。
+GitHub Pagesでは未達だった crossOriginIsolated / SharedArrayBuffer を、
+Cloudflare Pages + `_headers` で有効化できるか実機確認する。
 
-今回の検証:
-- Secure Context
-- crossOriginIsolated
-- SharedArrayBuffer
-- OPFS
-- Web Worker
-- Worker内 createSyncAccessHandle
-- 64MBファイルの先頭/中央/末尾へのランダム書込/読出
-- 既存 jq_poc3_datalake.sqlite の軽量生存確認
+## ファイル
+- index.html
+- app.js
+- opfs-worker.js
+- manifest.webmanifest
+- service-worker.js
+- _headers
+- README.md
 
-重要:
-既存market DB/private DBは変更しない。
-Direct OPFSテストファイルは終了時に削除する。
+## Cloudflare Pages
+GitHubリポジトリをCloudflare Pagesへ接続してデプロイする。
+静的サイトなのでフレームワーク指定は不要。
+ビルドコマンドは空欄、出力ディレクトリはリポジトリルート相当を使う。
 
-GitHub PagesではCOOP/COEPレスポンスヘッダーを自由に設定できないため、
-公式SQLite-WASM OPFS VFSの前提が未達になる可能性がある。
-その場合でもDirect OPFS試験の成否を分けて確認する。
+## 重要
+GitHub PagesとCloudflare Pagesはoriginが異なるため、
+GitHub Pages側OPFSの1.12GB DBはCloudflareから直接見えない。
+レスキュー済みSQLiteをv7cでCloudflare側OPFSへImportして引き継ぐ。
+
+## v7bテスト
+1. pages.dev URLをiPhoneで開く
+2. 配信環境を確認
+3. crossOriginIsolated / SharedArrayBuffer がPASSか確認
+4. 64MB Direct OPFSテスト
+5. 任意でレスキューSQLiteをFilesから選んで軽量確認
+6. 総合判定
