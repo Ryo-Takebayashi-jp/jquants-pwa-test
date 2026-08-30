@@ -1,47 +1,38 @@
-# J-Quants Local-first PWA PoC v3b
+# J-Quants Local-first PWA PoC v4
 
-v2で以下がiPhone実機PASS:
-- 512MB OPFS
-- SQLite-WASM 100万行
-- J-Quants API直接接続
-- 実日足 → SQLite → OPFS永続保存
-- PWA再起動後のDB再読込
-- ブラウザ内分析
+目的:
+10年分など時間のかかるDataLakeを、ホスティング先・ドメイン・端末変更時にも再取得せず持ち運べることを検証する。
 
-v3は「小型本番DataLake」です。
+## 追加機能
+- 既存v3b DataLakeを継続利用
+- schema_version を meta テーブルへ保存
+- SQLite DataLakeのExport
+- Export済みSQLiteのImport
+- Import前 PRAGMA quick_check
+- 必須テーブル検証
+- legacy/poc3 → poc4-1 の簡易schema migration marker
+- sync_log保持と次回差分開始日の確認
+- Import後のLocal Screening
+- DataLake削除の二段階確認
 
-## 実装
-- equities/master
-- equities/bars/daily を日付単位で全市場同期
-- fins/summary を日付単位で同期
-- SQLite/OPFS永続化
-- sync_log による同期済み日スキップ
-- 1日単位コミットによる中断/再開
-- 429指数バックオフ
-- Local-only簡易Screening
+## 推奨テスト手順
+1. GitHub Pagesへ5ファイルを上書き → Commit
+2. iPhoneで v4 表示確認
+3. 「DataLakeを開く / schema確認」
+4. 「市場DataLakeをExport」してファイルへ保存
+5. 「市場DataLakeを削除」→確認ボタンで削除
+6. ExportしたSQLiteをファイル選択
+7. 「検証してImport」
+8. 「同期履歴・継続日を確認」
+9. 「復元DBでScreening」
+10. 総合判定
 
-## 推奨実機テスト
-1. GitHub Pagesの既存リポジトリへ5ファイルを上書きしてCommit
-2. iPhone PWAを完全終了 → 再起動
-3. 「1. DataLake初期化」
-4. APIキー入力
-5. 「2. 銘柄Master同期」
-6. 期間は初期値（直近45暦日）のまま「3. 全市場日足」
-7. 「4. 財務」
-8. 「5. 簡易Screening」
-9. 「6. 差分更新」
-10. 総合判定をスクショ
+これが全部PASSすれば、GitHub Pagesから別ホスティングへ移っても、
+SQLiteファイルをExport/Importして同期履歴ごと継続できることを実機確認できる。
 
-APIキーは保存しません。入力欄はPWA再起動で消えます。
-PoC DBはiPhoneのOPFSにのみ保存されます。
+## 今後
+本番ではDBを分割:
+- jq_market_datalake.sqlite: J-Quants再取得可能な市場データ
+- jq_private.sqlite: Portfolio / Trades / Discovery / Watchlist 等
 
-## 注意
-J-Quants APIにはレート制限があります。広い期間を一気に試さず、
-まず30〜45暦日でPoCしてください。
-
-
-## v3b 修正
-- `bars_daily` は17列なのに、v3ではINSERT側に18個のプレースホルダを指定していた不整合を修正。
-- INSERTに列名を明示し、17列/17値で固定。
-- v3で記録された `ERROR` の同期日は `OK` ではないため、同じ期間を再実行すれば自動で再取得されます。
-- 既存PoC DBを削除する必要はありません。
+privateは市場DataLakeより強い削除確認・暗号化・バックアップを行う。

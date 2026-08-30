@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#0b1220" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="JQ PWA PoC3" />
+  <meta name="apple-mobile-web-app-title" content="JQ PWA PoC4" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <title>J-Quants Local-first PWA PoC v3b</title>
+  <title>J-Quants Local-first PWA PoC v4</title>
   <style>
     :root{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;color-scheme:light dark}
     body{margin:0;background:#f3f4f6;color:#111827}
@@ -16,15 +16,12 @@
     header h1{margin:0 0 6px;font-size:21px}
     header p{margin:0;opacity:.85;font-size:13px;line-height:1.55}
     main{max-width:920px;margin:0 auto;padding:16px}
-    .notice{background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:14px}
-    .warnbox{background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:14px}
-    .grid{display:grid;gap:12px}
-    .card{background:white;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-    .card h2{margin:0 0 7px;font-size:17px}
-    .desc{font-size:13px;color:#4b5563;line-height:1.55;margin-bottom:12px}
+    .notice,.warnbox{border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:14px}
+    .notice{background:#eff6ff;border:1px solid #bfdbfe}.warnbox{background:#fff7ed;border:1px solid #fed7aa}
+    .grid{display:grid;gap:12px}.card{background:white;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+    .card h2{margin:0 0 7px;font-size:17px}.desc{font-size:13px;color:#4b5563;line-height:1.55;margin-bottom:12px}
     button{width:100%;border:0;border-radius:12px;padding:13px 14px;font-size:15px;font-weight:700;background:#0b1220;color:white}
-    button.secondary{background:#e5e7eb;color:#111827}
-    button.danger{background:#991b1b}
+    button.secondary{background:#e5e7eb;color:#111827}.danger{background:#991b1b}.danger2{background:#7f1d1d}.safe{background:#166534}
     button:disabled{opacity:.5}
     input,select{width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:10px;padding:10px;font-size:15px;background:white;color:#111827}
     label{display:block;font-size:12px;color:#4b5563;margin:9px 0 5px}
@@ -33,107 +30,93 @@
     .pass{background:#ecfdf5;color:#065f46}.fail{background:#fef2f2;color:#991b1b}.warn{background:#fffbeb;color:#92400e}.running{background:#eff6ff;color:#1e40af}
     .meter{height:7px;background:#e5e7eb;border-radius:100px;overflow:hidden;margin-top:8px}.meter>div{height:100%;width:0;background:#0b1220;transition:width .15s}
     .small{font-size:12px;color:#6b7280;line-height:1.55}
-    table{width:100%;border-collapse:collapse;font-size:11px;margin-top:10px}th,td{border-bottom:1px solid #e5e7eb;padding:6px 3px;text-align:right}th:first-child,td:first-child{text-align:left}
+    .confirm{display:none;margin-top:10px;padding:12px;border:1px solid #fecaca;background:#fef2f2;border-radius:12px}
     footer{padding:18px 4px 35px;color:#6b7280;font-size:12px;line-height:1.55}
     @media(prefers-color-scheme:dark){
       body{background:#08101e;color:#f9fafb}.card{background:#111827}.desc,.small,label,footer{color:#9ca3af}.result{background:#0f172a}
       input,select{background:#0f172a;color:#f9fafb;border-color:#374151}button.secondary{background:#374151;color:#f9fafb}
       .notice{background:#0c2340;border-color:#1d4ed8;color:#bfdbfe}.warnbox{background:#2b1d0e;border-color:#7c4a17;color:#fed7aa}
-      .meter{background:#374151}.meter>div{background:#f9fafb}th,td{border-color:#374151}
+      .meter{background:#374151}.meter>div{background:#f9fafb}.confirm{background:#2b1111;border-color:#7f1d1d}
     }
   </style>
 </head>
 <body>
 <header>
-  <h1>J-Quants Local-first PWA PoC v3b</h1>
-  <p>小型本番DataLake：銘柄Master + 全市場日足の段階同期 + 財務サマリー + 差分更新 + 再開 + 簡易Screening。</p>
+  <h1>J-Quants Local-first PWA PoC v4</h1>
+  <p>持ち運べるDataLake：Export / Import / 整合性確認 / schema version / 差分継続 / 安全削除。</p>
 </header>
 <main>
   <div class="notice">
-    v2で「iPhone内OPFSへSQLiteを永続保存し、再起動後に読み直して分析」までPASSしました。
-    v3では <b>全市場を日付単位で同期</b> して、小型の本番DataLake構造を検証します。
+    v3bで全市場日足・財務・Master・ローカルScreening・差分再開までPASS。v4では、ホスティング先やドメインを変えても
+    取得済みDataLakeを持ち運べることを実機確認します。
   </div>
   <div class="warnbox">
-    APIキーは保存しません。同期は日付ごとにコミットするので、中断しても次回は未同期日だけ再開します。
-    J-Quantsのレート制限を避けるため、リクエスト間隔と429時の待機を入れています。
+    <b>重要：</b>今回は市場DataLakeだけを対象にします。将来の本番版では private（Portfolio / Trades / Discovery / Watchlist）を別DBに分離し、
+    別バックアップにします。
   </div>
 
   <div class="grid">
     <section class="card">
-      <h2>1. DataLake初期化 / 状態確認</h2>
-      <div class="desc">OPFS内に <b>jq_poc3_datalake.sqlite</b> を作ります。既にあれば再利用します。</div>
-      <button id="initBtn">DataLakeを初期化 / 開く</button>
-      <button id="inspectBtn" class="secondary" style="margin-top:8px;">現在のDB状態を確認</button>
-      <div id="initResult" class="result">未実行</div>
+      <h2>1. DataLake状態 / schema</h2>
+      <div class="desc">既存v3b DBをそのまま利用します。なければ新規作成します。schema versionもDB内部へ保存します。</div>
+      <button id="openBtn">DataLakeを開く / schema確認</button>
+      <div id="openResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>2. APIキー + 銘柄Master同期</h2>
-      <div class="desc">上場銘柄Masterを取得し、ローカルDBへUPSERTします。</div>
-      <label for="apiKey">J-Quants APIキー（保存しません）</label>
-      <input id="apiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="APIキー" />
-      <button id="masterBtn" style="margin-top:10px;">銘柄Masterを同期</button>
-      <div id="masterResult" class="result">未実行</div>
+      <h2>2. DataLakeをExport</h2>
+      <div class="desc">OPFSのSQLiteをファイルとして書き出します。iCloud Drive / ファイル等へ保存でき、別ホスティング先へ持っていけます。</div>
+      <button id="exportDbBtn" class="safe">市場DataLakeをExport</button>
+      <div id="exportDbResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>3. 全市場日足を段階同期</h2>
-      <div class="desc">指定期間を1日ずつ取得します。土日・休場日は0件でも同期済みとして記録。途中停止後も続きから再開できます。</div>
-      <div class="row">
-        <div>
-          <label for="startDate">開始日</label>
-          <input id="startDate" type="date" />
-        </div>
-        <div>
-          <label for="endDate">終了日</label>
-          <input id="endDate" type="date" />
-        </div>
-      </div>
-      <label for="delayMs">リクエスト間隔</label>
-      <select id="delayMs">
-        <option value="350">350ms</option>
-        <option value="600" selected>600ms（推奨）</option>
-        <option value="1000">1000ms（慎重）</option>
-      </select>
-      <button id="barsBtn" style="margin-top:10px;">日足同期を開始 / 再開</button>
-      <button id="stopBtn" class="secondary" style="margin-top:8px;">現在の日付処理後に停止</button>
-      <div class="meter"><div id="barsMeter"></div></div>
-      <div id="barsResult" class="result">未実行</div>
+      <h2>3. DataLakeをImport</h2>
+      <div class="desc">Export済みSQLiteを選び、破損・schema・主要テーブルを検査してからOPFSへ復元します。</div>
+      <input id="importFile" type="file" accept=".sqlite,.db,application/octet-stream" />
+      <button id="importDbBtn" style="margin-top:10px;">選択したDataLakeを検証してImport</button>
+      <div id="importDbResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>4. 財務サマリーを段階同期</h2>
-      <div class="desc">同じ期間についてfins/summaryを日付単位で取得します。プラン・API仕様上取得不可の場合は日足PoCと切り分けて表示します。</div>
-      <button id="finsBtn">財務サマリー同期を開始 / 再開</button>
-      <div class="meter"><div id="finsMeter"></div></div>
-      <div id="finsResult" class="result">未実行</div>
+      <h2>4. 移行後の継続性テスト</h2>
+      <div class="desc">Import後も同期履歴と市場データが残っているか確認します。最終同期日の翌日も表示します。</div>
+      <button id="continuityBtn">同期履歴・継続日を確認</button>
+      <div id="continuityResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>5. 簡易Screening Core</h2>
-      <div class="desc">ローカルDBだけを使い、最新25営業日以上ある銘柄を対象にSMA5/25・20D騰落率・平均出来高・簡易スコアを計算します。</div>
-      <button id="screenBtn">ローカルScreeningを実行</button>
+      <h2>5. Import後のLocal Screening</h2>
+      <div class="desc">復元したDataLakeだけで分析可能か確認します。PoC v3bと同じ25日以上保有銘柄の簡易Screeningです。</div>
+      <button id="screenBtn">復元DBでScreening</button>
       <div id="screenResult" class="result">未実行</div>
-      <div id="screenTable"></div>
     </section>
 
     <section class="card">
-      <h2>6. 差分更新テスト</h2>
-      <div class="desc">同じ期間を再同期して「既に同期済みの日付をスキップ」できるか確認します。</div>
-      <button id="deltaBtn">差分更新チェック</button>
-      <div id="deltaResult" class="result">未実行</div>
+      <h2>6. 安全な削除</h2>
+      <div class="desc">誤操作防止のため1回押しただけでは削除しません。確認画面を表示し、再度明示操作が必要です。</div>
+      <button id="deleteAskBtn" class="danger">市場DataLakeを削除</button>
+      <div id="deleteConfirm" class="confirm">
+        <div class="small" style="margin-bottom:8px;">
+          この操作はiPhone内の市場DataLakeを削除します。長期バックフィル済みの場合、再取得に時間がかかります。
+          Export済みバックアップがあることを確認してください。
+        </div>
+        <button id="deleteConfirmBtn" class="danger2">確認：本当に削除する</button>
+        <button id="deleteCancelBtn" class="secondary" style="margin-top:8px;">キャンセル</button>
+      </div>
+      <div id="deleteResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>PoC v3 総合判定</h2>
+      <h2>PoC v4 総合判定</h2>
+      <div class="desc">推奨実機手順：開く → Export → 削除 → Import → 継続性 → Screening。これが通ればサーバー変更耐性を確認できます。</div>
       <button id="summaryBtn" class="secondary">総合判定</button>
-      <button id="exportBtn" class="secondary" style="margin-top:8px;">結果JSONを保存</button>
-      <button id="deleteBtn" class="danger" style="margin-top:8px;">PoC v3 DataLakeを削除</button>
+      <button id="exportResultBtn" class="secondary" style="margin-top:8px;">検証結果JSONを保存</button>
       <div id="summaryResult" class="result">未判定</div>
     </section>
   </div>
   <footer>
-    最初は直近30〜45暦日で十分です。ここがPASSしたら、次のPoCで長期バックフィル/Standard需給/現行Screening Core移植へ進みます。
+    PoC DB名は既存v3bと同じ <b>jq_poc3_datalake.sqlite</b> を継続使用します。Exportファイル名には日時を付けます。
   </footer>
 </main>
 <script src="./app.js"></script>
