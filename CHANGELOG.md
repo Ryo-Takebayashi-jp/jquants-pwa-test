@@ -1,5 +1,15 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-alpha2b — CURRENT (2026-08-30)
+
+Hotfix for unresponsive alpha2 buttons.
+
+- Root cause: `app.js` still registered alpha1 `migrateBtn` / `appendBtn` / `resumeBtn` handlers even though those controls were absent from alpha2 HTML.
+- That null-element access aborted JavaScript initialization before the new alpha2 buttons were wired.
+- Removed stale bindings and added defensive element checks.
+- Storage origin, SAH Pool directory and `/jq_market_v7c.sqlite` are unchanged. No DataLake re-import is required.
+
+
 ## Web/PWA v7d-alpha2 — CURRENT (2026-08-30)
 
 Production sync-engine precursor

@@ -162,21 +162,6 @@ $("importBtn").onclick=importDb;
 $("openBtn").onclick=openDb;
 $("quickBtn").onclick=quickCheck;
 
-$("migrateBtn").onclick=async()=>{
- box("migrateResult","run","Runtime migration適用中…");
- try{const r=await workerCall("runtime-migrate",180000);state.migrate=r;box("migrateResult","pass",`PASS\nmigration: ${r.migration}\n処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒`)}
- catch(e){box("migrateResult","fail","FAIL\n"+e)}
-};
-$("appendBtn").onclick=async()=>{
- box("appendResult","run","Direct write / checkpointテスト中…");
- try{const r=await workerCall("append-test",180000);state.append=r;box("appendResult","pass",`PASS\n${JSON.stringify(r.rows,null,2)}\nDB全体RAM展開: なし`)}
- catch(e){box("appendResult","fail","FAIL\n"+e)}
-};
-$("resumeBtn").onclick=async()=>{
- box("resumeResult","run","新しいWorkerでcheckpoint再読込中…");
- try{const r=await workerCall("resume-test",180000);state.resume=r;box("resumeResult",r.resumed?"pass":"fail",`${r.resumed?"PASS":"FAIL"}\nWorker再起動後Resume: ${r.resumed}\n${JSON.stringify(r.after,null,2)}`)}
- catch(e){box("resumeResult","fail","FAIL\n"+e)}
-};
 
 $("summaryBtn").onclick=summary;
 
@@ -202,7 +187,7 @@ $("historyBtn").onclick=showHistory;
 
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(()=>{}));
 
-$("schemaBtn").onclick=async()=>{
+if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
  try{
   const r=await workerCall("schema-probe",180000);
@@ -211,7 +196,7 @@ $("schemaBtn").onclick=async()=>{
   box("schemaResult","pass",`PASS\nテーブル数: ${r.tables.length}\n${summary}`);
  }catch(e){box("schemaResult","fail","FAIL\n"+e)}
 };
-$("batchBtn").onclick=async()=>{
+if($("batchBtn")) $("batchBtn").onclick=async()=>{
  box("batchResult","run","日付単位Transaction/Commit/Checkpointテスト中…");
  try{
   const r=await workerCall("date-batch-test",180000,s=>box("batchResult","run",`Stage: ${s.stage}\n${s.detail||""}`));
@@ -219,7 +204,7 @@ $("batchBtn").onclick=async()=>{
   box("batchResult","pass",`PASS\n4日ではなく初期3日を日単位Commit\nDB行数: ${r.count}\nCheckpoint: ${JSON.stringify(r.checkpoint,null,2)}\nDB全体RAM展開: なし`);
  }catch(e){box("batchResult","fail","FAIL\n"+e)}
 };
-$("batchResumeBtn").onclick=async()=>{
+if($("batchResumeBtn")) $("batchResumeBtn").onclick=async()=>{
  box("batchResumeResult","run","新WorkerでCheckpointを読んで次日を追記中…");
  try{
   const r=await workerCall("date-batch-resume",180000);
