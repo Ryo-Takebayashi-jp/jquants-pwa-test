@@ -130,6 +130,16 @@ function closeCachedMarketDb(){
  try{cachedMarketDb?.close()}catch(_){}
  cachedMarketDb=null; cachedMarketDbName=null;
 }
+
+function resolveMarketNameWithoutOpen(p,requested){
+ const files=poolFileNamesSafe(p);
+ const base=String(requested||"").replace(/^\/+/,"");
+ if(files.includes(requested)) return requested;
+ for(const f of files){
+   if(String(f).replace(/^\/+/,"")===base) return String(f).startsWith("/")?String(f):"/"+String(f);
+ }
+ throw new Error(`Market logical file not found. requested=${requested}; pool files=${JSON.stringify(files)}`);
+}
 function getCachedMarketDb(p,name){
  if(cachedMarketDb && cachedMarketDbName===name) return cachedMarketDb;
  closeCachedMarketDb();
@@ -159,20 +169,26 @@ if(cmd==="backup-create"){
 }
 
 if(cmd==="market-warm-open"){
- const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+ const marketName=resolveMarketNameWithoutOpen(p,name);
+ const tOpen=performance.now();
  const h=getCachedMarketDb(p,marketName);
+ const openMs=Math.round(performance.now()-tOpen);
  const schema=Number(scalar(h,"PRAGMA schema_version")||0);
  self.postMessage({ok:true,type:"result",marketName,schema,poolFiles:p.getFileNames(),
-   elapsedMs:Math.round(performance.now()-t0)});
+   openMs,elapsedMs:Math.round(performance.now()-t0)});
  return;
 }
+
 if(cmd==="market-fast-health"){
- const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
- const h=getCachedMarketDb(p,marketName);
+ let marketName=cachedMarketDbName, h=cachedMarketDb;
+ if(!h){
+   marketName=resolveMarketNameWithoutOpen(p,name);
+   h=getCachedMarketDb(p,marketName);
+ }
  const tableOk=Number(scalar(h,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)===1;
  const sample=execRows(h,"SELECT code,date,c FROM bars_daily LIMIT 1")[0]||null;
  self.postMessage({ok:tableOk&&!!sample,type:"result",marketName,tableOk,sample,
-   poolFiles:p.getFileNames(),reusedOpenHandle:true,elapsedMs:Math.round(performance.now()-t0)});
+   poolFiles:p.getFileNames(),reusedOpenHandle:!!cachedMarketDb,elapsedMs:Math.round(performance.now()-t0)});
  return;
 }
 

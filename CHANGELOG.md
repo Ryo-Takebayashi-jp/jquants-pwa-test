@@ -1,5 +1,14 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta5f — CURRENT (2026-08-31)
+
+- Removed the hidden warm-open that beta5e started after step ①. That background open could occupy the serialized Worker while step ② appeared to be frozen.
+- Removed `resolveExistingMarketDb()` from the diagnostic open path because it itself opened the huge DB before the real open, effectively causing double-open work.
+- Step ② now does a metadata-only logical filename lookup, exactly one DataLake open, then a one-row health probe on the same retained handle.
+- UI reports DB-open time and health-probe time separately.
+- No DataLake write, import, delete, or migration is performed.
+
+
 ## Web/PWA v7d-beta5e — CURRENT (2026-08-30)
 
 - Identified remaining diagnostic latency as likely DataLake open/SAH Pool readiness rather than query scanning.

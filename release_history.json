@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta5e",
+    "version": "v7d-beta5f",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-27"
+    "migration_version": "history-28"
   },
   "releases": [
     {
@@ -596,6 +596,20 @@
         "Step 2 reuses already-open handle instead of reopening SAH Pool DB",
         "Step 2 query reduced to sqlite_master + LIMIT 1",
         "No DataLake mutation/migration/import/delete"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta5f",
+      "date": "2026-08-31",
+      "status": "CURRENT",
+      "summary": "Remove hidden/double DataLake opens from diagnostics",
+      "changes": [
+        "Step 1 now only inspects SAH Pool metadata; it no longer starts a hidden warm-open",
+        "Step 2 resolves the logical filename without opening the DB, then performs exactly one DataLake open",
+        "Step 2 reuses that single open handle for its health probe and subsequent page-session diagnostics",
+        "Reports actual DB-open time separately from one-row health-check time",
+        "No DataLake mutation/import/delete/migration"
       ]
     }
   ]
