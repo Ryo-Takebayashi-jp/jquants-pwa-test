@@ -61,7 +61,7 @@ Cloudflare Pages Functions の `/sqlite/*` を使い、公式 `@sqlite.org/sqlit
 5. エラー時は Stage と詳細をスクショ
 
 
-## v7c-r3
+## v7c-r5
 
 r2は同一オリジン配信を確定できたものの、DB Open前のSQLite初期化でFAIL。
 r3ではSQLite 3.53で追加された `opfs-wl` に絞って初期化します。

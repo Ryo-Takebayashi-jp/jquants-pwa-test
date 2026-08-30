@@ -16,11 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "product": "Web/PWA",
-    "version": "v7c-r4",
+    "version": "v7c-r5",
     "build_date": "2026-08-30",
-    "schema_version": "market-poc7c",
-    "migration_version": "history-4"
+    "schema_version": "market-poc7c-sahpool",
+    "migration_version": "history-5"
   },
   "releases": [
     {
@@ -275,6 +274,13 @@
         "Strictly verify patch header before Init",
         "Top header now displays exact revision"
       ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7c-r5",
+      "date": "2026-08-30",
+      "status": "PoC",
+      "summary": "SQLite-WASM opfs-sahpool explicit install + 1.12GB streaming import route"
     }
   ]
 }

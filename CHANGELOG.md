@@ -199,3 +199,10 @@ Local-first feasibility check
 - SQLite-WASM feasibility check
 - Web Worker check
 - Direct J-Quants API/CORS/authentication check
+
+## Web/PWA v7c-r5 - 2026-08-30
+- classic opfs / opfs-wl の自動VFS登録に依存する経路を中止。
+- SQLite公式が性能重視用途に案内する `opfs-sahpool` を明示的に `installOpfsSAHPoolVfs()` で導入するPoCへ変更。
+- FilesのレスキューSQLiteをWorkerへ渡し、SAH Poolの非同期 `importDb(name, callback)` でチャンクStreaming Importする構成へ変更。
+- 1.12GB全体をRAMへ展開しない方針を維持。
+- 既存レスキューSQLiteは変更しない。
