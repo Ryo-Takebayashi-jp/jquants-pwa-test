@@ -79,3 +79,7 @@ r3ではSQLite 3.53で追加された `opfs-wl` に絞って初期化します�
 2. SQLite-WASM Initだけ実行
 3. PASSなら Direct Open
 4. quick_checkはDirect Open PASS後のみ
+
+
+## v7c-r6
+巨大DBの前にSAH Pool自体の読み書き・Worker跨ぎ永続化を小型DBで検証します。r5のDirect Open FAILは、SAH Pool側に1.12GB DBがまだImportされていない場合にも発生します。r6では手順を明確化しました。

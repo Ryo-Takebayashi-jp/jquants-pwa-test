@@ -21,7 +21,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7c-r5</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7c-r6</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 <main>
 <div class="notice">
 旧sql.jsのようにDB全体をRAMへ読み込みません。レスキューSQLiteは<b>ストリームでOPFSへコピー</b>し、
@@ -40,7 +40,7 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>2. レスキューSQLiteをストリーミングImport</h2>
+<h2>2. レスキューSQLiteをストリーミングImport（Direct Open前に必須）</h2>
 <div class="desc">Filesから1.12GBのレスキューSQLiteを選択。4MB前後のチャンク単位でOPFSへコピーし、全体をRAMには載せません。</div>
 <input id="fileInput" type="file" accept=".sqlite,application/vnd.sqlite3,application/octet-stream">
 <button id="importBtn" style="margin-top:10px">OPFSへImport開始</button>
@@ -63,21 +63,26 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>5. 公式SQLite-WASMで直接Open（opfs-sahpool）</h2>
+<h2>5. SAH Pool基本動作テスト（小型DB）</h2>
+<div class="desc">巨大DBの前に、小型SQLiteを作成→INSERT→Worker終了→別Workerで再Open→SELECTし、永続化を確認します。</div>
+<button id="smokeBtn">小型DB 永続化テスト</button>
+<div id="smokeResult" class="result">未実行</div>
+
+<h2>6. 公式SQLite-WASMで直接Open（opfs-sahpool）</h2>
 <div class="desc">Worker内で公式 @sqlite.org/sqlite-wasm を起動し、SQLite 3.53の opfs-sahpool VFSへ1.12GB DBをストリーミングImportし、read-onlyで直接開きます。</div>
 <button id="openBtn">SQLite-WASM Direct Open</button>
 <div id="openResult" class="result">未実行</div>
 </section>
 
 <section class="card">
-<h2>6. 整合性チェック（任意・重め）</h2>
+<h2>7. 整合性チェック（任意・重め）</h2>
 <div class="desc">PRAGMA quick_checkを実行します。1GB超DBを走査するため時間がかかる可能性があります。</div>
 <button id="quickBtn" class="secondary">quick_checkを実行</button>
 <div id="quickResult" class="result">未実行</div>
 </section>
 
 <section class="card">
-<h2>7. v7c-r5総合判定</h2>
+<h2>7. v7c-r6総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
@@ -86,13 +91,13 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 <h2>8. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7c-r5
+<div id="historyResult" class="result">Version: v7c-r6
 Build date: 2026-08-30
 Schema version: market-poc7c
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7c-r5 / Build 2026-08-30 / Schema market-poc7c / Migration history-5<br>
+<footer>Version v7c-r6 / Build 2026-08-30 / Schema market-poc7c / Migration history-6<br>
 v7cではJ-Quants API更新はまだ行いません。まず「巨大DBを全体RAM展開なしでImport→直接Open」できることだけを確定します。</footer>
 </main>
 <script src="./app.js"></script>

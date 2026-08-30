@@ -1,5 +1,14 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7c-r6 — CURRENT (2026-08-30)
+
+SAH Pool smoke/persistence diagnostic
+
+- Add tiny SQLite create → INSERT → Worker stop → new Worker reopen → SELECT test
+- Keep 1.12GB import as a separate step
+- Improve missing-DB diagnostics and make Import-before-Open explicit
+
+
 ## Web/PWA v7c-r4 — CURRENT (2026-08-30)
 
 Classic OPFS + SQLite 3.53 proxy query patch

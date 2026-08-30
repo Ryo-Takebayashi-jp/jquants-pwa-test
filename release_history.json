@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7c-r5",
+    "version": "v7c-r6",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-5"
+    "migration_version": "history-6"
   },
   "releases": [
     {
@@ -281,6 +281,19 @@
       "date": "2026-08-30",
       "status": "PoC",
       "summary": "SQLite-WASM opfs-sahpool explicit install + 1.12GB streaming import route"
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7c-r6",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "SAH Pool smoke/persistence diagnostic before 1.12GB import",
+      "changes": [
+        "Add tiny DB create/insert/close/reopen/select test across separate Workers",
+        "Separate SAH Pool engine verification from 1.12GB rescue DB import",
+        "Direct Open missing-DB error now explicitly instructs Step 2 import",
+        "Mark rescue SQLite import as mandatory before Direct Open"
+      ]
     }
   ]
 }

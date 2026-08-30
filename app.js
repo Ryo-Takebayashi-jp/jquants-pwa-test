@@ -1,6 +1,6 @@
 const DBNAME="jq_market_v7c.sqlite";
 const $=id=>document.getElementById(id);
-const state={env:null,imported:null,opened:null,quick:null};
+const state={env:null,imported:null,smoke:null,opened:null,quick:null};
 function box(id,cls,t){const e=$(id);e.className="result "+cls;e.textContent=t}
 function fmt(n){const u=["B","KB","MB","GB","TB"];let x=n,i=0;while(x>=1024&&i<u.length-1){x/=1024;i++}return `${x.toFixed(i>=2?2:1)} ${u[i]}`}
 function sqliteHeaderOk(bytes){const exp=[83,81,76,105,116,101,32,102,111,114,109,97,116,32,51,0];return exp.every((v,i)=>bytes[i]===v)}
@@ -94,6 +94,19 @@ async function initOnly(){box("initResult","run","SQLite-WASM opfs-sahpool初期
 
 $("initBtn").onclick=initOnly;
 
+async function smokeTest(){
+ box("smokeResult","run","小型DBを書き込み中…");
+ try{
+  const w=await workerCall("smoke-write",180000,s=>box("smokeResult","run",`書込Worker: ${s.stage}\n${s.detail||""}`));
+  box("smokeResult","run",`書込PASS: ${w.rows}行\nWorkerを終了し、別Workerで再Openします…`);
+  const r=await workerCall("smoke-read",180000,s=>box("smokeResult","run",`再Open Worker: ${s.stage}\n${s.detail||""}`));
+  state.smoke=r;
+  const ok=r.persisted===true;
+  box("smokeResult",ok?"pass":"fail",`${ok?"PASS":"FAIL"}\n別Worker再Open: ${ok?"PASS":"FAIL"}\n行数: ${r.rows}\n値: ${r.value}\n永続化: ${ok?"PASS":"FAIL"}\n処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒`);
+ }catch(e){state.smoke={ok:false,error:String(e)};box("smokeResult","fail","SAH Pool基本動作 FAIL\n"+e)}
+}
+$("smokeBtn").onclick=smokeTest;
+
 async function openDb(){
  box("openResult","run","SQLite-WASMを起動してDBを開いています…");
  try{
@@ -130,12 +143,13 @@ async function quickCheck(){
 }
 
 function summary(){
- const env=state.env?.ready===true, imp=state.imported?.ok===true, ini=state.init?.ok===true, op=state.opened?.ok===true;
+ const env=state.env?.ready===true, imp=state.imported?.ok===true, ini=state.init?.ok===true, smoke=state.smoke?.persisted===true, op=state.opened?.ok===true;
  const q=state.quick?.quick==="ok";
  box("summaryResult",env&&imp&&ini&&op?"pass":"warn",
 `Cloudflare/OPFS前提: ${env?"PASS":"未PASS"}
 1.12GB Streaming Import: ${imp?"PASS":"未PASS"}
 SQLite-WASM Init(opfs-sahpool): ${ini?"PASS":"未PASS"}
+SAH Pool小型DB永続化: ${smoke?"PASS":"未PASS"}
 SQLite-WASM Direct Open: ${op?"PASS":"未PASS"}
 quick_check: ${q?"PASS":state.quick?"要確認":"未実行（任意）"}
 

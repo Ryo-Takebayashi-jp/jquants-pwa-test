@@ -29,7 +29,26 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
  const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
  if(cmd==="init"){self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,vfs,poolClass:!!p.OpfsSAHPoolDb,capacity:p.getCapacity(),files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
  if(cmd==="import"){if(!d.file)throw new Error("File missing"); const out=await importFile(d.file,name); self.postMessage({ok:true,type:"result",...out,vfsName:p.vfsName,files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
- if(!p.getFileNames().includes(name)) throw new Error(`SAH pool DB not found: ${name}`);
+ if(cmd==="smoke-write"){
+   const smoke="/jq_sah_smoke.sqlite";
+   try{if(p.getFileNames().includes(smoke))p.unlink(smoke)}catch(_){}
+   db=new p.OpfsSAHPoolDb(smoke,"c");
+   db.exec("CREATE TABLE smoke_test(id INTEGER PRIMARY KEY, value TEXT NOT NULL)");
+   db.exec({sql:"INSERT INTO smoke_test(value) VALUES(?)",bind:["SAHPOOL-PERSIST-OK"]});
+   const rows=Number(scalar(db,"SELECT COUNT(*) FROM smoke_test")||0);
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",smoke,rows,files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="smoke-read"){
+   const smoke="/jq_sah_smoke.sqlite";
+   if(!p.getFileNames().includes(smoke))throw new Error("smoke DB missing after Worker restart");
+   db=new p.OpfsSAHPoolDb(smoke,"r");
+   const rows=Number(scalar(db,"SELECT COUNT(*) FROM smoke_test")||0);
+   const value=String(scalar(db,"SELECT value FROM smoke_test LIMIT 1")||"");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",smoke,rows,value,persisted:rows===1&&value==="SAHPOOL-PERSIST-OK",elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(!p.getFileNames().includes(name)) throw new Error(`SAH pool DB not found: ${name}. Step 2でレスキューSQLiteをImportしてください。`);
  db=new p.OpfsSAHPoolDb(name,"r");
  if(cmd==="open"){const hasBars=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)>0,hasSync=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sync_log'")||0)>0;const out={ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsUsed:p.vfsName,filename:name,tableCount:Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table'")||0),barsCount:hasBars?Number(scalar(db,"SELECT COUNT(*) FROM bars_daily")||0):0,minDate:hasBars?scalar(db,"SELECT MIN(date) FROM bars_daily"):null,maxDate:hasBars?scalar(db,"SELECT MAX(date) FROM bars_daily"):null,syncOk:hasSync?Number(scalar(db,"SELECT COUNT(*) FROM sync_log WHERE dataset='bars_daily' AND status='OK'")||0):0,elapsedMs:Math.round(performance.now()-t0)};db.close();self.postMessage(out);return;}
  if(cmd==="quick"){const quick=String(scalar(db,"PRAGMA quick_check")??"");db.close();self.postMessage({ok:true,type:"result",quick,elapsedMs:Math.round(performance.now()-t0)});return;}
