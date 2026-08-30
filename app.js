@@ -107,52 +107,13 @@ ${d.filename}:${d.lineno||0}:${d.colno||0}`:"")
 
 
 async function sqliteProxyCheck(){
- try{
-  const targets=[
-   {url:"/sqlite/index.mjs", want:"javascript"},
-   {url:"/sqlite/sqlite3.wasm", want:"application/wasm"},
-   {url:"/sqlite/sqlite3-opfs-async-proxy.js?vfs=opfs-wl", want:"javascript"}
-  ];
-  const lines=[];
-  for(const t of targets){
-    const r=await fetch(t.url,{cache:"no-store"});
-    const ct=(r.headers.get("content-type")||"").toLowerCase();
-    const prox=r.headers.get("x-jq-sqlite-proxy")||"-";
-    const typeOk=t.want==="application/wasm" ? ct.includes("application/wasm") : ct.includes("javascript");
-    const proxyOk=prox==="3.53.0-build1";
-    if(!r.ok || !typeOk || !proxyOk){
-      throw new Error(`${t.url}: HTTP=${r.status} type=${ct} proxy=${prox}`);
-    }
-    lines.push(`${t.url}: PASS / ${ct} / proxy=${prox}`);
-  }
-  box("proxyResult","pass","Same-origin SQLite assets: PASS\n"+lines.join("\n"));
- }catch(e){
-  box("proxyResult","fail","Same-origin SQLite assets: FAIL\n"+e);
- }
-}
+ try{const targets=[{url:"/sqlite/index.mjs",type:"javascript",patch:"classic-opfs-query-added"},{url:"/sqlite/sqlite3.wasm",type:"application/wasm"},{url:"/sqlite/sqlite3-opfs-async-proxy.js?vfs=opfs",type:"javascript"}],lines=[];
+ for(const t of targets){const r=await fetch(t.url,{cache:"no-store"}),ct=(r.headers.get("content-type")||"").toLowerCase(),px=r.headers.get("x-jq-sqlite-proxy")||"-",patch=r.headers.get("x-jq-sqlite-patch")||"-";const typeOk=t.type==="application/wasm"?ct.includes("application/wasm"):ct.includes("javascript");if(!r.ok||!typeOk||px!=="3.53.0-build1"||(t.patch&&patch!==t.patch))throw new Error(`${t.url}: HTTP=${r.status} type=${ct} proxy=${px} patch=${patch}`);lines.push(`${t.url}: PASS / ${ct} / proxy=${px} / patch=${patch}`);} box("proxyResult","pass","Same-origin SQLite assets: PASS\n"+lines.join("\n"));}
+ catch(e){box("proxyResult","fail","Same-origin SQLite assets: FAIL\n"+e)}}
 $("proxyBtn").onclick=sqliteProxyCheck;
 
 
-async function initOnly(){
- box("initResult","run","SQLite-WASM初期化だけを試しています…");
- try{
-  const r=await workerCall("init",180000,(s)=>{
-   box("initResult","run",`SQLite-WASM初期化中…\nStage: ${s.stage}\n${s.detail||""}`);
-  });
-  state.init=r;
-  box("initResult","pass",
-`PASS
-SQLite version: ${r.sqliteVersion}
-Atomics.waitAsync / Web Locks: 利用可
-opfs-wl VFS: ${r.vfs?.["opfs-wl"]?"PASS":"FAIL"}
-classic opfs VFS: ${r.vfs?.["opfs"]?"有効":"無効（意図通り）"}
-OpfsWlDb class: ${r.opfsWlClass?"PASS":"FAIL"}
-初期化時間: ${(r.elapsedMs/1000).toFixed(2)}秒`);
- }catch(e){
-  state.init={ok:false,error:String(e)};
-  box("initResult","fail","SQLite Init FAIL\n"+e);
- }
-}
+async function initOnly(){box("initResult","run","SQLite-WASM classic OPFS初期化中…");try{const r=await workerCall("init",180000,s=>box("initResult","run",`Stage: ${s.stage}\n${s.detail||""}`));state.init=r;const ok=r.vfs?.opfs&&r.opfsClass;box("initResult",ok?"pass":"fail",`${ok?"PASS":"FAIL"}\nSQLite version: ${r.sqliteVersion}\nclassic opfs VFS: ${r.vfs?.opfs?"PASS":"FAIL"}\nopfs-wl VFS: ${r.vfs?.opfsWl?"有効":"無効（意図通り）"}\nOpfsDb class: ${r.opfsClass?"PASS":"FAIL"}\n初期化時間: ${(r.elapsedMs/1000).toFixed(2)}秒`);}catch(e){state.init={ok:false,error:String(e)};box("initResult","fail","SQLite Init FAIL\n"+e)}}
 $("initBtn").onclick=initOnly;
 
 async function openDb(){

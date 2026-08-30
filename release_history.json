@@ -17,10 +17,10 @@
   },
   "current": {
     "product": "Web/PWA",
-    "version": "v7c-r3",
+    "version": "v7c-r4",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c",
-    "migration_version": "history-3"
+    "migration_version": "history-4"
   },
   "releases": [
     {
@@ -261,6 +261,20 @@
         "Direct Open uses sqlite3.oo1.OpfsWlDb read-only"
       ],
       "notes": "r2 proved same-origin asset delivery but failed during SQLite initialization before DB open. r3 isolates the initialization path and avoids the classic OPFS setup path."
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7c-r4",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Classic OPFS with SQLite 3.53 proxy query patch",
+      "changes": [
+        "Returned to classic opfs",
+        "Patched external OPFS proxy worker URL with required ?vfs=opfs",
+        "Disabled opfs-wl and opfs-sahpool",
+        "Strictly verify patch header before Init",
+        "Top header now displays exact revision"
+      ]
     }
   ]
 }

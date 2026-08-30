@@ -1,5 +1,16 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7c-r4 — CURRENT (2026-08-30)
+
+Classic OPFS + SQLite 3.53 proxy query patch
+
+- Use classic `opfs` instead of `opfs-wl`
+- Patch the shared async proxy worker URL with SQLite 3.53-required `?vfs=opfs`
+- Add strict patch verification before Init
+- Keep the existing 1.12GB OPFS DB untouched
+- Display the full revision in the top header
+
+
 ## Web/PWA v7c-r3 — CURRENT (2026-08-30)
 
 SQLite 3.53 `opfs-wl` initialization path
