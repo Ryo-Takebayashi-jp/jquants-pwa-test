@@ -1,9 +1,9 @@
 {
-  "name": "J-Quants Local-first PWA PoC v4",
-  "short_name": "JQ PWA PoC4",
+  "name": "J-Quants Local-first PWA PoC v5",
+  "short_name": "JQ PWA PoC5",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#0b1220",
-  "theme_color": "#0b1220",
-  "description": "Portable local DataLake export/import proof of concept"
+  "background_color": "#07111f",
+  "theme_color": "#07111f",
+  "description": "Private DB separation and encrypted backup proof of concept"
 }
