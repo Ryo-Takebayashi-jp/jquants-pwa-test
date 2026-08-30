@@ -79,8 +79,9 @@ function workerCall(cmd,timeoutMs=180000,onStatus=null,file=null,payload=null){
     clearTimeout(timer);w.terminate();
     d.ok?resolve(d):reject(new Error(
       `[${d.stage||"worker"}] ${d.error||"Worker失敗"}`+
-      (d.filename?`
-${d.filename}:${d.lineno||0}:${d.colno||0}`:"")
+      (d.poolFiles?`\nSAH Pool files: ${JSON.stringify(d.poolFiles)}`:"")+
+      (d.stack?`\n${d.stack}`:"")+
+      (d.filename?`\n${d.filename}:${d.lineno||0}:${d.colno||0}`:"")
     ));
   };
   w.onerror=e=>{

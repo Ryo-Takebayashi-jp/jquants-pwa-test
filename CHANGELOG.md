@@ -1,5 +1,16 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta4c — CURRENT (2026-08-30)
+
+Production UI and DataLake-open hotfix.
+
+- Fixed the UI classification bug introduced by the beta4b boot card: the mover previously kept only the first card outside diagnostics, which unintentionally moved the normal `J-Quants DataLake 更新` card into Developer Diagnostics.
+- Production cards are now explicitly marked and never moved into Developer Diagnostics.
+- Replaced production DataLake commands' brittle exact `getFileNames().includes(name)` gate with read-only validation of the existing SAH Pool market database and `bars_daily` table before writes.
+- Worker failures now report the real error message, stack, and logical SAH Pool filenames for much faster diagnosis.
+- Existing SAH Pool directory, 1.12GB DataLake, schema and committed data are unchanged. No re-import required.
+
+
 ## Web/PWA v7d-beta4b — CURRENT (2026-08-30)
 
 Hotfix for beta4 startup failure.

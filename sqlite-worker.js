@@ -1,5 +1,33 @@
 const status=(stage,detail="")=>self.postMessage({type:"status",stage,detail});
 function scalar(db,sql){let v=null;db.exec({sql,rowMode:"array",callback:r=>{if(v===null)v=r[0]}});return v}
+function poolFileNamesSafe(p){
+  try{return Array.from(p.getFileNames?.()||[]).map(String)}catch(_){return []}
+}
+function resolveExistingMarketDb(p,requested){
+  const files=poolFileNamesSafe(p);
+  const base=String(requested||"").replace(/^\/+/,"");
+  const candidates=[];
+  const add=x=>{if(x&&!candidates.includes(x))candidates.push(x)};
+  add(requested); add("/"+base);
+  for(const f of files){
+    if(f.replace(/^\/+/,"")===base) add(f.startsWith("/")?f:"/"+f);
+  }
+  const errors=[];
+  for(const candidate of candidates){
+    let probe=null;
+    try{
+      probe=new p.OpfsSAHPoolDb(candidate,"r");
+      const hasBars=Number(scalar(probe,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)>0;
+      probe.close(); probe=null;
+      if(hasBars) return {name:candidate,files};
+      errors.push(candidate+": bars_daily missing");
+    }catch(e){
+      try{if(probe)probe.close()}catch(_){}
+      errors.push(candidate+": "+String(e?.message||e));
+    }
+  }
+  throw new Error(`Market DataLake not found/openable. requested=${requested}; pool files=${JSON.stringify(files)}; tried=${errors.join(" | ")}`);
+}
 let sqlite3=null,pool=null;
 async function initSqlite(){
  if(sqlite3&&pool)return {sqlite3,pool};
@@ -225,7 +253,7 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
    if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
    const payload=e.data.payload||{}, day=payload.date, rows=payload.rows||[];
    if(!day)throw new Error("date missing");
-   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
    try{db.exec("PRAGMA temp_store=MEMORY; PRAGMA cache_size=-32768;")}catch(_){}
    const info=tableInfo(db,"bars_daily"), cols=info.map(x=>x.name), pk=primaryKeyCols(info);
    if(!cols.length)throw new Error("bars_daily schema missing");

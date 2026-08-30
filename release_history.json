@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta4b",
+    "version": "v7d-beta4c",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-16"
+    "migration_version": "history-17"
   },
   "releases": [
     {
@@ -443,6 +443,20 @@
         "Fix invalid multiline JavaScript string in fast-gap-fill error handler that prevented all button handlers from loading",
         "Add visible boot-error indicator for JavaScript and unhandled Promise failures",
         "Keep beta4 prepared-statement fast writer and existing SAH Pool/DataLake unchanged",
+        "No DataLake re-import or migration required"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta4c",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Production UI separation + robust SAH Pool DataLake resolution",
+      "changes": [
+        "Fix diagnostics mover so normal DataLake update and fast backfill stay outside Developer Diagnostics",
+        "Replace brittle exact getFileNames() check with read-only validation of the existing bars_daily market DB",
+        "Expose actual Worker error message, stack and SAH Pool logical filenames",
+        "Keep beta4 prepared-statement fast writer and existing 1.12GB DataLake unchanged",
         "No DataLake re-import or migration required"
       ]
     }
