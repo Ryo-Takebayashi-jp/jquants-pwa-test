@@ -133,7 +133,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  
   if(cmd==="backup-stats"){
  const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;db=new p.OpfsSAHPoolDb(marketName,"r");
- const pc=Number(scalar(db,"PRAGMA page_count")||0),ps=Number(scalar(db,"PRAGMA page_size")||0),rows=Number(scalar(db,"SELECT COUNT(*) FROM bars_daily")||0);
+ const pc=Number(scalar(db,"PRAGMA page_count")||0),ps=Number(scalar(db,"PRAGMA page_size")||0),rows=Number(scalar(db,"SELECT MAX(rowid) FROM bars_daily")||0);
  db.close();db=null;self.postMessage({ok:true,type:"result",dbBytes:pc*ps,rows});return;
 }
 if(cmd==="backup-create"){
@@ -142,6 +142,19 @@ if(cmd==="backup-create"){
  db=new p.OpfsSAHPoolDb(marketName,"r");status("backup","VACUUM INTO snapshot");db.exec(`VACUUM INTO '${backupName}'`);db.close();db=null;
  const b=new p.OpfsSAHPoolDb(backupName,"r"),qc=String(scalar(b,"PRAGMA quick_check")||""),rows=Number(scalar(b,"SELECT COUNT(*) FROM bars_daily")||0),minDate=scalar(b,"SELECT MIN(date) FROM bars_daily"),maxDate=scalar(b,"SELECT MAX(date) FROM bars_daily"),pc=Number(scalar(b,"PRAGMA page_count")||0),ps=Number(scalar(b,"PRAGMA page_size")||0);b.close();
  self.postMessage({ok:qc==="ok",type:"result",backupName,qc,rows,minDate,maxDate,dbBytes:pc*ps,elapsedMs:Math.round(performance.now()-t0)});return;
+}
+
+if(cmd==="market-fast-health"){
+ const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+ db=new p.OpfsSAHPoolDb(marketName,"r");
+ const tableOk=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)===1;
+ const sample=db.selectObjects("SELECT code,date,c FROM bars_daily ORDER BY rowid DESC LIMIT 1")[0]||null;
+ const minDate=scalar(db,"SELECT MIN(date) FROM bars_daily");
+ const maxDate=scalar(db,"SELECT MAX(date) FROM bars_daily");
+ db.close(); db=null;
+ self.postMessage({ok:tableOk&&!!sample,type:"result",marketName,tableOk,sample,minDate,maxDate,
+   poolFiles:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});
+ return;
 }
 if(cmd==="pool-diagnostic"){
     const files=poolFileNamesSafe(p);
@@ -314,13 +327,13 @@ if(cmd==="pool-diagnostic"){
    db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
    const sample=execRows(db,"SELECT code,date,c FROM bars_daily ORDER BY date DESC, code LIMIT 1");
    if(!sample.length)throw new Error("bars_daily sample missing");
-   const r=sample[0], before=Number(scalar(db,"SELECT COUNT(*) FROM bars_daily")||0);
+   const r=sample[0], before=Number(scalar(db,"SELECT MAX(rowid) FROM bars_daily")||0);
    db.exec("BEGIN IMMEDIATE");
    try{
      db.exec({sql:"UPDATE bars_daily SET c=c WHERE code=? AND date=?",bind:[r.code,r.date]});
      db.exec("COMMIT");
    }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
-   const after=Number(scalar(db,"SELECT COUNT(*) FROM bars_daily")||0);
+   const after=Number(scalar(db,"SELECT MAX(rowid) FROM bars_daily")||0);
    db.close();db=null;
    self.postMessage({ok:true,type:"result",marketName,sample:r,before,after,unchanged:before===after,elapsedMs:Math.round(performance.now()-t0)});return;
  }
@@ -513,7 +526,7 @@ if(cmd==="pool-diagnostic"){
 
  if(!p.getFileNames().includes(name)) throw new Error(`SAH pool DB not found: ${name}. Step 2でレスキューSQLiteをImportしてください。`);
  db=new p.OpfsSAHPoolDb(name,"r");
- if(cmd==="open"){const hasBars=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)>0,hasSync=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sync_log'")||0)>0;const out={ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsUsed:p.vfsName,filename:name,tableCount:Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table'")||0),barsCount:hasBars?Number(scalar(db,"SELECT COUNT(*) FROM bars_daily")||0):0,minDate:hasBars?scalar(db,"SELECT MIN(date) FROM bars_daily"):null,maxDate:hasBars?scalar(db,"SELECT MAX(date) FROM bars_daily"):null,syncOk:hasSync?Number(scalar(db,"SELECT COUNT(*) FROM sync_log WHERE dataset='bars_daily' AND status='OK'")||0):0,elapsedMs:Math.round(performance.now()-t0)};db.close();self.postMessage(out);return;}
+ if(cmd==="open"){const hasBars=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)>0,hasSync=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sync_log'")||0)>0;const out={ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsUsed:p.vfsName,filename:name,tableCount:Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table'")||0),barsCount:hasBars?Number(scalar(db,"SELECT MAX(rowid) FROM bars_daily")||0):0,minDate:hasBars?scalar(db,"SELECT MIN(date) FROM bars_daily"):null,maxDate:hasBars?scalar(db,"SELECT MAX(date) FROM bars_daily"):null,syncOk:hasSync?Number(scalar(db,"SELECT COUNT(*) FROM sync_log WHERE dataset='bars_daily' AND status='OK'")||0):0,elapsedMs:Math.round(performance.now()-t0)};db.close();self.postMessage(out);return;}
  if(cmd==="quick"){const quick=String(scalar(db,"PRAGMA quick_check")??"");db.close();self.postMessage({ok:true,type:"result",quick,elapsedMs:Math.round(performance.now()-t0)});return;}
  throw new Error(`Unknown cmd: ${cmd}`);
  }catch(err){try{if(db)db.close()}catch(_){} self.postMessage({ok:false,type:"result",stage:"caught-exception",error:String(err?.stack||err)})}};

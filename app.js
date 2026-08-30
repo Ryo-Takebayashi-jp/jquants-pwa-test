@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7d-beta5bb");
+ const w=new Worker("./sqlite-worker.js?v=v7d-beta5cb");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -652,3 +652,36 @@ if($("continuousStartBtn"))$("continuousStartBtn").onclick=async()=>{if(continuo
 if($("continuousStopBtn"))$("continuousStopBtn").onclick=()=>{continuousStopRequested=true;box("continuousResult","run","安全停止予約。現在の日付完了後に停止します…")};
 if($("backupEstimateBtn"))$("backupEstimateBtn").onclick=async()=>{try{const r=await workerCall("backup-stats",180000,null),e=await navigator.storage.estimate(),free=Math.max(0,(e.quota||0)-(e.usage||0)),need=Math.ceil(r.dbBytes*1.15),ok=!e.quota||free>=need;box("backupEstimateResult",ok?"pass":"fail",`${ok?"PASS":"容量不足の可能性"}\nDB ${(r.dbBytes/1073741824).toFixed(2)}GB\n空き ${e.quota?(free/1073741824).toFixed(2)+"GB":"不明"}\n必要目安 ${(need/1073741824).toFixed(2)}GB`);$("backupCreateBtn").disabled=!ok}catch(e){box("backupEstimateResult","fail","FAIL\n"+e)}};
 if($("backupCreateBtn"))$("backupCreateBtn").onclick=async()=>{box("backupCreateResult","run","スナップショット作成中…");try{const r=await workerCall("backup-create",1800000,s=>box("backupCreateResult","run",s.detail||s.stage));box("backupCreateResult",r.ok?"pass":"fail",`${r.ok?"PASS":"FAIL"}\n${r.backupName}\nquick_check ${r.qc}\nrows ${Number(r.rows).toLocaleString()}\n${r.minDate}～${r.maxDate}\n${(r.dbBytes/1073741824).toFixed(2)}GB\n${(r.elapsedMs/1000).toFixed(1)}秒`)}catch(e){box("backupCreateResult","fail","FAIL\n"+e)}};
+
+let jqDiagBusy=false;
+async function jqRunDiag(buttonId,resultId,label,fn){
+ const btn=$(buttonId), out=$(resultId);
+ if(jqDiagBusy){
+   box(resultId,"run","前のSQLite診断の完了待ちです…");
+ }
+ jqDiagBusy=true;
+ if(btn) btn.disabled=true;
+ try{
+   box(resultId,"run",label+"…");
+   return await fn();
+ }finally{
+   jqDiagBusy=false;
+   if(btn) btn.disabled=false;
+ }
+}
+
+if($("poolProbeBtn")) $("poolProbeBtn").onclick=()=>jqRunDiag("poolProbeBtn","poolProbeResult","軽量read-only診断中",async()=>{
+ const r=await workerCall("market-fast-health",60000,null);
+ box("poolProbeResult",r.ok?"pass":"fail",
+   `${r.ok?"PASS":"FAIL"}\nDB: ${r.marketName||"-"}\nテーブル: ${r.tableOk?"YES":"NO"}\n期間: ${r.minDate||"-"} ～ ${r.maxDate||"-"}\nサンプル: ${r.sample?JSON.stringify(r.sample):"なし"}\n所要: ${((r.elapsedMs||0)/1000).toFixed(2)}秒`);
+});
+
+if($("writeGateBtn")){
+ const oldWrite=$("writeGateBtn").onclick;
+ $("writeGateBtn").onclick=async ev=>{
+   if(jqDiagBusy) box("writeGateResult","run","前のSQLite診断の完了待ちです…");
+   jqDiagBusy=true; $("writeGateBtn").disabled=true;
+   try{ return await oldWrite.call($("writeGateBtn"),ev); }
+   finally{ jqDiagBusy=false; $("writeGateBtn").disabled=false; }
+ };
+}

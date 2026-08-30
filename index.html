@@ -21,10 +21,10 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7d-beta5b</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7d-beta5c</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7d-beta5b 起動確認</h2>
+<h2>v7d-beta5c 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -37,9 +37,9 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 <div class="desc">DataLakeを書き換えず、まずPoolの論理ファイル一覧を確認します。次に候補名をread-onlyで1つずつ開きます。</div>
 <button id="poolDiagBtn">① DBを開かずPool状態を確認</button>
 <div id="poolDiagResult" class="result">未実行</div><br>
-<button id="poolProbeBtn" class="secondary">② 候補をread-onlyで診断</button>
+<button id="poolProbeBtn" class="secondary">② 候補を軽量read-only診断</button>
 <div id="poolProbeResult" class="result">未実行</div><br>
-<button id="writeGateBtn" class="secondary">③ DataLake書込み経路だけ確認</button>
+<button id="writeGateBtn" class="secondary">③ 1行だけ書込み経路確認</button>
 <div id="writeGateResult" class="result">未実行</div>
 </section>
 
@@ -69,7 +69,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 
 
 <section class="card production-card" id="fastBackfillCard">
-<h2>高速バックフィル v7d-beta5b</h2>
+<h2>高速バックフィル v7d-beta5c</h2>
 <div class="desc">
 書込みを1行ごとの db.exec から prepared statement 再利用へ変更しました。
 祝日ではなく「実際に株価データがある欠損営業日」を自動で探し、API取得＋SQLite書込みを1日分実測してから大量穴埋めを開始します。
@@ -98,7 +98,7 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </div>
 
 <section class="card production-card" id="autoBackfillCard">
-<h2>自動連続バックフィル v7d-beta5b</h2>
+<h2>自動連続バックフィル v7d-beta5c</h2>
 <p>穴を再検出しながら連続処理。日付単位Commitなので安全停止・再開できます。Safariは前面表示のままにしてください。</p>
 <label>1バッチ日数 <input id="continuousBatch" type="number" min="5" max="120" value="40"></label>
 <button id="continuousStartBtn">▶ 自動連続バックフィル開始</button>
@@ -162,14 +162,14 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>7. v7d-beta5b総合判定</h2>
+<h2>7. v7d-beta5c総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 
 <section class="card">
-<h2>v7d-beta5b 実運用同期エンジン前段テスト</h2>
+<h2>v7d-beta5c 実運用同期エンジン前段テスト</h2>
 <div class="desc">
 既存1.12GB DataLakeの実スキーマを検査し、日付単位Transaction → Commit → Checkpoint →
 Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM展開・db.export()は使いません。
@@ -184,7 +184,7 @@ Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM
 
 
 <section class="card">
-<h2>v7d-beta5b J-Quants 実データ同期</h2>
+<h2>v7d-beta5c J-Quants 実データ同期</h2>
 <div class="desc">
 J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付単位で直接Commitします。
 認証情報はこの画面のメモリ内だけで使用し、SQLite・localStorage・GitHubには保存しません。
@@ -203,7 +203,7 @@ J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付
 
 
 <section class="card">
-<h2>v7d-beta5b 自動Catch-up Sync</h2>
+<h2>v7d-beta5c 自動Catch-up Sync</h2>
 <div class="desc">
 DataLakeの最終取得日と専用Checkpointを自動判定し、その翌日から指定日まで順番に同期します。
 土日はAPI呼出しを省略。祝日などAPIが0件の日も「確認済み」としてCheckpointを進めます。
@@ -225,13 +225,13 @@ iPhoneでは前景実行のため、このカードの同期中はSafariを閉�
 <h2>10. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7d-beta5b
+<div id="historyResult" class="result">Version: v7d-beta5c
 Build date: 2026-08-30
 Schema version: market-poc7c
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7d-beta5b / Build 2026-08-30 / Schema market-poc7c / Migration history-8<br>
+<footer>Version v7d-beta5c / Build 2026-08-30 / Schema market-poc7c / Migration history-8<br>
 通常運用は上部カードだけを使用。旧PoCテストは「開発者診断」に隔離しています。</footer>
 </main>
 <script src="./app.js"></script>

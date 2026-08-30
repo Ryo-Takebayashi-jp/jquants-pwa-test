@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta5c — CURRENT (2026-08-30)
+
+- Made emergency DataLake diagnostics lightweight so they do not scan millions of rows just to prove health.
+- Read-only health now checks the table, date range and a one-row sample.
+- Serialized SQLite operations now show an explicit waiting state instead of looking frozen.
+- No automatic import/delete/migration was added; existing DataLake and backfill semantics are unchanged.
+
+
 ## Web/PWA v7d-beta5b — CURRENT (2026-08-30)
 
 - Fixed the visible literal `\n` in the startup card.

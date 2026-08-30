@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta5b",
+    "version": "v7d-beta5c",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-24"
+    "migration_version": "history-25"
   },
   "releases": [
     {
@@ -557,6 +557,19 @@
         "Worker messages now carry request IDs for safe long-running serialized operations",
         "Pool identity is explicitly displayed and returned for diagnostics",
         "No DataLake re-import or schema migration performed by this release"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta5c",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Lightweight DataLake diagnostics before long-running backfill",
+      "changes": [
+        "Read-only DataLake health check changed to lightweight table/sample/date probes",
+        "Diagnostic UI now explicitly reports queued SQLite work instead of appearing frozen",
+        "Persistent serialized SQLite Worker retained",
+        "No DataLake import, delete, schema migration, or backfill behavior changed"
       ]
     }
   ]
