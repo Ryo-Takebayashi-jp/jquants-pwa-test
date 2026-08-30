@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta4c",
+    "version": "v7d-beta4d",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-17"
+    "migration_version": "history-18"
   },
   "releases": [
     {
@@ -458,6 +458,19 @@
         "Expose actual Worker error message, stack and SAH Pool logical filenames",
         "Keep beta4 prepared-statement fast writer and existing 1.12GB DataLake unchanged",
         "No DataLake re-import or migration required"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta4d",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Apply missed SAH Pool filename resolver to DataLake state command",
+      "changes": [
+        "Fix bars-auto-state: remove exact getFileNames().includes('/jq_market_v7c.sqlite') gate",
+        "Resolve the existing market DB by opening candidates read-only and validating bars_daily",
+        "Audit gap scan and benchmark commands for the same brittle filename gate",
+        "No DataLake content/schema/checkpoint changes; no re-import required"
       ]
     }
   ]

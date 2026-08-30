@@ -145,10 +145,10 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
 
 
  if(cmd==="bars-gap-scan"){
-   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
    const payload=e.data.payload||{}, from=payload.from, to=payload.to;
    if(!from||!to)throw new Error("from/to missing");
-   db=new p.OpfsSAHPoolDb(name,"r");
+   db=new p.OpfsSAHPoolDb(marketName,"r");
    const rows=execRows(db,`SELECT DISTINCT date FROM bars_daily WHERE date>=? AND date<=? ORDER BY date`,[from,to]);
    db.close();db=null;
    self.postMessage({ok:true,type:"result",from,to,dates:rows.map(r=>r.date),elapsedMs:Math.round(performance.now()-t0)});return;
@@ -156,10 +156,10 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
 
 
  if(cmd==="bars-write-benchmark"){
-   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
    const payload=e.data.payload||{}, day=payload.date, rows=payload.rows||[];
    if(!day||!rows.length)throw new Error("benchmark requires date and rows");
-   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
    try{db.exec("PRAGMA temp_store=MEMORY; PRAGMA cache_size=-32768;")}catch(_){}
    const info=tableInfo(db,"bars_daily"), cols=info.map(x=>x.name), pk=primaryKeyCols(info);
    const aliases={
@@ -201,8 +201,8 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
  }
 
  if(cmd==="bars-auto-state"){
-   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
-   db=new p.OpfsSAHPoolDb(name,"r");
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+   db=new p.OpfsSAHPoolDb(marketName,"r");
    const stats=execRows(db,`SELECT MIN(date) AS min_date, MAX(date) AS max_date,
      COUNT(*) AS rows, COUNT(DISTINCT date) AS distinct_dates FROM bars_daily`);
    let checkpoint=[];

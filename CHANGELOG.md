@@ -1,5 +1,15 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta4d — CURRENT (2026-08-30)
+
+Hotfix for the remaining DataLake state regression.
+
+- `bars-auto-state` still contained the old exact logical-filename gate despite beta4c adding the new resolver helper. This was the reason the UI still failed at `sqlite-worker.js:204`.
+- The state command now resolves the existing SAH Pool database read-only and verifies `bars_daily` instead of depending on slash-sensitive filename string equality.
+- Gap scan and one-day benchmark were audited for the same regression.
+- No re-import, DB migration, or DataLake rewrite is required.
+
+
 ## Web/PWA v7d-beta4c — CURRENT (2026-08-30)
 
 Production UI and DataLake-open hotfix.
