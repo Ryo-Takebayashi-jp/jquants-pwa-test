@@ -367,3 +367,79 @@ if($("recentRepairBtn")) $("recentRepairBtn").onclick=async()=>{
    box("recentRepairResult","pass",`PASS\n${out.map(x=>`${x.date}: ${x.rows} rows${x.noData?" (0件)":""}`).join("\n")}\nUPSERT再実行で重複増加なし`);
  }catch(e){box("recentRepairResult","fail","FAIL\n"+e)}
 };
+
+
+let lastGapPlan=[];
+function prodTokenValue(){return $("prodToken")?.value.trim()||$("jqToken")?.value.trim()||""}
+function localTodayIso(){return new Date().toLocaleDateString("sv-SE")}
+async function runDailyCatchupTo(target,token,maxDays=20){
+  const st=await getAutoState(), s=st.stats||{}, cp=(st.checkpoint||[])[0], jq=(st.jqcheckpoint||[])[0];
+  const anchor=maxIso(s.max_date,cp?.last_success_date,jq?.last_success_date);
+  if(!anchor)throw new Error("開始基準日を判定できません");
+  const start=isoAddDays(anchor,1);
+  if(start>target) return {updated:false,anchor,target,out:[]};
+  const days=dateRangeExclusive(start,target,maxDays),out=[];
+  for(const d of days) out.push(await autoCommitDate(d,token));
+  return {updated:true,anchor,target,out,more:(days.length>=maxDays && out.at(-1)?.date<target)};
+}
+if($("prodStatusBtn")) $("prodStatusBtn").onclick=async()=>{
+ box("prodStatusResult","run","DataLake確認中…");
+ try{
+  const r=await getAutoState(),s=r.stats||{},cp=(r.checkpoint||[])[0],jq=(r.jqcheckpoint||[])[0];
+  const anchor=maxIso(s.max_date,cp?.last_success_date,jq?.last_success_date);
+  box("prodStatusResult","pass",`PASS
+期間: ${s.min_date||"-"} ～ ${s.max_date||"-"}
+総行数: ${Number(s.rows||0).toLocaleString()}
+実データ日数: ${Number(s.distinct_dates||0).toLocaleString()}
+日次更新基準: ${anchor||"不明"}
+次回開始候補: ${anchor?isoAddDays(anchor,1):"-"}`);
+ }catch(e){box("prodStatusResult","fail","FAIL\n"+e)}
+};
+if($("prodDailyBtn")) $("prodDailyBtn").onclick=async()=>{
+ box("prodDailyResult","run","今日まで更新中…");
+ try{
+  const token=prodTokenValue(); if(!token)throw new Error("APIキーを入力してください");
+  const r=await runDailyCatchupTo(localTodayIso(),token,20);
+  if(!r.updated){box("prodDailyResult","pass",`PASS / 更新不要\n最終基準: ${r.anchor}\n今日: ${r.target}`);return}
+  box("prodDailyResult","pass",`PASS
+${r.out.map(x=>`${x.date}: ${x.rows} rows${x.noData?" (0件/休場候補)":""}`).join("\n")}
+${r.more?"20日上限。もう一度押すと続きから。":"今日まで処理完了。"}`);
+ }catch(e){box("prodDailyResult","fail","FAIL\n"+e)}
+};
+if($("gapTo")) $("gapTo").value=localTodayIso();
+if($("gapScanBtn")) $("gapScanBtn").onclick=async()=>{
+ box("gapScanResult","run","実データ日を照合して穴を検出中…");
+ try{
+   const from=$("gapFrom").value,to=$("gapTo").value;
+   const r=await workerCall("bars-gap-scan",180000,null,null,{from,to});
+   const have=new Set(r.dates),missing=[]; let d=from;
+   while(d<=to){ if(!isWeekendIso(d) && !have.has(d)) missing.push(d); d=isoAddDays(d,1); }
+   lastGapPlan=missing;
+   box("gapScanResult","pass",`PASS
+範囲: ${from} ～ ${to}
+実データ日: ${r.dates.length}
+平日ベース穴候補: ${missing.length}
+先頭20件:
+${missing.slice(0,20).join("\n")||"(なし)"}
+※祝日・休場日も候補に含まれ、API 0件なら確認済みとして処理します。`);
+ }catch(e){box("gapScanResult","fail","FAIL\n"+e)}
+};
+if($("gapFillBtn")) $("gapFillBtn").onclick=async()=>{
+ box("gapFillResult","run","穴埋め中…");
+ try{
+   const token=prodTokenValue(); if(!token)throw new Error("APIキーを入力してください");
+   if(!lastGapPlan.length)throw new Error("先に③で穴を検出してください");
+   const maxDays=Math.max(1,Math.min(60,Number($("gapMaxDays").value||20)));
+   const batch=lastGapPlan.slice(0,maxDays),out=[];
+   for(const d of batch){
+     box("gapFillResult","run",`${d} を穴埋め中…\n${out.length}/${batch.length}\nSafariを閉じないでください`);
+     out.push(await autoCommitDate(d,token));
+   }
+   const done=new Set(batch); lastGapPlan=lastGapPlan.filter(d=>!done.has(d));
+   box("gapFillResult","pass",`PASS
+今回処理: ${out.length}日
+${out.map(x=>`${x.date}: ${x.rows} rows${x.noData?" (0件/休場)":""}`).join("\n")}
+残り穴候補: ${lastGapPlan.length}
+${lastGapPlan.length?"④をもう一度押すと次の束を処理。":"この検出範囲は処理完了。"}`);
+ }catch(e){box("gapFillResult","fail","FAIL\n"+e)}
+};

@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta2",
+    "version": "v7d-beta3",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-13"
+    "migration_version": "history-14"
   },
   "releases": [
     {
@@ -399,6 +399,22 @@
         "Add recent-five-weekday idempotent repair/verification",
         "Display actual bars_daily distinct-date count to expose historical coverage",
         "Preserve J-Quants V2 same-origin proxy and SAH Pool identity"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta3",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Production-style dashboard plus historical gap detection/backfill",
+      "changes": [
+        "Move legacy PoC controls into developer diagnostics",
+        "Add simple production dashboard",
+        "One-click daily catch-up to today",
+        "Detect weekday gaps from actual distinct bars_daily dates",
+        "Backfill gaps in configurable batches",
+        "Treat API 0-row dates as confirmed non-trading days",
+        "Keep resumable per-date transactions and existing SAH Pool identity"
       ]
     }
   ]

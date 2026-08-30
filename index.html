@@ -21,8 +21,39 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7d-beta2</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7d-beta3</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 <main>
+
+<section class="card">
+<h2>J-Quants DataLake 更新</h2>
+<div class="desc">
+普段はこちらだけ使います。J-Quants V2 APIキーはセッション中だけ利用し保存しません。
+日次更新と過去データ穴埋めは、既存DataLakeへ日付単位で直接Commitします。
+</div>
+<label>J-Quants V2 APIキー（セッションのみ）</label>
+<input id="prodToken" type="password" autocomplete="off" placeholder="APIキー">
+<button id="prodStatusBtn">① DataLake状態を確認</button>
+<div id="prodStatusResult" class="result">未実行</div><br>
+<button id="prodDailyBtn">② 今日まで日次更新</button>
+<div id="prodDailyResult" class="result">未実行</div><br>
+<label>過去穴埋め開始日</label>
+<input id="gapFrom" type="date" value="2016-08-30">
+<label>過去穴埋め終了日</label>
+<input id="gapTo" type="date" value="2026-08-30">
+<label>1回の最大取得日数</label>
+<input id="gapMaxDays" type="number" min="1" max="60" value="20">
+<button id="gapScanBtn">③ 過去データの穴を検出</button>
+<div id="gapScanResult" class="result">未実行</div><br>
+<button id="gapFillBtn">④ 検出した穴を埋める</button>
+<div id="gapFillResult" class="result">未実行</div>
+</section>
+
+<details class="card">
+<summary><strong>開発者診断 / 旧PoCテスト</strong></summary>
+<div id="legacyDiagnosticsHost"></div>
+</details>
+
+
 <div class="notice">
 旧sql.jsのようにDB全体をRAMへ読み込みません。レスキューSQLiteは<b>ストリームでOPFSへコピー</b>し、
 SQLite-WASMはWorkerからOPFS上のDBを直接開きます。
@@ -82,14 +113,14 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>7. v7d-beta2総合判定</h2>
+<h2>7. v7d-beta3総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 
 <section class="card">
-<h2>v7d-beta2 実運用同期エンジン前段テスト</h2>
+<h2>v7d-beta3 実運用同期エンジン前段テスト</h2>
 <div class="desc">
 既存1.12GB DataLakeの実スキーマを検査し、日付単位Transaction → Commit → Checkpoint →
 Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM展開・db.export()は使いません。
@@ -104,7 +135,7 @@ Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM
 
 
 <section class="card">
-<h2>v7d-beta2 J-Quants 実データ同期</h2>
+<h2>v7d-beta3 J-Quants 実データ同期</h2>
 <div class="desc">
 J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付単位で直接Commitします。
 認証情報はこの画面のメモリ内だけで使用し、SQLite・localStorage・GitHubには保存しません。
@@ -123,7 +154,7 @@ J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付
 
 
 <section class="card">
-<h2>v7d-beta2 自動Catch-up Sync</h2>
+<h2>v7d-beta3 自動Catch-up Sync</h2>
 <div class="desc">
 DataLakeの最終取得日と専用Checkpointを自動判定し、その翌日から指定日まで順番に同期します。
 土日はAPI呼出しを省略。祝日などAPIが0件の日も「確認済み」としてCheckpointを進めます。
@@ -145,15 +176,30 @@ iPhoneでは前景実行のため、このカードの同期中はSafariを閉�
 <h2>10. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7d-beta2
+<div id="historyResult" class="result">Version: v7d-beta3
 Build date: 2026-08-30
 Schema version: market-poc7c
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7d-beta2 / Build 2026-08-30 / Schema market-poc7c / Migration history-8<br>
+<footer>Version v7d-beta3 / Build 2026-08-30 / Schema market-poc7c / Migration history-8<br>
 v7cではJ-Quants API更新はまだ行いません。まず「巨大DBを全体RAM展開なしでImport→直接Open」できることだけを確定します。</footer>
 </main>
 <script src="./app.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded",()=>{
+  const host=document.getElementById("legacyDiagnosticsHost");
+  const main=document.querySelector("main");
+  if(!host||!main)return;
+  const cards=[...main.querySelectorAll(":scope > section.card")];
+  // First section.card is production dashboard we inserted.
+  for(let i=1;i<cards.length;i++){
+    const h=cards[i].querySelector("h2")?.textContent||"";
+    if(h.includes("更新履歴")||h.includes("Build情報")) continue;
+    host.appendChild(cards[i]);
+  }
+});
+</script>
 </body>
 </html>

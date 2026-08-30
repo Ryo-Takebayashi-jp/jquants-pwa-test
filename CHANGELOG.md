@@ -1,5 +1,17 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta3 — CURRENT (2026-08-30)
+
+Production-style update dashboard and historical gap backfill.
+
+- Move the old PoC/diagnostic controls behind a developer-only disclosure.
+- Normal workflow is now: API key → DataLake status → update to today → detect historical gaps → fill gaps.
+- Gap detection compares actual `COUNT(DISTINCT date)` coverage to weekday candidates across a selected range.
+- Holiday/non-trading candidates are harmless: the J-Quants API returns 0 rows and the date is treated as checked.
+- Backfill runs in bounded foreground batches (default 20 days, max 60) to remain iPhone-friendly.
+- Existing per-date transaction, UPSERT, checkpoint, 429 backoff and SAH Pool storage are retained.
+
+
 ## Web/PWA v7d-beta2 — CURRENT (2026-08-30)
 
 Automatic catch-up synchronization for daily bars.

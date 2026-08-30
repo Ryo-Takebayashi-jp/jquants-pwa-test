@@ -115,6 +115,17 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
 
 
 
+
+ if(cmd==="bars-gap-scan"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   const payload=e.data.payload||{}, from=payload.from, to=payload.to;
+   if(!from||!to)throw new Error("from/to missing");
+   db=new p.OpfsSAHPoolDb(name,"r");
+   const rows=execRows(db,`SELECT DISTINCT date FROM bars_daily WHERE date>=? AND date<=? ORDER BY date`,[from,to]);
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",from,to,dates:rows.map(r=>r.date),elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+
  if(cmd==="bars-auto-state"){
    if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
    db=new p.OpfsSAHPoolDb(name,"r");
