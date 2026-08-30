@@ -1,4 +1,4 @@
-# J-Quants Local-first PWA PoC v3
+# J-Quants Local-first PWA PoC v3b
 
 v2で以下がiPhone実機PASS:
 - 512MB OPFS
@@ -38,3 +38,10 @@ PoC DBはiPhoneのOPFSにのみ保存されます。
 ## 注意
 J-Quants APIにはレート制限があります。広い期間を一気に試さず、
 まず30〜45暦日でPoCしてください。
+
+
+## v3b 修正
+- `bars_daily` は17列なのに、v3ではINSERT側に18個のプレースホルダを指定していた不整合を修正。
+- INSERTに列名を明示し、17列/17値で固定。
+- v3で記録された `ERROR` の同期日は `OK` ではないため、同じ期間を再実行すれば自動で再取得されます。
+- 既存PoC DBを削除する必要はありません。

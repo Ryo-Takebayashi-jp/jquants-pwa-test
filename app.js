@@ -185,7 +185,10 @@ async function dailyForDate(date,key){
   }
 }
 function insertBars(db,rows){
-  const st=db.prepare(`INSERT OR REPLACE INTO bars_daily VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const st=db.prepare(`INSERT OR REPLACE INTO bars_daily(
+    code,date,o,h,l,c,upper_limit,lower_limit,volume,value,adj_factor,
+    adj_o,adj_h,adj_l,adj_c,adj_volume,raw_json
+  ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   db.run("BEGIN");let n=0;
   for(const r of rows){
     const code=String(val(r,"Code","code")??""),date=isoDate(val(r,"Date","date"));

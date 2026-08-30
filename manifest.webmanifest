@@ -1,6 +1,6 @@
 {
-  "name": "J-Quants Local-first PWA PoC v3",
-  "short_name": "JQ PWA PoC3",
+  "name": "J-Quants Local-first PWA PoC v3b",
+  "short_name": "JQ PWA PoC3b",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0b1220",
