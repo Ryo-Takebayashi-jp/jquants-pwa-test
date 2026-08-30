@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta5c",
+    "version": "v7d-beta5d",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-25"
+    "migration_version": "history-26"
   },
   "releases": [
     {
@@ -570,6 +570,19 @@
         "Diagnostic UI now explicitly reports queued SQLite work instead of appearing frozen",
         "Persistent serialized SQLite Worker retained",
         "No DataLake import, delete, schema migration, or backfill behavior changed"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta5d",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Remove full-table date scans from read-only diagnostic",
+      "changes": [
+        "Remove MIN(date)/MAX(date) over bars_daily from emergency read-only health check",
+        "Use sqlite_master + one-row LIMIT sample for health",
+        "Use checkpoint/sync_log only as optional date-range references",
+        "No DataLake writes, migrations, imports or deletes"
       ]
     }
   ]

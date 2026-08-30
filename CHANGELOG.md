@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta5d — CURRENT (2026-08-30)
+
+- Removed `MIN(date)` / `MAX(date)` scans over the multi-million-row `bars_daily` table from the emergency read-only diagnostic.
+- Health check now uses `sqlite_master` plus a single `LIMIT 1` row; checkpoint/sync_log are only optional date references.
+- This should make diagnostic step ② complete in seconds rather than scanning the DataLake.
+- No DataLake write, import, delete, or migration is performed.
+
+
 ## Web/PWA v7d-beta5c — CURRENT (2026-08-30)
 
 - Made emergency DataLake diagnostics lightweight so they do not scan millions of rows just to prove health.

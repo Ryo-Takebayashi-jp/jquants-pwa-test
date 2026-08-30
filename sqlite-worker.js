@@ -148,14 +148,26 @@ if(cmd==="market-fast-health"){
  const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
  db=new p.OpfsSAHPoolDb(marketName,"r");
  const tableOk=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)===1;
- const sample=db.selectObjects("SELECT code,date,c FROM bars_daily ORDER BY rowid DESC LIMIT 1")[0]||null;
- const minDate=scalar(db,"SELECT MIN(date) FROM bars_daily");
- const maxDate=scalar(db,"SELECT MAX(date) FROM bars_daily");
+ const sample=execRows(db,"SELECT code,date,c FROM bars_daily LIMIT 1")[0]||null;
+ let maxDate=null,minDate=null,source="sample";
+ try{
+   const cp=execRows(db,`SELECT last_success_date FROM web_sync_checkpoint
+     WHERE dataset IN ('bars_daily_auto','bars_daily_jquants','bars_daily_backfill')
+     AND last_success_date IS NOT NULL
+     ORDER BY last_success_date DESC LIMIT 1`);
+   if(cp.length){maxDate=cp[0].last_success_date;source="checkpoint";}
+ }catch(_){}
+ try{
+   const sl=execRows(db,`SELECT MIN(sync_date) AS min_date, MAX(sync_date) AS max_date
+     FROM sync_log WHERE dataset='bars_daily' AND status='OK'`);
+   if(sl.length){minDate=sl[0].min_date||null; if(!maxDate)maxDate=sl[0].max_date||null; if(minDate||maxDate)source+=" + sync_log";}
+ }catch(_){}
  db.close(); db=null;
- self.postMessage({ok:tableOk&&!!sample,type:"result",marketName,tableOk,sample,minDate,maxDate,
+ self.postMessage({ok:tableOk&&!!sample,type:"result",marketName,tableOk,sample,minDate,maxDate,dateSource:source,
    poolFiles:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});
  return;
 }
+
 if(cmd==="pool-diagnostic"){
     const files=poolFileNamesSafe(p);
     const requested=name, base=String(requested||"").replace(/^\/+/,"");

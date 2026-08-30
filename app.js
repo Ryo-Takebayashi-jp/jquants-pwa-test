@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7d-beta5cb");
+ const w=new Worker("./sqlite-worker.js?v=v7d-beta5db");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -670,10 +670,10 @@ async function jqRunDiag(buttonId,resultId,label,fn){
  }
 }
 
-if($("poolProbeBtn")) $("poolProbeBtn").onclick=()=>jqRunDiag("poolProbeBtn","poolProbeResult","軽量read-only診断中",async()=>{
+if($("poolProbeBtn")) $("poolProbeBtn").onclick=()=>jqRunDiag("poolProbeBtn","poolProbeResult","超軽量read-only診断中（全件走査なし）",async()=>{
  const r=await workerCall("market-fast-health",60000,null);
  box("poolProbeResult",r.ok?"pass":"fail",
-   `${r.ok?"PASS":"FAIL"}\nDB: ${r.marketName||"-"}\nテーブル: ${r.tableOk?"YES":"NO"}\n期間: ${r.minDate||"-"} ～ ${r.maxDate||"-"}\nサンプル: ${r.sample?JSON.stringify(r.sample):"なし"}\n所要: ${((r.elapsedMs||0)/1000).toFixed(2)}秒`);
+   `${r.ok?"PASS":"FAIL"}\nDB: ${r.marketName||"-"}\nテーブル: ${r.tableOk?"YES":"NO"}\n期間参考: ${r.minDate||"-"} ～ ${r.maxDate||"-"} (${r.dateSource||"参考"})\nサンプル: ${r.sample?JSON.stringify(r.sample):"なし"}\n所要: ${((r.elapsedMs||0)/1000).toFixed(2)}秒`);
 });
 
 if($("writeGateBtn")){
