@@ -127,7 +127,19 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
  const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
  if(cmd==="init"){self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,vfs,poolClass:!!p.OpfsSAHPoolDb,capacity:p.getCapacity(),files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
  
-  if(cmd==="pool-diagnostic"){
+  if(cmd==="backup-stats"){
+ const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;db=new p.OpfsSAHPoolDb(marketName,"r");
+ const pc=Number(scalar(db,"PRAGMA page_count")||0),ps=Number(scalar(db,"PRAGMA page_size")||0),rows=Number(scalar(db,"SELECT COUNT(*) FROM bars_daily")||0);
+ db.close();db=null;self.postMessage({ok:true,type:"result",dbBytes:pc*ps,rows});return;
+}
+if(cmd==="backup-create"){
+ const resolved=resolveExistingMarketDb(p,name),marketName=resolved.name,backupName="/jq_market_snapshot.sqlite";
+ if(p.getFileNames().includes(backupName))p.unlink(backupName);
+ db=new p.OpfsSAHPoolDb(marketName,"r");status("backup","VACUUM INTO snapshot");db.exec(`VACUUM INTO '${backupName}'`);db.close();db=null;
+ const b=new p.OpfsSAHPoolDb(backupName,"r"),qc=String(scalar(b,"PRAGMA quick_check")||""),rows=Number(scalar(b,"SELECT COUNT(*) FROM bars_daily")||0),minDate=scalar(b,"SELECT MIN(date) FROM bars_daily"),maxDate=scalar(b,"SELECT MAX(date) FROM bars_daily"),pc=Number(scalar(b,"PRAGMA page_count")||0),ps=Number(scalar(b,"PRAGMA page_size")||0);b.close();
+ self.postMessage({ok:qc==="ok",type:"result",backupName,qc,rows,minDate,maxDate,dbBytes:pc*ps,elapsedMs:Math.round(performance.now()-t0)});return;
+}
+if(cmd==="pool-diagnostic"){
     const files=poolFileNamesSafe(p);
     const requested=name, base=String(requested||"").replace(/^\/+/,"");
     const normalized=files.map(f=>({raw:f,base:String(f).replace(/^\/+/,"")}));

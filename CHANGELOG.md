@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta5 — CURRENT (2026-08-30)
+
+- Continuous resumable backfill with safe stop and per-date commits.
+- Screen Wake Lock request; Safari still needs foreground execution on iPhone.
+- Local full snapshot via SQLite VACUUM INTO in SAH Pool, gated by storage estimate and validated by quick_check/rows/date range.
+- Existing Files rescue SQLite remains the external backup; portable streaming export is still required for final production backup.
+
+
 ## Web/PWA v7d-beta4h — CURRENT (2026-08-30)
 
 Real trading-day performance benchmark.

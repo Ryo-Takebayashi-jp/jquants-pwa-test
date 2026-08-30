@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta4h",
+    "version": "v7d-beta5",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-22"
+    "migration_version": "history-23"
   },
   "releases": [
     {
@@ -527,6 +527,21 @@
         "Estimate 20/250/1791-candidate runtime from the iPhone's measured speed",
         "Any newly discovered 0-row dates during probing are persisted so future gap scans skip them",
         "No DataLake re-import required"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta5",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Continuous resumable backfill and verified local snapshot",
+      "changes": [
+        "Continuous gap rescan/backfill with safe stop",
+        "Wake Lock request",
+        "Per-date commit/resume",
+        "Storage estimate gate",
+        "RAM-safe VACUUM INTO local SAH snapshot",
+        "quick_check/rows/date validation"
       ]
     }
   ]

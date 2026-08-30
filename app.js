@@ -616,3 +616,17 @@ setTimeout(()=>{
   const el=$("dateEngineStatus"); if(el){el.className="result "+(ok?"pass":"fail");el.textContent=ok?"日付エンジン: PASS（同日ループ防止）":"日付エンジン: FAIL（更新しないでください）";}
  }catch(e){const el=$("dateEngineStatus");if(el){el.className="result fail";el.textContent="日付エンジン: FAIL\n"+e}}
 },0);
+
+let continuousStopRequested=false,continuousRunning=false,wakeLock=null;
+async function jqWake(){try{if("wakeLock" in navigator)wakeLock=await navigator.wakeLock.request("screen")}catch(_){}}
+async function jqUnwake(){try{await wakeLock?.release()}catch(_){}wakeLock=null}
+if($("continuousStartBtn"))$("continuousStartBtn").onclick=async()=>{if(continuousRunning)return;continuousRunning=true;continuousStopRequested=false;await jqWake();try{
+ const token=prodTokenValue();if(!token)throw new Error("APIキーを入力してください");const from=$("gapFrom").value,to=$("gapTo").value,batchSize=Math.max(5,Math.min(120,Number($("continuousBatch").value||40)));let total=0,real=0,zero=0,t0=performance.now();
+ while(!continuousStopRequested){const s=await workerCall("bars-gap-scan",180000,null,null,{from,to}),have=new Set(s.dates),no=new Set(s.noDataDates||[]),missing=[];let d=from;while(d<=to){if(!isWeekendIso(d)&&!have.has(d)&&!no.has(d))missing.push(d);d=isoAddDays(d,1)}
+ if(!missing.length){box("continuousResult","pass",`PASS\n全候補完了\n処理 ${total}日 / 実データ ${real} / 0件 ${zero}\n所要 ${((performance.now()-t0)/60000).toFixed(1)}分`);break}
+ for(const day of missing.slice(0,batchSize)){if(continuousStopRequested)break;box("continuousResult","run",`処理中 ${day}\n処理 ${total} / 実データ ${real} / 0件 ${zero}\n残候補 ${missing.length}\n経過 ${((performance.now()-t0)/60000).toFixed(1)}分`);const r=await autoCommitDate(day,token,"backfill");total++;if(r.rows)real++;else zero++}}
+ if(continuousStopRequested)box("continuousResult","pass",`安全停止。Commit済み ${total}日。再開始で続行できます。`);
+}catch(e){box("continuousResult","fail","FAIL\n成功済み日付は保存済み。\n"+e)}finally{continuousRunning=false;await jqUnwake()}};
+if($("continuousStopBtn"))$("continuousStopBtn").onclick=()=>{continuousStopRequested=true;box("continuousResult","run","安全停止予約。現在の日付完了後に停止します…")};
+if($("backupEstimateBtn"))$("backupEstimateBtn").onclick=async()=>{try{const r=await workerCall("backup-stats",180000,null),e=await navigator.storage.estimate(),free=Math.max(0,(e.quota||0)-(e.usage||0)),need=Math.ceil(r.dbBytes*1.15),ok=!e.quota||free>=need;box("backupEstimateResult",ok?"pass":"fail",`${ok?"PASS":"容量不足の可能性"}\nDB ${(r.dbBytes/1073741824).toFixed(2)}GB\n空き ${e.quota?(free/1073741824).toFixed(2)+"GB":"不明"}\n必要目安 ${(need/1073741824).toFixed(2)}GB`);$("backupCreateBtn").disabled=!ok}catch(e){box("backupEstimateResult","fail","FAIL\n"+e)}};
+if($("backupCreateBtn"))$("backupCreateBtn").onclick=async()=>{box("backupCreateResult","run","スナップショット作成中…");try{const r=await workerCall("backup-create",1800000,s=>box("backupCreateResult","run",s.detail||s.stage));box("backupCreateResult",r.ok?"pass":"fail",`${r.ok?"PASS":"FAIL"}\n${r.backupName}\nquick_check ${r.qc}\nrows ${Number(r.rows).toLocaleString()}\n${r.minDate}～${r.maxDate}\n${(r.dbBytes/1073741824).toFixed(2)}GB\n${(r.elapsedMs/1000).toFixed(1)}秒`)}catch(e){box("backupCreateResult","fail","FAIL\n"+e)}};
