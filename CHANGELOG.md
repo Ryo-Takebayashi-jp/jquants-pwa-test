@@ -1,5 +1,17 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta1b — CURRENT (2026-08-30)
+
+J-Quants V2 connectivity hotfix.
+
+- Correct V2 authentication to `x-api-key` (beta1 incorrectly used Bearer auth).
+- Normalize date to `YYYYMMDD`.
+- Route browser requests through a same-origin Cloudflare Pages Function to avoid Safari cross-origin fetch/CORS failure.
+- The proxy does not persist the API key and returns `Cache-Control: no-store`.
+- Removed the V1 token-auth fallback.
+- No change to SAH Pool directory or the existing 1.12GB DataLake.
+
+
 ## Web/PWA v7d-beta1 — CURRENT (2026-08-30)
 
 First real J-Quants network-to-DataLake sync.

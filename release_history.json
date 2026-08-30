@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta1",
+    "version": "v7d-beta1b",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-10"
+    "migration_version": "history-11"
   },
   "releases": [
     {
@@ -353,6 +353,21 @@
         "Per-date BEGIN IMMEDIATE/UPSERT/COMMIT/checkpoint",
         "Five-day foreground sync",
         "No whole-DB RAM expansion"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta1b",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Fix J-Quants V2 auth and browser CORS via same-origin Cloudflare proxy",
+      "changes": [
+        "Use official V2 x-api-key authentication instead of Bearer token",
+        "Use YYYYMMDD date parameter",
+        "Add same-origin Cloudflare Pages Function proxy",
+        "API key is forwarded per request and not persisted",
+        "Remove obsolete V1 fallback",
+        "Preserve SAH Pool/DataLake identity"
       ]
     }
   ]

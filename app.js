@@ -216,41 +216,33 @@ if($("batchResumeBtn")) $("batchResumeBtn").onclick=async()=>{
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function jqAuthHeaders(token){
- return {"Authorization": token.startsWith("Bearer ")?token:`Bearer ${token}`,"Accept":"application/json"};
+ return {"x-api-key":token,"Accept":"application/json"};
 }
 async function jqFetchDaily(date, token){
- if(!token) throw new Error("APIキー / Tokenを入力してください");
- const endpoints=[
-   `/v2/equities/bars/daily?date=${encodeURIComponent(date)}`,
-   `/v1/prices/daily_quotes?date=${encodeURIComponent(date)}`
- ];
- let lastErr=null;
- for(const path of endpoints){
-   let url=`https://api.jquants.com${path}`, all=[], pageToken=null, tries=0;
-   try{
-     do{
-       const u=new URL(url);
-       if(pageToken) u.searchParams.set("pagination_key",pageToken);
-       let res;
-       for(let attempt=0;attempt<5;attempt++){
-         res=await fetch(u,{headers:jqAuthHeaders(token)});
-         if(res.status!==429) break;
-         const ra=Number(res.headers.get("Retry-After")||0);
-         await sleep(ra?ra*1000:Math.min(16000,1000*(2**attempt)));
-       }
-       if(!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-       const j=await res.json();
-       const rows=j.data||j.daily_quotes||j.dailyQuotes||j.prices||[];
-       if(!Array.isArray(rows)) throw new Error("API response rows not recognized");
-       all.push(...rows);
-       pageToken=j.pagination_key||j.paginationKey||null;
-       tries++;
-       if(tries>100) throw new Error("pagination safety stop");
-     }while(pageToken);
-     return {rows:all,endpoint:path.split("?")[0]};
-   }catch(e){lastErr=e}
- }
- throw lastErr||new Error("J-Quants endpoint failed");
+ if(!token) throw new Error("APIキーを入力してください");
+ const normalized=String(date).replaceAll("-","");
+ let url=`/api/jquants/equities/bars/daily?date=${encodeURIComponent(normalized)}`;
+ let all=[], pageToken=null, pages=0;
+ do{
+   const u=new URL(url,location.origin);
+   if(pageToken) u.searchParams.set("pagination_key",pageToken);
+   let res;
+   for(let attempt=0;attempt<5;attempt++){
+     res=await fetch(u,{headers:jqAuthHeaders(token),cache:"no-store"});
+     if(res.status!==429) break;
+     const ra=Number(res.headers.get("Retry-After")||0);
+     await sleep(ra?ra*1000:Math.min(16000,1000*(2**attempt)));
+   }
+   const text=await res.text();
+   let j={}; try{j=text?JSON.parse(text):{}}catch(_){}
+   if(!res.ok) throw new Error(`J-Quants HTTP ${res.status}: ${j.message||j.error||text.slice(0,300)}`);
+   const rows=j.data||[];
+   if(!Array.isArray(rows)) throw new Error("J-Quants V2 response data not recognized");
+   all.push(...rows);
+   pageToken=j.pagination_key||j.paginationKey||null;
+   pages++; if(pages>100) throw new Error("pagination safety stop");
+ }while(pageToken);
+ return {rows:all,endpoint:"/v2/equities/bars/daily",pages};
 }
 async function jqCommitDate(date,token){
  const got=await jqFetchDaily(date,token);
