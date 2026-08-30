@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta4g",
+    "version": "v7d-beta4h",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-21"
+    "migration_version": "history-22"
   },
   "releases": [
     {
@@ -513,6 +513,20 @@
         "Separate daily/backfill checkpoints",
         "Monotonic checkpoints",
         "Persist/exclude 0-row dates from gap scans"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta4h",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Real missing trading-day benchmark",
+      "changes": [
+        "Benchmark now skips weekends and persisted 0-row holidays until it finds a missing date with real J-Quants rows",
+        "Report API fetch time, SQLite prepared-statement write time, rows/sec and combined per-trading-day time",
+        "Estimate 20/250/1791-candidate runtime from the iPhone's measured speed",
+        "Any newly discovered 0-row dates during probing are persisted so future gap scans skip them",
+        "No DataLake re-import required"
       ]
     }
   ]

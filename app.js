@@ -465,6 +465,26 @@ ${lastGapPlan.length?"④をもう一度押すと次の束を処理。":"この�
 };
 
 
+
+async function findFirstRealMissingTradingDay(token,from,to,maxProbe=40){
+  const r=await workerCall("bars-gap-scan",180000,null,null,{from,to});
+  const have=new Set(r.dates), checkedNoData=new Set(r.noDataDates||[]);
+  let d=from, probed=0, skippedKnown=0;
+  while(d<=to && probed<maxProbe){
+    if(!isWeekendIso(d) && !have.has(d)){
+      if(checkedNoData.has(d)){ skippedKnown++; d=isoAddDays(d,1); continue; }
+      const t0=performance.now();
+      const got=await jqFetchDaily(d,token);
+      const fetchMs=Math.round(performance.now()-t0);
+      probed++;
+      if(got.rows.length) return {date:d,rows:got.rows,fetchMs,endpoint:got.endpoint,probed,skippedKnown};
+      await workerCall("bars-auto-no-data",180000,null,null,{date:d,progressDataset:"bars_daily_backfill"});
+    }
+    d=isoAddDays(d,1);
+  }
+  return {date:null,rows:[],probed,skippedKnown};
+}
+
 let lastBench=null;
 async function firstUsableGapDate(){
   if(lastGapPlan.length) return lastGapPlan[0];
@@ -478,37 +498,42 @@ async function firstUsableGapDate(){
   return null;
 }
 if($("speedBenchBtn")) $("speedBenchBtn").onclick=async()=>{
- box("speedBenchResult","run","穴候補1日を取得して高速書込みを実測中…");
+ box("speedBenchResult","run","実取引日の欠損を探して、1営業日分を実測中…");
  try{
    const token=prodTokenValue(); if(!token)throw new Error("APIキーを入力してください");
-   let d=await firstUsableGapDate(); if(!d)throw new Error("穴候補がありません");
-   let got=await jqFetchDaily(d,token);
-   let tries=0;
-   while(!got.rows.length && tries<10){
-     d=isoAddDays(d,1);
-     if(isWeekendIso(d)){tries++;continue}
-     got=await jqFetchDaily(d,token); tries++;
-   }
-   if(!got.rows.length)throw new Error("実データのあるベンチマーク日を見つけられませんでした");
-   const t0=performance.now();
-   const r=await workerCall("bars-write-benchmark",300000,s=>box("speedBenchResult","run",s.detail||s.stage),null,{date:d,rows:got.rows});
-   const totalMs=Math.round(performance.now()-t0);
-   lastBench={...r,totalMs};
-   const est20=(totalMs*20/60000).toFixed(1), est250=(totalMs*250/3600000).toFixed(1), est1600=(totalMs*1600/3600000).toFixed(1);
+   const from=$("gapFrom")?.value||"2016-08-30", to=$("gapTo")?.value||localTodayIso();
+   const found=await findFirstRealMissingTradingDay(token,from,to,60);
+   if(!found.date)throw new Error(`60候補を確認しましたが実データ日が見つかりませんでした。先に穴検出/休場日確認を続けてください。`);
+   box("speedBenchResult","run",`${found.date}: ${found.rows.length.toLocaleString()}行取得済み
+SQLite高速書込みを実測中…`);
+   const tWrite0=performance.now();
+   const r=await workerCall("bars-write-benchmark",300000,
+     s=>box("speedBenchResult","run",s.detail||s.stage),
+     null,{date:found.date,rows:found.rows});
+   const writeTotalMs=Math.round(performance.now()-tWrite0);
+   lastBench={...r,fetchMs:found.fetchMs,totalMs:found.fetchMs+writeTotalMs,date:found.date,rows:found.rows.length};
+   const perDay=Math.max(1,lastBench.totalMs);
+   const est20=(perDay*20/60000).toFixed(1);
+   const est250=(perDay*250/3600000).toFixed(1);
+   const est1791=(perDay*1791/3600000).toFixed(1);
    box("speedBenchResult","pass",`PASS
-日付: ${d}
-行数: ${r.rows.toLocaleString()}
+実取引日: ${found.date}
+取得行数: ${found.rows.length.toLocaleString()}
+API取得: ${(found.fetchMs/1000).toFixed(2)}秒
 SQLite書込み: ${(r.writeMs/1000).toFixed(2)}秒
 書込み速度: ${Number(r.rowsPerSec||0).toLocaleString()} rows/sec
-API込み総時間: ${(totalMs/1000).toFixed(2)}秒
+API+書込み概算: ${(lastBench.totalMs/1000).toFixed(2)}秒/取引日
 
 概算:
-20営業日 ≈ ${est20}分
-250営業日 ≈ ${est250}時間
-1,600営業日 ≈ ${est1600}時間
-※通信時間・休場日で変動します。`);
+20取引日 ≈ ${est20}分
+250取引日 ≈ ${est250}時間
+1,791候補を全部実取引日と仮定 ≈ ${est1791}時間
+※実際は祝日・既存データがあるので最終時間はこれより短くなります。
+
+休場候補を追加確認: ${found.probed-1}日`);
  }catch(e){box("speedBenchResult","fail","FAIL\n"+e)}
 };
+
 if($("fastGapFillBtn")) $("fastGapFillBtn").onclick=async()=>{
  box("fastGapFillResult","run","高速穴埋めを開始…");
  try{

@@ -1,5 +1,16 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta4h — CURRENT (2026-08-30)
+
+Real trading-day performance benchmark.
+
+- The benchmark now searches the missing-date range until it finds a date that actually returns J-Quants rows, instead of accidentally timing only a holiday.
+- It reports API fetch seconds, SQLite prepared-statement write seconds, rows/sec, and combined per-trading-day time.
+- 0-row dates encountered while searching are persisted in `web_no_data_dates`, so subsequent scans do not repeat them.
+- Runtime estimates are shown for 20, 250, and the current 1,791 weekday-gap candidates.
+- No DataLake re-import or schema migration is required.
+
+
 ## Web/PWA v7d-beta4g — CURRENT (2026-08-30)
 
 - Fixed the repeated same-date sync root cause: JST local midnight serialized through `toISOString()` could return the previous UTC calendar date.
