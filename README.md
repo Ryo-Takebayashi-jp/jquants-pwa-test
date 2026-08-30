@@ -1,32 +1,27 @@
-# J-Quants Local-first PWA v7b Cloudflare
+# J-Quants Local-first PWA v7c
 
 目的:
-GitHub Pagesでは未達だった crossOriginIsolated / SharedArrayBuffer を、
-Cloudflare Pages + `_headers` で有効化できるか実機確認する。
+PoC v6で1.12GB付近で落ちた旧sql.js方式を捨て、
+レスキューSQLiteをCloudflare側OPFSへストリーミングImportし、
+公式 @sqlite.org/sqlite-wasm のOPFS VFSで直接開く。
 
-## ファイル
-- index.html
-- app.js
-- opfs-worker.js
-- manifest.webmanifest
-- service-worker.js
-- _headers
-- README.md
-
-## Cloudflare Pages
-GitHubリポジトリをCloudflare Pagesへ接続してデプロイする。
-静的サイトなのでフレームワーク指定は不要。
-ビルドコマンドは空欄、出力ディレクトリはリポジトリルート相当を使う。
+## テスト
+1. Cloudflare Pagesへ7ファイルをCommit/Deploy
+2. iPhoneでv7cを開く
+3. 前提確認
+4. Filesから1.12GBレスキューSQLiteを選択
+5. OPFSへStreaming Import
+6. SQLite-WASM Direct Open
+7. 任意で quick_check
+8. 総合判定
 
 ## 重要
-GitHub PagesとCloudflare Pagesはoriginが異なるため、
-GitHub Pages側OPFSの1.12GB DBはCloudflareから直接見えない。
-レスキュー済みSQLiteをv7cでCloudflare側OPFSへImportして引き継ぐ。
+- ImportはFile.stream() -> OPFS WritableStream
+- DB全体をArrayBuffer化しない
+- SQLiteはWorker + OPFS VFSでread-only open
+- 元のFilesバックアップは変更しない
+- v7cはAPI追記をしない。Direct Open成立確認のみ。
 
-## v7bテスト
-1. pages.dev URLをiPhoneで開く
-2. 配信環境を確認
-3. crossOriginIsolated / SharedArrayBuffer がPASSか確認
-4. 64MB Direct OPFSテスト
-5. 任意でレスキューSQLiteをFilesから選んで軽量確認
-6. 総合判定
+SQLite-WASM:
+@sqlite.org/sqlite-wasm 3.53.0-build1
+CDNからES Moduleとして読み込む。

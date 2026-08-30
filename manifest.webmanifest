@@ -1,6 +1,6 @@
 {
-  "name": "J-Quants Local-first PWA v7b Cloudflare",
-  "short_name": "JQ PWA v7b",
+  "name": "J-Quants Local-first PWA v7c SQLite OPFS",
+  "short_name": "JQ PWA v7c",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#08111f",

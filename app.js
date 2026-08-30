@@ -1,91 +1,140 @@
+const DBNAME="jq_market_v7c.sqlite";
 const $=id=>document.getElementById(id);
-const state={env:null,direct:null,file:null};
+const state={env:null,imported:null,opened:null,quick:null};
 function box(id,cls,t){const e=$(id);e.className="result "+cls;e.textContent=t}
 function fmt(n){const u=["B","KB","MB","GB","TB"];let x=n,i=0;while(x>=1024&&i<u.length-1){x/=1024;i++}return `${x.toFixed(i>=2?2:1)} ${u[i]}`}
 function sqliteHeaderOk(bytes){const exp=[83,81,76,105,116,101,32,102,111,114,109,97,116,32,51,0];return exp.every((v,i)=>bytes[i]===v)}
+async function root(){if(!navigator.storage?.getDirectory)throw new Error("OPFS未対応");return navigator.storage.getDirectory()}
 
 async function envCheck(){
- const r={
-   url:location.href,
-   secure:isSecureContext,
-   isolated:globalThis.crossOriginIsolated===true,
-   sab:typeof SharedArrayBuffer!=="undefined",
-   opfs:!!navigator.storage?.getDirectory,
-   worker:typeof Worker!=="undefined",
-   sw:"serviceWorker" in navigator
- };
- state.env=r;
- const ready=r.secure&&r.isolated&&r.sab&&r.opfs&&r.worker;
- box("envResult",ready?"pass":"warn",
-`URL: ${r.url}
-Secure Context: ${r.secure?"PASS":"FAIL"}
+ try{
+  const est=await navigator.storage?.estimate?.();
+  const r={
+    secure:isSecureContext, isolated:globalThis.crossOriginIsolated===true,
+    sab:typeof SharedArrayBuffer!=="undefined", opfs:!!navigator.storage?.getDirectory,
+    worker:typeof Worker!=="undefined", usage:est?.usage??null, quota:est?.quota??null
+  };
+  r.ready=r.secure&&r.isolated&&r.sab&&r.opfs&&r.worker;
+  state.env=r;
+  box("envResult",r.ready?"pass":"warn",
+`Secure Context: ${r.secure?"PASS":"FAIL"}
 crossOriginIsolated: ${r.isolated?"PASS":"NO"}
 SharedArrayBuffer: ${r.sab?"PASS":"NO"}
 OPFS: ${r.opfs?"PASS":"FAIL"}
-Web Worker: ${r.worker?"PASS":"FAIL"}
-Service Worker: ${r.sw?"PASS":"FAIL"}
+Worker: ${r.worker?"PASS":"FAIL"}
+使用量: ${r.usage!=null?fmt(r.usage):"不明"}
+Quota: ${r.quota!=null?fmt(r.quota):"不明"}
+空き概算: ${r.quota!=null&&r.usage!=null?fmt(Math.max(0,r.quota-r.usage)):"不明"}
 
-SQLite-WASM OPFS VFS前提: ${ready?"PASS":"未達"}
-
-${ready?"Cloudflare Pages側の配信条件は成立しました。":"もし pages.dev 上で未達なら _headers の反映状況を確認します。"}`);
+v7c前提: ${r.ready?"PASS":"未達"}`);
+ }catch(e){state.env={ready:false,error:String(e)};box("envResult","fail","FAIL\n"+e)}
 }
 
-async function directTest(){
- let w;box("directResult","warn","Worker起動中…");
+async function existingOpfsFile(){
+ try{const r=await root(),h=await r.getFileHandle(DBNAME),f=await h.getFile();return f}catch(_){return null}
+}
+
+async function importDb(){
+ const f=$("fileInput").files?.[0];
+ if(!f){box("importResult","warn","レスキューした .sqlite を選択してください。");return}
+ const head=new Uint8Array(await f.slice(0,16).arrayBuffer());
+ if(!sqliteHeaderOk(head)){box("importResult","fail","SQLite header不一致。Importしません。");return}
+ $("importBtn").disabled=true; $("importMeter").style.width="0%";
+ const t0=performance.now();
  try{
-   w=new Worker("./opfs-worker.js");
-   const r=await new Promise((resolve,reject)=>{
-     const tm=setTimeout(()=>reject(new Error("60秒タイムアウト")),60000);
-     w.onmessage=e=>{clearTimeout(tm);e.data?.ok?resolve(e.data):reject(new Error(e.data?.error||"Worker失敗"))};
-     w.onerror=e=>{clearTimeout(tm);reject(new Error(e.message||"Worker error"))};
-     w.postMessage({cmd:"test"});
-   });
-   state.direct=r;
-   box("directResult","pass",
+  const r=await root(),h=await r.getFileHandle(DBNAME,{create:true}),w=await h.createWritable({keepExistingData:false});
+  const reader=f.stream().getReader();
+  let written=0, chunks=0;
+  while(true){
+    const {done,value}=await reader.read(); if(done)break;
+    await w.write(value); written+=value.byteLength; chunks++;
+    const pct=f.size?Math.min(100,written/f.size*100):0;
+    $("importMeter").style.width=pct.toFixed(2)+"%";
+    if(chunks%8===0){
+      box("importResult","run",`Import中…
+${fmt(written)} / ${fmt(f.size)}
+${pct.toFixed(1)}%
+チャンク: ${chunks}
+経過: ${((performance.now()-t0)/1000).toFixed(1)}秒`);
+      await new Promise(requestAnimationFrame);
+    }
+  }
+  await w.close();
+  const out=await h.getFile(),outHead=new Uint8Array(await out.slice(0,16).arrayBuffer());
+  const ok=out.size===f.size&&sqliteHeaderOk(outHead);
+  const sec=(performance.now()-t0)/1000;
+  state.imported={ok,size:out.size,sourceSize:f.size,seconds:sec,chunks};
+  box("importResult",ok?"pass":"fail",
+`${ok?"PASS":"FAIL"}
+Import先: ${DBNAME}
+サイズ: ${fmt(out.size)} (${out.size.toLocaleString()} bytes)
+元サイズ一致: ${out.size===f.size?"PASS":"FAIL"}
+SQLite header: ${sqliteHeaderOk(outHead)?"PASS":"FAIL"}
+処理時間: ${sec.toFixed(1)}秒
+全体ArrayBuffer化: なし`);
+ }catch(e){state.imported={ok:false,error:String(e)};box("importResult","fail","Import FAIL\n"+e)}
+ finally{$("importBtn").disabled=false}
+}
+
+function workerCall(cmd,timeoutMs=180000){
+ return new Promise((resolve,reject)=>{
+  const w=new Worker("./sqlite-worker.js",{type:"module"});
+  const timer=setTimeout(()=>{w.terminate();reject(new Error("タイムアウト"))},timeoutMs);
+  w.onmessage=e=>{clearTimeout(timer);w.terminate();e.data?.ok?resolve(e.data):reject(new Error(e.data?.error||"Worker失敗"))};
+  w.onerror=e=>{clearTimeout(timer);w.terminate();reject(new Error(e.message||"Worker error"))};
+  w.postMessage({cmd,dbName:"/"+DBNAME});
+ });
+}
+
+async function openDb(){
+ box("openResult","run","SQLite-WASMを起動してDBを開いています…");
+ try{
+  const f=await existingOpfsFile(); if(!f)throw new Error("Import済みDBがありません。先にStep 2を実行してください。");
+  const r=await workerCall("open",180000);
+  state.opened=r;
+  box("openResult","pass",
 `PASS
-Worker + SyncAccessHandle: PASS
-論理ファイルサイズ: ${fmt(r.fileSize)}
-全体RAM読込: なし
-先頭/中央/末尾の照合: PASS
-処理時間: ${r.elapsedMs} ms
-テストファイル削除: ${r.deleted?"PASS":"FAIL"}`);
- }catch(e){state.direct={ok:false,error:String(e)};box("directResult","fail","FAIL\n"+e)}
- finally{if(w)w.terminate()}
+SQLite version: ${r.sqliteVersion}
+OPFS VFS: ${r.opfsAvailable?"PASS":"FAIL"}
+DB filename: ${r.filename}
+DB size: ${fmt(f.size)}
+open + query時間: ${(r.elapsedMs/1000).toFixed(2)}秒
+テーブル数: ${r.tableCount}
+bars_daily: ${Number(r.barsCount).toLocaleString()}行
+期間: ${r.minDate||"-"} ～ ${r.maxDate||"-"}
+sync_log OK: ${Number(r.syncOk||0).toLocaleString()}日
+
+DB全体RAM展開: なし`);
+ }catch(e){state.opened={ok:false,error:String(e)};box("openResult","fail","Direct Open FAIL\n"+e)}
 }
 
-async function fileCheck(){
+async function quickCheck(){
+ box("quickResult","run","quick_check実行中… 1GB超のため時間がかかる場合があります。");
  try{
-   const f=$("fileInput").files?.[0];
-   if(!f)throw new Error("レスキューした .sqlite ファイルを選択してください。");
-   const head=new Uint8Array(await f.slice(0,16).arrayBuffer());
-   const ok=sqliteHeaderOk(head);
-   state.file={ok, size:f.size, name:f.name, lastModified:f.lastModified};
-   box("fileResult",ok?"pass":"warn",
-`ファイル: ${f.name}
-容量: ${fmt(f.size)} (${f.size.toLocaleString()} bytes)
-SQLite header: ${ok?"PASS":"不一致"}
-更新日時: ${new Date(f.lastModified).toLocaleString()}
-
-${ok?"レスキューSQLiteはImport候補として正常です。":"SQLiteとして要調査です。"}`);
- }catch(e){state.file={ok:false,error:String(e)};box("fileResult","fail","FAIL\n"+e)}
+  const r=await workerCall("quick",600000);
+  state.quick=r;
+  box("quickResult",r.quick==="ok"?"pass":"warn",
+`quick_check: ${r.quick}
+処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒`);
+ }catch(e){state.quick={ok:false,error:String(e)};box("quickResult","fail","quick_check FAIL\n"+e)}
 }
 
 function summary(){
- const e=state.env;
- const ready=e?.secure&&e?.isolated&&e?.sab&&e?.opfs&&e?.worker;
- const direct=state.direct?.ok===true;
- const file=state.file?.ok===true;
- box("summaryResult",ready&&direct?"pass":"warn",
-`Cloudflare配信前提: ${ready?"PASS":"未PASS"}
-Direct OPFS: ${direct?"PASS":"未PASS"}
-レスキューSQLite: ${file?"PASS":state.file?"要確認":"未確認（任意）"}
+ const env=state.env?.ready===true, imp=state.imported?.ok===true, op=state.opened?.ok===true;
+ const q=state.quick?.quick==="ok";
+ box("summaryResult",env&&imp&&op?"pass":"warn",
+`Cloudflare/OPFS前提: ${env?"PASS":"未PASS"}
+1.12GB Streaming Import: ${imp?"PASS":"未PASS"}
+SQLite-WASM Direct Open: ${op?"PASS":"未PASS"}
+quick_check: ${q?"PASS":state.quick?"要確認":"未実行（任意）"}
 
-総合: ${ready&&direct?"SQLite-WASM Direct OPFSエンジン導入へ進めます。":"配信環境またはDirect OPFSの未達項目を確認してください。"}
-${ready&&direct?"次版v7cで、レスキューした1.12GB SQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く試験へ進みます。":""}`);
+総合: ${env&&imp&&op?"新保存エンジン方式は実機成立。旧sql.js全体RAM展開方式を廃止できます。":"未完了項目を確認してください。"}
+${env&&imp&&op?"次段階v7dで、このDBへJ-Quants差分/残り期間をSQLite-WASM経由で直接追記し、10年完走テストへ進めます。":""}`);
 }
 
 $("envBtn").onclick=envCheck;
-$("directBtn").onclick=directTest;
-$("fileBtn").onclick=fileCheck;
+$("importBtn").onclick=importDb;
+$("openBtn").onclick=openDb;
+$("quickBtn").onclick=quickCheck;
 $("summaryBtn").onclick=summary;
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(()=>{}));
