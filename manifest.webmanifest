@@ -1,9 +1,8 @@
 {
-  "name": "J-Quants Local-first PWA PoC v6",
-  "short_name": "JQ PWA PoC6",
+  "name": "J-Quants DataLake Rescue v1",
+  "short_name": "JQ Rescue",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#07111f",
-  "theme_color": "#07111f",
-  "description": "Long backfill endurance PoC for local-first J-Quants PWA"
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220"
 }
