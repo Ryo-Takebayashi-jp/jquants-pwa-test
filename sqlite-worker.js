@@ -126,6 +126,52 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
    self.postMessage({ok:true,type:"result",from,to,dates:rows.map(r=>r.date),elapsedMs:Math.round(performance.now()-t0)});return;
  }
 
+
+ if(cmd==="bars-write-benchmark"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   const payload=e.data.payload||{}, day=payload.date, rows=payload.rows||[];
+   if(!day||!rows.length)throw new Error("benchmark requires date and rows");
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   try{db.exec("PRAGMA temp_store=MEMORY; PRAGMA cache_size=-32768;")}catch(_){}
+   const info=tableInfo(db,"bars_daily"), cols=info.map(x=>x.name), pk=primaryKeyCols(info);
+   const aliases={
+     date:["Date","date"], code:["Code","code"], o:["O","o"], h:["H","h"], l:["L","l"], c:["C","c"],
+     upper_limit:["UL","upper_limit"], lower_limit:["LL","lower_limit"], volume:["Vo","Volume","volume"],
+     value:["Va","Value","value"], adj_factor:["AdjFactor","adj_factor"], adj_o:["AdjO","adj_o"],
+     adj_h:["AdjH","adj_h"], adj_l:["AdjL","adj_l"], adj_c:["AdjC","adj_c"], adj_volume:["AdjVo","adj_volume"],
+     raw_json:["__RAW_JSON__"]
+   };
+   function pick2(obj,c){
+     if(c==="raw_json") return JSON.stringify(obj);
+     for(const k of (aliases[c]||[c])) if(Object.prototype.hasOwnProperty.call(obj,k)) return obj[k];
+     return null;
+   }
+   const insertCols=cols.filter(c=>pick2(rows[0],c)!==null || ["date","code"].includes(c.toLowerCase()));
+   const updateCols=insertCols.filter(c=>!pk.includes(c));
+   const conflict=pk.length?` ON CONFLICT(${pk.map(qident).join(",")}) DO UPDATE SET `+
+     updateCols.map(c=>`${qident(c)}=excluded.${qident(c)}`).join(","):"";
+   const sql=`INSERT INTO bars_daily(${insertCols.map(qident).join(",")}) VALUES(${insertCols.map(()=>"?").join(",")})${conflict}`;
+   const tWrite=performance.now();
+   db.exec("BEGIN IMMEDIATE");
+   let n=0, stmt=null;
+   try{
+     stmt=db.prepare(sql);
+     for(const r of rows){
+       stmt.bind(insertCols.map(c=>pick2(r,c)));
+       stmt.step(); stmt.reset(); n++;
+     }
+     stmt.finalize(); stmt=null;
+     db.exec("COMMIT");
+   }catch(err){
+     try{if(stmt)stmt.finalize()}catch(_){}
+     try{db.exec("ROLLBACK")}catch(_){}
+     throw err;
+   }
+   const writeMs=Math.round(performance.now()-tWrite);
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",date:day,rows:n,writeMs,rowsPerSec:writeMs?Math.round(n/(writeMs/1000)):null});return;
+ }
+
  if(cmd==="bars-auto-state"){
    if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
    db=new p.OpfsSAHPoolDb(name,"r");
@@ -180,6 +226,7 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
    const payload=e.data.payload||{}, day=payload.date, rows=payload.rows||[];
    if(!day)throw new Error("date missing");
    db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   try{db.exec("PRAGMA temp_store=MEMORY; PRAGMA cache_size=-32768;")}catch(_){}
    const info=tableInfo(db,"bars_daily"), cols=info.map(x=>x.name), pk=primaryKeyCols(info);
    if(!cols.length)throw new Error("bars_daily schema missing");
    const aliases={
@@ -221,7 +268,19 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
    db.exec("BEGIN IMMEDIATE");
    try{
      let n=0;
-     for(const r of rows){ db.exec({sql,bind:insertCols.map(c=>pick(r,c))}); n++; }
+     const stmt=db.prepare(sql);
+     try{
+       const total=rows.length;
+       for(const r of rows){
+         stmt.bind(insertCols.map(c=>pick(r,c)));
+         stmt.step();
+         stmt.reset();
+         n++;
+         if(n%500===0) status("fast-write",`${day}: ${n}/${total} rows`);
+       }
+     } finally {
+       stmt.finalize();
+     }
      db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
        VALUES(?,?,?,?,?,?)
        ON CONFLICT(dataset) DO UPDATE SET last_success_date=excluded.last_success_date,updated_at=excluded.updated_at,

@@ -1,5 +1,17 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta4 — CURRENT (2026-08-30)
+
+High-speed historical backfill.
+
+- Reuse one SQLite prepared UPSERT statement for all ~4,400 rows in a trading day instead of invoking `db.exec()` once per row.
+- Retain one transaction/commit boundary per date, so interruption recovery remains date-granular.
+- Emit write progress every 500 rows.
+- Add an iPhone real-device one-day benchmark reporting SQLite write seconds, rows/sec, API-inclusive total seconds, and projected backfill time.
+- Add a high-speed gap-fill runner with live elapsed/ETA and configurable batches up to 120 candidate weekdays.
+- Preserve `raw_json`, checkpoint semantics, SAH Pool directory and the existing 1.12GB DataLake.
+
+
 ## Web/PWA v7d-beta3 — CURRENT (2026-08-30)
 
 Production-style update dashboard and historical gap backfill.

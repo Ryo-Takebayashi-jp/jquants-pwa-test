@@ -443,3 +443,78 @@ ${out.map(x=>`${x.date}: ${x.rows} rows${x.noData?" (0件/休場)":""}`).join("\
 ${lastGapPlan.length?"④をもう一度押すと次の束を処理。":"この検出範囲は処理完了。"}`);
  }catch(e){box("gapFillResult","fail","FAIL\n"+e)}
 };
+
+
+let lastBench=null;
+async function firstUsableGapDate(){
+  if(lastGapPlan.length) return lastGapPlan[0];
+  const from=$("gapFrom")?.value||"2016-08-30", to=$("gapTo")?.value||localTodayIso();
+  const r=await workerCall("bars-gap-scan",180000,null,null,{from,to});
+  const have=new Set(r.dates); let d=from;
+  while(d<=to){
+    if(!isWeekendIso(d) && !have.has(d)) return d;
+    d=isoAddDays(d,1);
+  }
+  return null;
+}
+if($("speedBenchBtn")) $("speedBenchBtn").onclick=async()=>{
+ box("speedBenchResult","run","穴候補1日を取得して高速書込みを実測中…");
+ try{
+   const token=prodTokenValue(); if(!token)throw new Error("APIキーを入力してください");
+   let d=await firstUsableGapDate(); if(!d)throw new Error("穴候補がありません");
+   let got=await jqFetchDaily(d,token);
+   let tries=0;
+   while(!got.rows.length && tries<10){
+     d=isoAddDays(d,1);
+     if(isWeekendIso(d)){tries++;continue}
+     got=await jqFetchDaily(d,token); tries++;
+   }
+   if(!got.rows.length)throw new Error("実データのあるベンチマーク日を見つけられませんでした");
+   const t0=performance.now();
+   const r=await workerCall("bars-write-benchmark",300000,s=>box("speedBenchResult","run",s.detail||s.stage),null,{date:d,rows:got.rows});
+   const totalMs=Math.round(performance.now()-t0);
+   lastBench={...r,totalMs};
+   const est20=(totalMs*20/60000).toFixed(1), est250=(totalMs*250/3600000).toFixed(1), est1600=(totalMs*1600/3600000).toFixed(1);
+   box("speedBenchResult","pass",`PASS
+日付: ${d}
+行数: ${r.rows.toLocaleString()}
+SQLite書込み: ${(r.writeMs/1000).toFixed(2)}秒
+書込み速度: ${Number(r.rowsPerSec||0).toLocaleString()} rows/sec
+API込み総時間: ${(totalMs/1000).toFixed(2)}秒
+
+概算:
+20営業日 ≈ ${est20}分
+250営業日 ≈ ${est250}時間
+1,600営業日 ≈ ${est1600}時間
+※通信時間・休場日で変動します。`);
+ }catch(e){box("speedBenchResult","fail","FAIL\n"+e)}
+};
+if($("fastGapFillBtn")) $("fastGapFillBtn").onclick=async()=>{
+ box("fastGapFillResult","run","高速穴埋めを開始…");
+ try{
+   const token=prodTokenValue(); if(!token)throw new Error("APIキーを入力してください");
+   if(!lastGapPlan.length)throw new Error("先に『過去データの穴を検出』を実行してください");
+   const maxDays=Math.max(1,Math.min(120,Number($("fastGapMax").value||40)));
+   const batch=lastGapPlan.slice(0,maxDays), out=[], t0=performance.now();
+   for(const d of batch){
+     const elapsed=(performance.now()-t0)/1000;
+     const avg=out.length?elapsed/out.length:0;
+     const eta=avg?(avg*(batch.length-out.length)/60).toFixed(1):"-";
+     box("fastGapFillResult","run",`${d} を処理中…
+${out.length}/${batch.length}日完了
+経過 ${(elapsed/60).toFixed(1)}分 / 推定残り ${eta}分
+Safariを前面表示のままにしてください`);
+     out.push(await autoCommitDate(d,token));
+   }
+   const done=new Set(batch); lastGapPlan=lastGapPlan.filter(d=>!done.has(d));
+   const mins=((performance.now()-t0)/60000).toFixed(1);
+   box("fastGapFillResult","pass",`PASS
+今回: ${out.length}日 / ${mins}分
+実データ書込日: ${out.filter(x=>x.rows>0).length}
+0件/休場候補: ${out.filter(x=>x.rows===0).length}
+残り穴候補: ${lastGapPlan.length}
+${lastGapPlan.length?"もう一度②で続行できます。":"この検出範囲は完了。"}`);
+ }catch(e){box("fastGapFillResult","fail","FAIL
+成功済み日までは保存済みです。再実行で続行できます。
+"+e)}
+};

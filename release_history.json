@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta3",
+    "version": "v7d-beta4",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-14"
+    "migration_version": "history-15"
   },
   "releases": [
     {
@@ -415,6 +415,22 @@
         "Backfill gaps in configurable batches",
         "Treat API 0-row dates as confirmed non-trading days",
         "Keep resumable per-date transactions and existing SAH Pool identity"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta4",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "High-speed prepared-statement writer and measured backfill ETA",
+      "changes": [
+        "Replace per-row db.exec UPSERT with one prepared statement reused for the full trading day",
+        "Keep one BEGIN IMMEDIATE/COMMIT per date for resumability",
+        "Add 500-row progress events during writes",
+        "Add one-day real benchmark and rows/sec measurement",
+        "Estimate 20/250/1600-day runtime from measured device speed",
+        "Add high-speed gap-fill batches up to 120 candidate days with live ETA",
+        "Preserve raw_json, checkpoints, SAH Pool identity and no whole-DB RAM expansion"
       ]
     }
   ]
