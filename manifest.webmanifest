@@ -1,9 +1,9 @@
 {
-  "name": "J-Quants Local-first PWA PoC v5",
-  "short_name": "JQ PWA PoC5",
+  "name": "J-Quants Local-first PWA PoC v6",
+  "short_name": "JQ PWA PoC6",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#07111f",
   "theme_color": "#07111f",
-  "description": "Private DB separation and encrypted backup proof of concept"
+  "description": "Long backfill endurance PoC for local-first J-Quants PWA"
 }

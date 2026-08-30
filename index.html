@@ -6,125 +6,141 @@
   <meta name="theme-color" content="#07111f" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="JQ PWA PoC5" />
+  <meta name="apple-mobile-web-app-title" content="JQ PWA PoC6" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <title>J-Quants Local-first PWA PoC v5</title>
+  <title>J-Quants Local-first PWA PoC v6</title>
   <style>
     :root{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;color-scheme:light dark}
     body{margin:0;background:#f3f4f6;color:#111827}
     header{padding:22px 18px 16px;background:#07111f;color:white}
     header h1{margin:0 0 6px;font-size:21px}
     header p{margin:0;opacity:.86;font-size:13px;line-height:1.55}
-    main{max-width:940px;margin:0 auto;padding:16px}
+    main{max-width:960px;margin:0 auto;padding:16px}
     .notice,.warnbox{border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:14px}
     .notice{background:#eff6ff;border:1px solid #bfdbfe}.warnbox{background:#fff7ed;border:1px solid #fed7aa}
     .grid{display:grid;gap:12px}.card{background:white;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
     .card h2{margin:0 0 7px;font-size:17px}.desc{font-size:13px;color:#4b5563;line-height:1.55;margin-bottom:12px}
     button{width:100%;border:0;border-radius:12px;padding:13px 14px;font-size:15px;font-weight:700;background:#07111f;color:white}
-    button.secondary{background:#e5e7eb;color:#111827}.safe{background:#166534}.danger{background:#991b1b}.danger2{background:#7f1d1d}
+    button.secondary{background:#e5e7eb;color:#111827}.safe{background:#166534}.danger{background:#991b1b}
     button:disabled{opacity:.5}
-    input{width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:10px;padding:10px;font-size:15px;background:white;color:#111827}
+    input,select{width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:10px;padding:10px;font-size:15px;background:white;color:#111827}
     label{display:block;font-size:12px;color:#4b5563;margin:9px 0 5px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .result{margin-top:12px;border-radius:12px;padding:11px;font-size:13px;line-height:1.55;white-space:pre-wrap;background:#f9fafb;min-height:44px;overflow-wrap:anywhere}
     .pass{background:#ecfdf5;color:#065f46}.fail{background:#fef2f2;color:#991b1b}.warn{background:#fffbeb;color:#92400e}.running{background:#eff6ff;color:#1e40af}
-    .confirm{display:none;margin-top:10px;padding:12px;border:1px solid #fecaca;background:#fef2f2;border-radius:12px}
+    .meter{height:10px;background:#e5e7eb;border-radius:100px;overflow:hidden;margin-top:10px}.meter>div{height:100%;width:0;background:#07111f;transition:width .15s}
     .small{font-size:12px;color:#6b7280;line-height:1.55}
     footer{padding:18px 4px 35px;color:#6b7280;font-size:12px;line-height:1.55}
     @media(prefers-color-scheme:dark){
       body{background:#08101e;color:#f9fafb}.card{background:#111827}.desc,.small,label,footer{color:#9ca3af}.result{background:#0f172a}
-      input{background:#0f172a;color:#f9fafb;border-color:#374151}button.secondary{background:#374151;color:#f9fafb}
+      input,select{background:#0f172a;color:#f9fafb;border-color:#374151}button.secondary{background:#374151;color:#f9fafb}
       .notice{background:#0c2340;border-color:#1d4ed8;color:#bfdbfe}.warnbox{background:#2b1d0e;border-color:#7c4a17;color:#fed7aa}
-      .confirm{background:#2b1111;border-color:#7f1d1d}
+      .meter{background:#374151}.meter>div{background:#f9fafb}
     }
   </style>
 </head>
 <body>
 <header>
-  <h1>J-Quants Local-first PWA PoC v5</h1>
-  <p>本番安全設計：market/private完全分離・private暗号化バックアップ・Import前自動退避・schema migration履歴。</p>
+  <h1>J-Quants Local-first PWA PoC v6</h1>
+  <p>長期バックフィル耐久版：年/月チャンク・停止/再開・429バックオフ・容量/時間ログ・失敗日再取得。</p>
 </header>
 <main>
   <div class="notice">
-    v4でDataLake可搬性がPASS。v5では市場データと個人データを完全に別DBへ分離し、
-    <b>private DBは暗号化してExport/Import</b>します。
+    v1〜v5でLocal-first PWAの保存・API・可搬性・private安全設計までPASS。v6では
+    <b>10年級の市場DataLakeをiPhoneだけで積み上げられるか</b>を検証します。
   </div>
   <div class="warnbox">
-    private DBのパスフレーズは保存しません。忘れると暗号化バックアップは復号できません。
-    本番版ではさらに端末認証やRecovery設計を検討します。
+    最初から10年を一気に回さず、まず <b>3か月 → 1年</b> で実測してください。
+    端末が熱い、Safari/PWAが重い、バッテリー低下が大きい場合は停止してOKです。同期済み日は次回自動スキップします。
   </div>
 
   <div class="grid">
     <section class="card">
-      <h2>1. market / private DB 分離確認</h2>
-      <div class="desc">市場DBは既存 <b>jq_poc3_datalake.sqlite</b> を継続。個人DB <b>jq_private.sqlite</b> を新設します。</div>
-      <button id="initBtn">2つのDBを初期化 / 確認</button>
-      <div id="initResult" class="result">未実行</div>
+      <h2>1. DataLake状態</h2>
+      <div class="desc">既存market DBをそのまま使います。現在の期間・行数・同期済み日数・DB容量を確認します。</div>
+      <button id="inspectBtn">DataLake状態を確認</button>
+      <div id="inspectResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>2. private DB 試験データ</h2>
-      <div class="desc">本物の保有情報は使わず、Portfolio / Trades / Discovery / Watchlistのダミー行をprivate DBだけへ保存します。</div>
-      <button id="seedBtn">privateへダミーデータを登録</button>
-      <div id="seedResult" class="result">未実行</div>
-    </section>
-
-    <section class="card">
-      <h2>3. private 暗号化Export</h2>
-      <div class="desc">PBKDF2 + AES-GCMでprivate DBをブラウザ内暗号化してからファイルとして保存します。</div>
-      <label for="pass1">バックアップ用パスフレーズ</label>
-      <input id="pass1" type="password" autocomplete="off" placeholder="テスト用の文字列" />
-      <button id="privateExportBtn" class="safe" style="margin-top:10px;">privateを暗号化してExport</button>
-      <div id="privateExportResult" class="result">未実行</div>
-    </section>
-
-    <section class="card">
-      <h2>4. private 暗号化Import</h2>
-      <div class="desc">暗号化バックアップを復号・SQLite検査した後、現在のprivate DBを自動バックアップしてから置換します。</div>
-      <input id="privateImportFile" type="file" accept=".jqpriv,.bin,application/octet-stream" />
-      <label for="pass2">復号パスフレーズ</label>
-      <input id="pass2" type="password" autocomplete="off" placeholder="Export時と同じ文字列" />
-      <button id="privateImportBtn" style="margin-top:10px;">検証してprivateをImport</button>
-      <div id="privateImportResult" class="result">未実行</div>
-    </section>
-
-    <section class="card">
-      <h2>5. schema migration履歴</h2>
-      <div class="desc">market/privateそれぞれにschema_versionとmigration_historyを持ち、将来の更新履歴を追跡できることを確認します。</div>
-      <button id="migrationBtn">migration履歴を確認</button>
-      <div id="migrationResult" class="result">未実行</div>
-    </section>
-
-    <section class="card">
-      <h2>6. private削除（2段階確認）</h2>
-      <div class="desc">市場DataLakeとは別に削除します。個人データ側なので確認を強めています。</div>
-      <button id="deleteAskBtn" class="danger">private DBを削除</button>
-      <div id="deleteConfirm" class="confirm">
-        <div class="small">Portfolio / Trades / Discovery / Watchlist等の個人データを削除します。暗号化バックアップを確認してください。</div>
-        <label for="deleteWord">確認のため <b>DELETE</b> と入力</label>
-        <input id="deleteWord" autocomplete="off" />
-        <button id="deleteConfirmBtn" class="danger2" style="margin-top:8px;">確認：privateを削除</button>
-        <button id="deleteCancelBtn" class="secondary" style="margin-top:8px;">キャンセル</button>
+      <h2>2. 長期バックフィル設定</h2>
+      <label for="apiKey">J-Quants APIキー（保存しません）</label>
+      <input id="apiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" />
+      <div class="row">
+        <div>
+          <label for="startDate">開始日</label>
+          <input id="startDate" type="date" />
+        </div>
+        <div>
+          <label for="endDate">終了日</label>
+          <input id="endDate" type="date" />
+        </div>
       </div>
-      <div id="deleteResult" class="result">未実行</div>
+      <div class="row">
+        <div>
+          <label for="chunkMode">保存チャンク</label>
+          <select id="chunkMode">
+            <option value="month" selected>月単位（推奨）</option>
+            <option value="year">年単位</option>
+          </select>
+        </div>
+        <div>
+          <label for="delayMs">通常リクエスト間隔</label>
+          <select id="delayMs">
+            <option value="350">350ms</option>
+            <option value="600" selected>600ms</option>
+            <option value="1000">1000ms</option>
+          </select>
+        </div>
+      </div>
+      <button id="backfillBtn" style="margin-top:10px;">長期バックフィル開始 / 再開</button>
+      <button id="stopBtn" class="secondary" style="margin-top:8px;">現在の日付保存後に停止</button>
+      <div class="meter"><div id="progressMeter"></div></div>
+      <div id="backfillResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>7. 復元確認</h2>
-      <div class="desc">private Import後に4系統のデータが復元され、市場DB側には混入していないことを確認します。</div>
-      <button id="verifyBtn">private復元・分離を確認</button>
-      <div id="verifyResult" class="result">未実行</div>
+      <h2>3. 失敗日の再取得</h2>
+      <div class="desc">sync_logでERRORになった日だけを抽出し、再取得します。</div>
+      <button id="retryBtn">失敗日だけ再取得</button>
+      <div id="retryResult" class="result">未実行</div>
     </section>
 
     <section class="card">
-      <h2>PoC v5 総合判定</h2>
+      <h2>4. 耐久ログ</h2>
+      <div class="desc">バックフィルの処理時間・API回数・行数・DB容量増加・平均処理時間を記録します。</div>
+      <button id="statsBtn">耐久ログを表示</button>
+      <div id="statsResult" class="result">未実行</div>
+    </section>
+
+    <section class="card">
+      <h2>5. 端末観察メモ</h2>
+      <div class="desc">iOSから温度や正確なバッテリー消費量はWeb APIで取得できないため、実測値を手動記録します。</div>
+      <label for="batteryStart">開始時バッテリー %</label>
+      <input id="batteryStart" type="number" min="0" max="100" placeholder="例 80" />
+      <label for="batteryEnd">終了時バッテリー %</label>
+      <input id="batteryEnd" type="number" min="0" max="100" placeholder="例 67" />
+      <label for="heat">発熱</label>
+      <select id="heat">
+        <option value="">未入力</option>
+        <option value="cool">ほぼ熱くない</option>
+        <option value="warm">少し温かい</option>
+        <option value="hot">かなり熱い</option>
+        <option value="very_hot">継続を避けたいほど熱い</option>
+      </select>
+      <button id="saveObsBtn" class="secondary" style="margin-top:10px;">端末観察を保存</button>
+      <div id="obsResult" class="result">未入力</div>
+    </section>
+
+    <section class="card">
+      <h2>6. 長期バックフィル判定</h2>
       <button id="summaryBtn" class="secondary">総合判定</button>
-      <button id="resultExportBtn" class="secondary" style="margin-top:8px;">検証結果JSONを保存</button>
+      <button id="exportBtn" class="secondary" style="margin-top:8px;">耐久結果JSONを保存</button>
       <div id="summaryResult" class="result">未判定</div>
     </section>
   </div>
   <footer>
-    推奨手順：1 → 2 → 3（暗号化Export）→ 6（private削除）→ 4（Import）→ 5 → 7 → 総合判定。
-    market DBは削除しないので、privateだけ消して復元できることを確認します。
+    10年分を本格実行する前に、3か月または1年で所要時間を測り、その結果から10年の概算時間を出してください。
   </footer>
 </main>
 <script src="./app.js"></script>

@@ -1,31 +1,32 @@
-# J-Quants Local-first PWA PoC v5
+# J-Quants Local-first PWA PoC v6
 
-v4で市場DataLakeのExport / 削除 / Import / sync_log継承 / Screening復元までiPhone実機PASS。
+目的:
+iPhoneのみで10年級の市場DataLakeを段階バックフィルできるかを検証する。
 
-v5の目的は本番安全設計の確認。
+## 機能
+- 既存market DataLakeを継続利用
+- 月/年単位の保存チャンク
+- 日単位のsync_log
+- 同期済み日はAPIアクセスせずskip
+- STOP要求 → 現在日保存後に停止
+- 429指数バックオフ
+- ERROR日だけ再取得
+- backfill_runs履歴
+- DB容量 before/after
+- 処理時間/API回数/行数ログ
+- バッテリー/発熱の手動観察ログ
+- delete確認は今後本番UIで小文字 `delete` 対応予定
 
-## 実装
-- market DB: `jq_poc3_datalake.sqlite` を継続
-- private DB: `jq_private.sqlite` を新設
-- Portfolio / Trades / Discovery / Watchlistをprivate側だけに配置
-- privateバックアップをPBKDF2-SHA256 (250,000 iterations) + AES-GCM-256で暗号化
-- private Import前に既存private DBを自動で平文SQLiteバックアップとしてダウンロード
-- market/privateそれぞれにschema_version
-- migration_history
-- private削除は `DELETE` 入力を要求する二段階確認
-- market側へprivateテーブルが混入していないことを検証
+## 推奨テスト
+まず3か月:
+1. GitHub Pagesへ上書き + Commit
+2. DataLake状態確認
+3. APIキー入力
+4. 初期値3か月でバックフィル
+5. 耐久ログ
+6. iPhoneの開始/終了バッテリーと発熱を記録
+7. 同じ期間を再実行し、大半/全部がskipされることを確認
+8. 総合判定
 
-## 実機テスト順
-1. GitHub Pagesへ5ファイル上書き + Commit
-2. v5表示確認
-3. 2DB初期化
-4. privateへダミーデータ登録
-5. 6文字以上のテスト用パスフレーズを入力して暗号化Export
-6. private削除 → DELETE入力 → 確認
-7. Exportした `.jqpriv` を選択し、同じパスフレーズでImport
-8. migration履歴確認
-9. 復元・分離確認
-10. 総合判定
-
-※ Import前自動バックアップは安全機構のPoCとして平文SQLiteをダウンロードします。
-本番ではこの退避も暗号化する方針です。
+3か月が安定したら1年。
+1年も安定後に10年へ拡張する。
