@@ -21,7 +21,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7d-alpha2b</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7d-beta1</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 <main>
 <div class="notice">
 旧sql.jsのようにDB全体をRAMへ読み込みません。レスキューSQLiteは<b>ストリームでOPFSへコピー</b>し、
@@ -82,14 +82,14 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>7. v7d-alpha2b総合判定</h2>
+<h2>7. v7d-beta1総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 
 <section class="card">
-<h2>v7d-alpha2b 実運用同期エンジン前段テスト</h2>
+<h2>v7d-beta1 実運用同期エンジン前段テスト</h2>
 <div class="desc">
 既存1.12GB DataLakeの実スキーマを検査し、日付単位Transaction → Commit → Checkpoint →
 Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM展開・db.export()は使いません。
@@ -102,17 +102,36 @@ Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM
 <div id="batchResumeResult" class="result">未実行</div>
 </section>
 
+
+<section class="card">
+<h2>v7d-beta1 J-Quants 実データ同期</h2>
+<div class="desc">
+J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付単位で直接Commitします。
+認証情報はこの画面のメモリ内だけで使用し、SQLite・localStorage・GitHubには保存しません。
+</div>
+<label>J-Quants APIキー / Token（セッションのみ）</label>
+<input id="jqToken" type="password" autocomplete="off" placeholder="ここに貼り付け">
+<label>取得日（YYYY-MM-DD）</label>
+<input id="jqDate" type="date" value="2026-08-28">
+<button id="jqFetchBtn">① API取得だけテスト（DB書込なし）</button>
+<div id="jqFetchResult" class="result">未実行</div><br>
+<button id="jqWriteBtn">② 1日分をDataLakeへCommit</button>
+<div id="jqWriteResult" class="result">未実行</div><br>
+<button id="jqFiveBtn">③ 最大5営業日を順次同期</button>
+<div id="jqFiveResult" class="result">未実行</div>
+</section>
+
 <section class="card">
 <h2>10. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7d-alpha2b
+<div id="historyResult" class="result">Version: v7d-beta1
 Build date: 2026-08-30
 Schema version: market-poc7c
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7d-alpha2b / Build 2026-08-30 / Schema market-poc7c / Migration history-8<br>
+<footer>Version v7d-beta1 / Build 2026-08-30 / Schema market-poc7c / Migration history-8<br>
 v7cではJ-Quants API更新はまだ行いません。まず「巨大DBを全体RAM展開なしでImport→直接Open」できることだけを確定します。</footer>
 </main>
 <script src="./app.js"></script>

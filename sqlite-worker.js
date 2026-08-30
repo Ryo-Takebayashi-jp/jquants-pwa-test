@@ -113,6 +113,73 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
  }
 
 
+
+ if(cmd==="jquants-bars-write"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   const payload=e.data.payload||{}, day=payload.date, rows=payload.rows||[];
+   if(!day)throw new Error("date missing");
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   const info=tableInfo(db,"bars_daily"), cols=info.map(x=>x.name), pk=primaryKeyCols(info);
+   if(!cols.length)throw new Error("bars_daily schema missing");
+   const aliases={
+     date:["Date","date"], code:["Code","code"],
+     open:["O","Open","open"], high:["H","High","high"], low:["L","Low","low"], close:["C","Close","close"],
+     volume:["Vo","Volume","volume"], turnover_value:["Va","TurnoverValue","turnover_value"],
+     adjustment_factor:["AdjFactor","AdjustmentFactor","adjustment_factor"],
+     adjustment_open:["AdjO","AdjustmentOpen","adjustment_open"],
+     adjustment_high:["AdjH","AdjustmentHigh","adjustment_high"],
+     adjustment_low:["AdjL","AdjustmentLow","adjustment_low"],
+     adjustment_close:["AdjC","AdjustmentClose","adjustment_close"],
+     adjustment_volume:["AdjVo","AdjustmentVolume","adjustment_volume"],
+     morning_open:["MO","MorningOpen","morning_open"],
+     morning_high:["MH","MorningHigh","morning_high"],
+     morning_low:["ML","MorningLow","morning_low"],
+     morning_close:["MC","MorningClose","morning_close"],
+     morning_volume:["MVo","MorningVolume","morning_volume"],
+     morning_turnover_value:["MVa","MorningTurnoverValue","morning_turnover_value"],
+     afternoon_open:["AO","AfternoonOpen","afternoon_open"],
+     afternoon_high:["AH","AfternoonHigh","afternoon_high"],
+     afternoon_low:["AL","AfternoonLow","afternoon_low"],
+     afternoon_close:["AC","AfternoonClose","afternoon_close"],
+     afternoon_volume:["AVo","AfternoonVolume","afternoon_volume"],
+     afternoon_turnover_value:["AVa","AfternoonTurnoverValue","afternoon_turnover_value"]
+   };
+   function pick(obj,c){
+     const candidates=aliases[c]||[c];
+     for(const k of candidates) if(Object.prototype.hasOwnProperty.call(obj,k)) return obj[k];
+     return null;
+   }
+   const insertCols=cols.filter(c=>rows.length && (pick(rows[0],c)!==null || ["date","code"].includes(c.toLowerCase())));
+   if(!insertCols.length)throw new Error("No compatible columns between API response and bars_daily");
+   const conflict=pk.length?` ON CONFLICT(${pk.map(qident).join(",")}) DO UPDATE SET `+
+     insertCols.filter(c=>!pk.includes(c)).map(c=>`${qident(c)}=excluded.${qident(c)}`).join(","):"";
+   const sql=`INSERT INTO ${qident("bars_daily")}(${insertCols.map(qident).join(",")}) VALUES(${insertCols.map(()=>"?").join(",")})${conflict}`;
+   const runId=`jqd-${day}-${Date.now()}`;
+   db.exec({sql:"INSERT INTO web_sync_run(run_id,dataset,started_at,status) VALUES(?,?,?,?)",
+     bind:[runId,"bars_daily_jquants",new Date().toISOString(),"RUNNING"]});
+   db.exec("BEGIN IMMEDIATE");
+   try{
+     let n=0;
+     for(const r of rows){ db.exec({sql,bind:insertCols.map(c=>pick(r,c))}); n++; }
+     db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
+       VALUES(?,?,?,?,?,?)
+       ON CONFLICT(dataset) DO UPDATE SET last_success_date=excluded.last_success_date,updated_at=excluded.updated_at,
+       status=excluded.status,rows_written=web_sync_checkpoint.rows_written+excluded.rows_written,note=excluded.note`,
+       bind:["bars_daily_jquants",day,new Date().toISOString(),"OK",n,"J-Quants daily bars committed"]});
+     db.exec("COMMIT");
+     db.exec({sql:"UPDATE web_sync_run SET finished_at=?,status='OK',rows_written=?,last_date=? WHERE run_id=?",
+       bind:[new Date().toISOString(),n,day,runId]});
+     const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='bars_daily_jquants'");
+     db.close();db=null;
+     self.postMessage({ok:true,type:"result",date:day,rows:n,columns:insertCols,checkpoint:cp,elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){
+     try{db.exec("ROLLBACK")}catch(_){}
+     try{db.exec({sql:"UPDATE web_sync_run SET finished_at=?,status='ERROR',error=? WHERE run_id=?",
+       bind:[new Date().toISOString(),String(err),runId]})}catch(_){}
+     throw err;
+   }
+ }
+
  if(cmd==="schema-probe"){
    if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
    db=new p.OpfsSAHPoolDb(name,"r");

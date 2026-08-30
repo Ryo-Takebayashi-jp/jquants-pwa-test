@@ -1,5 +1,18 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta1 — CURRENT (2026-08-30)
+
+First real J-Quants network-to-DataLake sync.
+
+- Session-only credential: never persisted by this build.
+- Fetch-only test before any database write.
+- Daily-bars API with pagination and HTTP 429 backoff.
+- Map API fields to the actual `bars_daily` schema discovered on the device.
+- Per-date transaction, idempotent UPSERT, commit, then checkpoint.
+- Up to five weekdays in one foreground run.
+- No `db.export()` and no whole-database RAM expansion.
+
+
 ## Web/PWA v7d-alpha2b — CURRENT (2026-08-30)
 
 Hotfix for unresponsive alpha2 buttons.

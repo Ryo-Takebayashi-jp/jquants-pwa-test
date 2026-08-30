@@ -212,3 +212,81 @@ if($("batchResumeBtn")) $("batchResumeBtn").onclick=async()=>{
   box("batchResumeResult","pass",`PASS\nResume元: ${r.resumedFrom}\n次日Commit: ${r.next}\n累計行数: ${r.count}\n${JSON.stringify(r.checkpoint,null,2)}`);
  }catch(e){box("batchResumeResult","fail","FAIL\n"+e)}
 };
+
+
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function jqAuthHeaders(token){
+ return {"Authorization": token.startsWith("Bearer ")?token:`Bearer ${token}`,"Accept":"application/json"};
+}
+async function jqFetchDaily(date, token){
+ if(!token) throw new Error("APIキー / Tokenを入力してください");
+ const endpoints=[
+   `/v2/equities/bars/daily?date=${encodeURIComponent(date)}`,
+   `/v1/prices/daily_quotes?date=${encodeURIComponent(date)}`
+ ];
+ let lastErr=null;
+ for(const path of endpoints){
+   let url=`https://api.jquants.com${path}`, all=[], pageToken=null, tries=0;
+   try{
+     do{
+       const u=new URL(url);
+       if(pageToken) u.searchParams.set("pagination_key",pageToken);
+       let res;
+       for(let attempt=0;attempt<5;attempt++){
+         res=await fetch(u,{headers:jqAuthHeaders(token)});
+         if(res.status!==429) break;
+         const ra=Number(res.headers.get("Retry-After")||0);
+         await sleep(ra?ra*1000:Math.min(16000,1000*(2**attempt)));
+       }
+       if(!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+       const j=await res.json();
+       const rows=j.data||j.daily_quotes||j.dailyQuotes||j.prices||[];
+       if(!Array.isArray(rows)) throw new Error("API response rows not recognized");
+       all.push(...rows);
+       pageToken=j.pagination_key||j.paginationKey||null;
+       tries++;
+       if(tries>100) throw new Error("pagination safety stop");
+     }while(pageToken);
+     return {rows:all,endpoint:path.split("?")[0]};
+   }catch(e){lastErr=e}
+ }
+ throw lastErr||new Error("J-Quants endpoint failed");
+}
+async function jqCommitDate(date,token){
+ const got=await jqFetchDaily(date,token);
+ if(!got.rows.length) return {date,rows:0,endpoint:got.endpoint,skipped:true};
+ const wr=await workerCall("jquants-bars-write",300000,null,{date,rows:got.rows});
+ return {...wr,endpoint:got.endpoint};
+}
+if($("jqFetchBtn")) $("jqFetchBtn").onclick=async()=>{
+ box("jqFetchResult","run","J-Quantsへ接続中…");
+ try{
+  const d=$("jqDate").value,t=$("jqToken").value.trim(),r=await jqFetchDaily(d,t);
+  state.jqFetch=r;
+  const keys=r.rows[0]?Object.keys(r.rows[0]).join(", "):"(0 rows)";
+  box("jqFetchResult","pass",`PASS\nEndpoint: ${r.endpoint}\nDate: ${d}\nRows: ${r.rows.length}\nFields: ${keys}\nDB書込: なし`);
+ }catch(e){box("jqFetchResult","fail","FAIL\n"+e)}
+};
+if($("jqWriteBtn")) $("jqWriteBtn").onclick=async()=>{
+ box("jqWriteResult","run","取得 → Transaction → Commit中…");
+ try{
+  const d=$("jqDate").value,t=$("jqToken").value.trim(),r=await jqCommitDate(d,t);
+  state.jqWrite=r;
+  box("jqWriteResult","pass",`PASS\nDate: ${d}\nRows: ${r.rows}\nEndpoint: ${r.endpoint}\n${r.skipped?"市場データ0件のため書込なし":`Columns: ${(r.columns||[]).join(", ")}\nCheckpoint: ${JSON.stringify(r.checkpoint,null,2)}`}`);
+ }catch(e){box("jqWriteResult","fail","FAIL\n"+e)}
+};
+if($("jqFiveBtn")) $("jqFiveBtn").onclick=async()=>{
+ box("jqFiveResult","run","最大5日を前景同期中… Safariを閉じないでください");
+ try{
+  const base=new Date($("jqDate").value+"T00:00:00"),t=$("jqToken").value.trim(),out=[];
+  for(let back=4;back>=0;back--){
+   const x=new Date(base);x.setDate(base.getDate()-back);
+   if([0,6].includes(x.getDay())) continue;
+   const d=x.toISOString().slice(0,10);
+   box("jqFiveResult","run",`${d} を同期中…\n完了: ${out.length}日`);
+   out.push(await jqCommitDate(d,t));
+  }
+  state.jqFive=out;
+  box("jqFiveResult","pass",`PASS\n完了日数: ${out.length}\n${out.map(x=>`${x.date}: ${x.rows} rows${x.skipped?" (0件)":""}`).join("\n")}\nCheckpointは各日Commit後に更新`);
+ }catch(e){box("jqFiveResult","fail","FAIL\n途中までCommit済み。再実行時はUPSERTで安全に再処理できます。\n"+e)}
+};

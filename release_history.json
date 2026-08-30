@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-alpha2b",
+    "version": "v7d-beta1",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-9"
+    "migration_version": "history-10"
   },
   "releases": [
     {
@@ -335,6 +335,24 @@
         "Prevent JavaScript initialization from aborting before alpha2 handlers are registered",
         "Add defensive existence checks for alpha2 controls",
         "No DataLake path, SAH pool identity, or database name changed"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta1",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "First real J-Quants daily-bars network-to-DataLake sync",
+      "changes": [
+        "Session-only J-Quants credential input",
+        "API fetch-only gate before writes",
+        "v2 daily bars endpoint with v1 compatibility fallback",
+        "429 Retry-After/exponential backoff",
+        "Pagination",
+        "Actual bars_daily schema mapping",
+        "Per-date BEGIN IMMEDIATE/UPSERT/COMMIT/checkpoint",
+        "Five-day foreground sync",
+        "No whole-DB RAM expansion"
       ]
     }
   ]
