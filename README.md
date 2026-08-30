@@ -1,37 +1,25 @@
-# J-Quants Local PWA Feasibility Tester
+# J-Quants Local-first PWA PoC v2
 
-目的:
-iPhone内にDataLake相当を保持するLocal-first PWA方式が現実的かを、実機で4項目だけ確認するテスターです。
+v1で OPFS / SQLite-WASM / Web Worker / J-Quants API direct CORS がすべてPASSしたため、
+v2では次を実機確認します。
 
-## テスト内容
-1. OPFS大容量ローカル保存
-2. SQLite-WASMの大量行処理
-3. Web Workerでの重い計算とUI応答性
-4. Safari/PWAからJ-Quants API v2へ直接接続できるか（CORS）
+1. 512MB OPFS書込
+2. SQLite-WASM 100万行
+3. J-Quants日足を複数銘柄直接取得
+4. SQLiteへ格納
+5. SQLiteバイナリをOPFSへ永続保存
+6. PWA再起動後にOPFSから再読込
+7. SMA5/SMA25/20D騰落率/20日平均出来高をブラウザ内計算
+
+## 更新方法
+GitHub Pagesの既存 `jquants-pwa-test` リポジトリへ、
+このZIPの `index.html / app.js / manifest.webmanifest / service-worker.js / README.md`
+を上書きコミットします。
+
+公開後、iPhone PWAを完全終了して再起動してください。
+古い画面が残る場合はSafariでページを再読み込みしてからホーム画面版を再起動してください。
 
 ## セキュリティ
-- J-Quants APIキーはブラウザのメモリ上で接続テストにだけ使用し、localStorage / IndexedDB / OPFSには保存しません。
-- OPFSテスト用ファイルはテスト終了後に削除します。
-- 本番DataLakeやprivateデータは含まれていません。
-
-## 実機テスト方法
-このZIPを展開したファイルを HTTPS の静的ホスティングへ置いてください。
-GitHub Pages / Cloudflare Pages / Netlify等で構いません。
-
-iPhone:
-1. Safariで公開URLを開く
-2. 共有 → ホーム画面に追加
-3. ホーム画面から起動
-4. 「環境チェック」
-5. 「ストレージテスト」128MB
-6. 「DB速度テスト」50万行
-7. 「計算テスト」
-8. 自分のJ-Quants APIキーを入力して「J-Quants接続テスト」
-9. 「総合判定を表示」
-10. 結果画面のスクリーンショット、または「結果JSONを保存」で出力したJSONをChatGPTへ共有
-
-最初の4項目が全部PASSなら、次は256-512MB / 100万行でもう一度負荷テストしてください。
-
-## 注意
-Safariで `file://` として直接開くのではなく、必ず HTTPS のURLでテストしてください。
-SQLite-WASMは初回テスト時のみ jsDelivr CDN から読み込みます。
+APIキーは保存しません。
+実データPoC DBはiPhone内OPFSにのみ保存します。
+削除ボタンで `jq_poc_market.sqlite` を消せます。
