@@ -1,5 +1,16 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta1c — CURRENT (2026-08-30)
+
+Real DataLake write hotfix.
+
+- Fixed the Worker payload plumbing: beta1b accidentally passed `{date, rows}` into the legacy File argument, so the Worker received no `payload` and raised `date missing`.
+- Mapped J-Quants V2 fields to the actual 17-column v3/v3b `bars_daily` schema (`o/h/l/c`, `upper_limit/lower_limit`, `value`, `adj_*`, `raw_json`).
+- Store the full API row in `raw_json` so V2-only fields such as `MktCap` / `ExRT` are not silently lost even when the legacy schema has no dedicated columns.
+- After commit, read back one row for the requested date and display it as verification.
+- Existing 1.12GB SAH Pool DataLake is unchanged; no re-import required.
+
+
 ## Web/PWA v7d-beta1b — CURRENT (2026-08-30)
 
 J-Quants V2 connectivity hotfix.

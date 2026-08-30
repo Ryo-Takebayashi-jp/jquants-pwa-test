@@ -123,28 +123,28 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
    if(!cols.length)throw new Error("bars_daily schema missing");
    const aliases={
      date:["Date","date"], code:["Code","code"],
+     o:["O","o","Open","open"], h:["H","h","High","high"], l:["L","l","Low","low"], c:["C","c","Close","close"],
+     upper_limit:["UL","UpperLimit","upper_limit"], lower_limit:["LL","LowerLimit","lower_limit"],
+     volume:["Vo","Volume","volume"], value:["Va","Value","TurnoverValue","value","turnover_value"],
+     adj_factor:["AdjFactor","AdjustmentFactor","adj_factor","adjustment_factor"],
+     adj_o:["AdjO","AdjustmentOpen","adj_o","adjustment_open"],
+     adj_h:["AdjH","AdjustmentHigh","adj_h","adjustment_high"],
+     adj_l:["AdjL","AdjustmentLow","adj_l","adjustment_low"],
+     adj_c:["AdjC","AdjustmentClose","adj_c","adjustment_close"],
+     adj_volume:["AdjVo","AdjustmentVolume","adj_volume","adjustment_volume"],
+     raw_json:["__RAW_JSON__"],
      open:["O","Open","open"], high:["H","High","high"], low:["L","Low","low"], close:["C","Close","close"],
-     volume:["Vo","Volume","volume"], turnover_value:["Va","TurnoverValue","turnover_value"],
+     turnover_value:["Va","TurnoverValue","turnover_value"],
      adjustment_factor:["AdjFactor","AdjustmentFactor","adjustment_factor"],
      adjustment_open:["AdjO","AdjustmentOpen","adjustment_open"],
      adjustment_high:["AdjH","AdjustmentHigh","adjustment_high"],
      adjustment_low:["AdjL","AdjustmentLow","adjustment_low"],
      adjustment_close:["AdjC","AdjustmentClose","adjustment_close"],
      adjustment_volume:["AdjVo","AdjustmentVolume","adjustment_volume"],
-     morning_open:["MO","MorningOpen","morning_open"],
-     morning_high:["MH","MorningHigh","morning_high"],
-     morning_low:["ML","MorningLow","morning_low"],
-     morning_close:["MC","MorningClose","morning_close"],
-     morning_volume:["MVo","MorningVolume","morning_volume"],
-     morning_turnover_value:["MVa","MorningTurnoverValue","morning_turnover_value"],
-     afternoon_open:["AO","AfternoonOpen","afternoon_open"],
-     afternoon_high:["AH","AfternoonHigh","afternoon_high"],
-     afternoon_low:["AL","AfternoonLow","afternoon_low"],
-     afternoon_close:["AC","AfternoonClose","afternoon_close"],
-     afternoon_volume:["AVo","AfternoonVolume","afternoon_volume"],
-     afternoon_turnover_value:["AVa","AfternoonTurnoverValue","afternoon_turnover_value"]
+     market_cap:["MktCap","MarketCap","market_cap"], ex_rights:["ExRT","ExRights","ex_rights"]
    };
    function pick(obj,c){
+     if(c==="raw_json") return JSON.stringify(obj);
      const candidates=aliases[c]||[c];
      for(const k of candidates) if(Object.prototype.hasOwnProperty.call(obj,k)) return obj[k];
      return null;
@@ -170,8 +170,9 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
      db.exec({sql:"UPDATE web_sync_run SET finished_at=?,status='OK',rows_written=?,last_date=? WHERE run_id=?",
        bind:[new Date().toISOString(),n,day,runId]});
      const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='bars_daily_jquants'");
+     const verify=execRows(db,`SELECT * FROM ${qident("bars_daily")} WHERE ${qident(pk.includes("date")?"date":insertCols[0])}=? LIMIT 1`,[day]);
      db.close();db=null;
-     self.postMessage({ok:true,type:"result",date:day,rows:n,columns:insertCols,checkpoint:cp,elapsedMs:Math.round(performance.now()-t0)});return;
+     self.postMessage({ok:true,type:"result",date:day,rows:n,columns:insertCols,schemaColumns:cols,pk,checkpoint:cp,verify,elapsedMs:Math.round(performance.now()-t0)});return;
    }catch(err){
      try{db.exec("ROLLBACK")}catch(_){}
      try{db.exec({sql:"UPDATE web_sync_run SET finished_at=?,status='ERROR',error=? WHERE run_id=?",

@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta1b",
+    "version": "v7d-beta1c",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-11"
+    "migration_version": "history-12"
   },
   "releases": [
     {
@@ -368,6 +368,21 @@
         "API key is forwarded per request and not persisted",
         "Remove obsolete V1 fallback",
         "Preserve SAH Pool/DataLake identity"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta1c",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Fix J-Quants payload handoff and map V2 fields to actual 17-column bars_daily schema",
+      "changes": [
+        "Preserve File as workerCall 4th argument and add payload as 5th argument",
+        "Fix jquants-bars-write date/rows payload delivery to SQLite Worker",
+        "Map V2 fields O/H/L/C/UL/LL/Vo/Va/Adj* to v3 DataLake o/h/l/c/upper_limit/lower_limit/value/adj_* columns",
+        "Populate raw_json for lossless API-row retention",
+        "Verify one stored row after commit and return it to UI",
+        "No SAH Pool directory or existing DataLake identity changes"
       ]
     }
   ]

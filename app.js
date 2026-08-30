@@ -52,7 +52,7 @@ async function importDb(){
  }catch(e){state.imported={ok:false,error:String(e)};box("importResult","fail","Import FAIL\n"+e)}finally{$("importBtn").disabled=false}
 }
 
-function workerCall(cmd,timeoutMs=180000,onStatus=null,file=null){
+function workerCall(cmd,timeoutMs=180000,onStatus=null,file=null,payload=null){
  return new Promise((resolve,reject)=>{
   const w=new Worker("./sqlite-worker.js");
   const timer=setTimeout(()=>{w.terminate();reject(new Error("タイムアウト"))},timeoutMs);
@@ -77,7 +77,7 @@ ${d.filename}:${d.lineno||0}:${d.colno||0}`:"")
       `${e.filename||""}:${e.lineno||0}:${e.colno||0}`
     ));
   };
-  w.postMessage({cmd,dbName:"/"+DBNAME,file});
+  w.postMessage({cmd,dbName:"/"+DBNAME,file,payload});
  });
 }
 
@@ -247,7 +247,7 @@ async function jqFetchDaily(date, token){
 async function jqCommitDate(date,token){
  const got=await jqFetchDaily(date,token);
  if(!got.rows.length) return {date,rows:0,endpoint:got.endpoint,skipped:true};
- const wr=await workerCall("jquants-bars-write",300000,null,{date,rows:got.rows});
+ const wr=await workerCall("jquants-bars-write",300000,null,null,{date,rows:got.rows});
  return {...wr,endpoint:got.endpoint};
 }
 if($("jqFetchBtn")) $("jqFetchBtn").onclick=async()=>{
@@ -264,7 +264,7 @@ if($("jqWriteBtn")) $("jqWriteBtn").onclick=async()=>{
  try{
   const d=$("jqDate").value,t=$("jqToken").value.trim(),r=await jqCommitDate(d,t);
   state.jqWrite=r;
-  box("jqWriteResult","pass",`PASS\nDate: ${d}\nRows: ${r.rows}\nEndpoint: ${r.endpoint}\n${r.skipped?"市場データ0件のため書込なし":`Columns: ${(r.columns||[]).join(", ")}\nCheckpoint: ${JSON.stringify(r.checkpoint,null,2)}`}`);
+  box("jqWriteResult","pass",`PASS\nDate: ${d}\nRows: ${r.rows}\nEndpoint: ${r.endpoint}\n${r.skipped?"市場データ0件のため書込なし":`Mapped columns: ${(r.columns||[]).join(", ")}\nPK: ${(r.pk||[]).join(", ")}\nVerify sample: ${JSON.stringify(r.verify,null,2)}\nCheckpoint: ${JSON.stringify(r.checkpoint,null,2)}`}`);
  }catch(e){box("jqWriteResult","fail","FAIL\n"+e)}
 };
 if($("jqFiveBtn")) $("jqFiveBtn").onclick=async()=>{
