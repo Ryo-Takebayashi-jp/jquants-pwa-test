@@ -300,11 +300,14 @@ if($("jqFiveBtn")) $("jqFiveBtn").onclick=async()=>{
 
 
 function isoAddDays(s,n){
- const d=new Date(s+"T00:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10);
+ const [y,m,d]=String(s).split("-").map(Number);
+ const x=new Date(Date.UTC(y,m-1,d+n));
+ return `${x.getUTCFullYear()}-${String(x.getUTCMonth()+1).padStart(2,"0")}-${String(x.getUTCDate()).padStart(2,"0")}`;
 }
 function maxIso(...xs){ return xs.filter(Boolean).sort().at(-1)||null; }
 function isWeekendIso(s){
- const d=new Date(s+"T00:00:00"); return [0,6].includes(d.getDay());
+ const [y,m,d]=String(s).split("-").map(Number);
+ return [0,6].includes(new Date(Date.UTC(y,m-1,d)).getUTCDay());
 }
 function dateRangeExclusive(startInclusive,endInclusive,maxDays=20){
  const out=[]; let d=startInclusive;
@@ -312,15 +315,17 @@ function dateRangeExclusive(startInclusive,endInclusive,maxDays=20){
  return out;
 }
 async function getAutoState(){ return await workerCall("bars-auto-state",180000); }
-async function autoCommitDate(d,token){
+async function autoCommitDate(d,token,mode="daily"){
  const got=await jqFetchDaily(d,token);
+ const checkpointDataset=mode==="backfill"?"bars_daily_backfill":"bars_daily_jquants";
+ const progressDataset=mode==="backfill"?"bars_daily_backfill":"bars_daily_auto";
  if(!got.rows.length){
-   const mark=await workerCall("bars-auto-no-data",180000,null,null,{date:d});
-   return {date:d,rows:0,endpoint:got.endpoint,noData:true,checkpoint:mark.checkpoint};
+   const mark=await workerCall("bars-auto-no-data",180000,null,null,{date:d,progressDataset});
+   return {date:d,rows:0,endpoint:got.endpoint,noData:true,checkpoint:mark.checkpoint,mode};
  }
- const wr=await workerCall("jquants-bars-write",300000,null,null,{date:d,rows:got.rows});
- const mark=await workerCall("bars-auto-mark",180000,null,null,{date:d,rows:wr.rows});
- return {...wr,endpoint:got.endpoint,autoCheckpoint:mark.checkpoint};
+ const wr=await workerCall("jquants-bars-write",300000,null,null,{date:d,rows:got.rows,checkpointDataset});
+ const mark=await workerCall("bars-auto-mark",180000,null,null,{date:d,rows:wr.rows,progressDataset});
+ return {...wr,endpoint:got.endpoint,autoCheckpoint:mark.checkpoint,mode};
 }
 if($("autoTargetDate")) $("autoTargetDate").value=new Date().toLocaleDateString("sv-SE");
 if($("autoStateBtn")) $("autoStateBtn").onclick=async()=>{
@@ -427,13 +432,13 @@ if($("gapScanBtn")) $("gapScanBtn").onclick=async()=>{
  try{
    const from=$("gapFrom").value,to=$("gapTo").value;
    const r=await workerCall("bars-gap-scan",180000,null,null,{from,to});
-   const have=new Set(r.dates),missing=[]; let d=from;
-   while(d<=to){ if(!isWeekendIso(d) && !have.has(d)) missing.push(d); d=isoAddDays(d,1); }
+   const have=new Set(r.dates),checkedNoData=new Set(r.noDataDates||[]),missing=[]; let d=from;
+   while(d<=to){ if(!isWeekendIso(d) && !have.has(d) && !checkedNoData.has(d)) missing.push(d); d=isoAddDays(d,1); }
    lastGapPlan=missing;
    box("gapScanResult","pass",`PASS
 範囲: ${from} ～ ${to}
 実データ日: ${r.dates.length}
-平日ベース穴候補: ${missing.length}
+確認済み0件日: ${Number((r.noDataDates||[]).length).toLocaleString()}\n平日ベース穴候補: ${missing.length}
 先頭20件:
 ${missing.slice(0,20).join("\n")||"(なし)"}
 ※祝日・休場日も候補に含まれ、API 0件なら確認済みとして処理します。`);
@@ -448,7 +453,7 @@ if($("gapFillBtn")) $("gapFillBtn").onclick=async()=>{
    const batch=lastGapPlan.slice(0,maxDays),out=[];
    for(const d of batch){
      box("gapFillResult","run",`${d} を穴埋め中…\n${out.length}/${batch.length}\nSafariを閉じないでください`);
-     out.push(await autoCommitDate(d,token));
+     out.push(await autoCommitDate(d,token,"backfill"));
    }
    const done=new Set(batch); lastGapPlan=lastGapPlan.filter(d=>!done.has(d));
    box("gapFillResult","pass",`PASS
@@ -465,9 +470,9 @@ async function firstUsableGapDate(){
   if(lastGapPlan.length) return lastGapPlan[0];
   const from=$("gapFrom")?.value||"2016-08-30", to=$("gapTo")?.value||localTodayIso();
   const r=await workerCall("bars-gap-scan",180000,null,null,{from,to});
-  const have=new Set(r.dates); let d=from;
+  const have=new Set(r.dates),checkedNoData=new Set(r.noDataDates||[]); let d=from;
   while(d<=to){
-    if(!isWeekendIso(d) && !have.has(d)) return d;
+    if(!isWeekendIso(d) && !have.has(d) && !checkedNoData.has(d)) return d;
     d=isoAddDays(d,1);
   }
   return null;
@@ -519,7 +524,7 @@ if($("fastGapFillBtn")) $("fastGapFillBtn").onclick=async()=>{
 ${out.length}/${batch.length}日完了
 経過 ${(elapsed/60).toFixed(1)}分 / 推定残り ${eta}分
 Safariを前面表示のままにしてください`);
-     out.push(await autoCommitDate(d,token));
+     out.push(await autoCommitDate(d,token,"backfill"));
    }
    const done=new Set(batch); lastGapPlan=lastGapPlan.filter(d=>!done.has(d));
    const mins=((performance.now()-t0)/60000).toFixed(1);
@@ -576,3 +581,13 @@ rows after: ${Number(r.after).toLocaleString()}
 所要: ${(r.elapsedMs/1000).toFixed(2)}秒`);
  }catch(e){box("writeGateResult","fail","FAIL\n"+e)}
 };
+
+setTimeout(()=>{
+ try{
+  const ok=isoAddDays("2026-08-28",1)==="2026-08-29"
+   && isoAddDays("2026-08-31",1)==="2026-09-01"
+   && isoAddDays("2026-01-01",-1)==="2025-12-31"
+   && isWeekendIso("2026-08-29")&&isWeekendIso("2026-08-30")&&!isWeekendIso("2026-08-28");
+  const el=$("dateEngineStatus"); if(el){el.className="result "+(ok?"pass":"fail");el.textContent=ok?"日付エンジン: PASS（同日ループ防止）":"日付エンジン: FAIL（更新しないでください）";}
+ }catch(e){const el=$("dateEngineStatus");if(el){el.className="result fail";el.textContent="日付エンジン: FAIL\n"+e}}
+},0);

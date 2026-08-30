@@ -104,6 +104,13 @@ function ensureV7dTables(db){
    last_date TEXT,
    error TEXT
  )`);
+ db.exec(`CREATE TABLE IF NOT EXISTS web_no_data_dates(
+   dataset TEXT NOT NULL,
+   date TEXT NOT NULL,
+   checked_at TEXT NOT NULL,
+   reason TEXT,
+   PRIMARY KEY(dataset,date)
+ )`);
  db.exec(`CREATE TABLE IF NOT EXISTS web_runtime_migrations(
    migration_id TEXT PRIMARY KEY,
    applied_at TEXT NOT NULL,
@@ -180,8 +187,9 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
    if(!from||!to)throw new Error("from/to missing");
    db=new p.OpfsSAHPoolDb(marketName,"r");
    const rows=execRows(db,`SELECT DISTINCT date FROM bars_daily WHERE date>=? AND date<=? ORDER BY date`,[from,to]);
+   let noData=[]; try{noData=execRows(db,`SELECT date FROM web_no_data_dates WHERE dataset='bars_daily' AND date>=? AND date<=? ORDER BY date`,[from,to])}catch(_){}
    db.close();db=null;
-   self.postMessage({ok:true,type:"result",from,to,dates:rows.map(r=>r.date),elapsedMs:Math.round(performance.now()-t0)});return;
+   self.postMessage({ok:true,type:"result",from,to,dates:rows.map(r=>r.date),noDataDates:noData.map(r=>r.date),elapsedMs:Math.round(performance.now()-t0)});return;
  }
 
 
@@ -247,39 +255,44 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
  }
  if(cmd==="bars-auto-no-data"){
    const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
-   const payload=e.data.payload||{}, day=payload.date;
+   const payload=e.data.payload||{}, day=payload.date, progressDataset=payload.progressDataset||"bars_daily_auto";
    if(!day)throw new Error("date missing");
    db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
    db.exec("BEGIN IMMEDIATE");
    try{
+     db.exec({sql:`INSERT INTO web_no_data_dates(dataset,date,checked_at,reason) VALUES(?,?,?,?)
+       ON CONFLICT(dataset,date) DO UPDATE SET checked_at=excluded.checked_at,reason=excluded.reason`,
+       bind:["bars_daily",day,new Date().toISOString(),"API returned 0 rows"]});
      db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
        VALUES(?,?,?,?,?,?)
-       ON CONFLICT(dataset) DO UPDATE SET last_success_date=excluded.last_success_date,
+       ON CONFLICT(dataset) DO UPDATE SET
+       last_success_date=CASE WHEN excluded.last_success_date>web_sync_checkpoint.last_success_date THEN excluded.last_success_date ELSE web_sync_checkpoint.last_success_date END,
        updated_at=excluded.updated_at,status=excluded.status,note=excluded.note`,
-       bind:["bars_daily_auto",day,new Date().toISOString(),"OK",0,"API returned 0 rows (holiday/non-trading day)"]});
+       bind:[progressDataset,day,new Date().toISOString(),"OK",0,"API returned 0 rows"]});
      db.exec("COMMIT");
    }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
-   const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='bars_daily_auto'");
+   const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset=?",[progressDataset]);
    db.close();db=null;
    self.postMessage({ok:true,type:"result",date:day,rows:0,checkpoint:cp,elapsedMs:Math.round(performance.now()-t0)});return;
  }
+
  if(cmd==="bars-auto-mark"){
-   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
-   const payload=e.data.payload||{}, day=payload.date, n=Number(payload.rows||0);
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+   const payload=e.data.payload||{}, day=payload.date, n=Number(payload.rows||0), progressDataset=payload.progressDataset||"bars_daily_auto";
    if(!day)throw new Error("date missing");
-   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
    db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
      VALUES(?,?,?,?,?,?)
-     ON CONFLICT(dataset) DO UPDATE SET last_success_date=excluded.last_success_date,
+     ON CONFLICT(dataset) DO UPDATE SET
+     last_success_date=CASE WHEN excluded.last_success_date>web_sync_checkpoint.last_success_date THEN excluded.last_success_date ELSE web_sync_checkpoint.last_success_date END,
      updated_at=excluded.updated_at,status=excluded.status,
      rows_written=web_sync_checkpoint.rows_written+excluded.rows_written,note=excluded.note`,
-     bind:["bars_daily_auto",day,new Date().toISOString(),"OK",n,"auto sync committed"]});
-   const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='bars_daily_auto'");
+     bind:[progressDataset,day,new Date().toISOString(),"OK",n,"sync committed"]});
+   const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset=?",[progressDataset]);
    db.close();db=null;
    self.postMessage({ok:true,type:"result",checkpoint:cp,elapsedMs:Math.round(performance.now()-t0)});return;
  }
 
- 
  if(cmd==="write-gate-test"){
    const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
    db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
@@ -297,7 +310,7 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
  }
  if(cmd==="jquants-bars-write"){
    const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
-   const payload=e.data.payload||{}, day=payload.date, rows=payload.rows||[];
+   const payload=e.data.payload||{}, day=payload.date, rows=payload.rows||[], checkpointDataset=payload.checkpointDataset||"bars_daily_jquants";
    if(!day)throw new Error("date missing");
    db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
    try{db.exec("PRAGMA temp_store=MEMORY; PRAGMA cache_size=-32768;")}catch(_){}
@@ -338,7 +351,7 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
    const sql=`INSERT INTO ${qident("bars_daily")}(${insertCols.map(qident).join(",")}) VALUES(${insertCols.map(()=>"?").join(",")})${conflict}`;
    const runId=`jqd-${day}-${Date.now()}`;
    db.exec({sql:"INSERT INTO web_sync_run(run_id,dataset,started_at,status) VALUES(?,?,?,?)",
-     bind:[runId,"bars_daily_jquants",new Date().toISOString(),"RUNNING"]});
+     bind:[runId,checkpointDataset,new Date().toISOString(),"RUNNING"]});
    db.exec("BEGIN IMMEDIATE");
    try{
      let n=0;
@@ -357,13 +370,14 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
      }
      db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
        VALUES(?,?,?,?,?,?)
-       ON CONFLICT(dataset) DO UPDATE SET last_success_date=excluded.last_success_date,updated_at=excluded.updated_at,
-       status=excluded.status,rows_written=web_sync_checkpoint.rows_written+excluded.rows_written,note=excluded.note`,
-       bind:["bars_daily_jquants",day,new Date().toISOString(),"OK",n,"J-Quants daily bars committed"]});
+       ON CONFLICT(dataset) DO UPDATE SET
+       last_success_date=CASE WHEN excluded.last_success_date>web_sync_checkpoint.last_success_date THEN excluded.last_success_date ELSE web_sync_checkpoint.last_success_date END,
+       updated_at=excluded.updated_at,status=excluded.status,rows_written=web_sync_checkpoint.rows_written+excluded.rows_written,note=excluded.note`,
+       bind:[checkpointDataset,day,new Date().toISOString(),"OK",n,"J-Quants daily bars committed"]});
      db.exec("COMMIT");
      db.exec({sql:"UPDATE web_sync_run SET finished_at=?,status='OK',rows_written=?,last_date=? WHERE run_id=?",
        bind:[new Date().toISOString(),n,day,runId]});
-     const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='bars_daily_jquants'");
+     const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset=?",[checkpointDataset]);
      const verify=execRows(db,`SELECT * FROM ${qident("bars_daily")} WHERE ${qident(pk.includes("date")?"date":insertCols[0])}=? LIMIT 1`,[day]);
      db.close();db=null;
      self.postMessage({ok:true,type:"result",date:day,rows:n,columns:insertCols,schemaColumns:cols,pk,checkpoint:cp,verify,elapsedMs:Math.round(performance.now()-t0)});return;

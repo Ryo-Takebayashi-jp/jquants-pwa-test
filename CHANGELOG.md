@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta4g — CURRENT (2026-08-30)
+
+- Fixed the repeated same-date sync root cause: JST local midnight serialized through `toISOString()` could return the previous UTC calendar date.
+- Date arithmetic/weekend checks are now UTC-calendar safe and covered by a visible boot self-test.
+- Historical backfill uses separate checkpoints; checkpoint dates are monotonic.
+- API 0-row dates are persisted and excluded from later gap scans.
+
+
 ## Web/PWA v7d-beta4f — CURRENT (2026-08-30)
 
 Real J-Quants write-path hotfix.

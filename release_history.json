@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta4f",
+    "version": "v7d-beta4g",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-20"
+    "migration_version": "history-21"
   },
   "releases": [
     {
@@ -498,6 +498,21 @@
         "Audit production commands for marketName definition",
         "No DataLake re-import required",
         "Fix the 0-row holiday/non-trading checkpoint path to use the same resolved market DB"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta4g",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Timezone-safe date engine + backfill checkpoint isolation",
+      "changes": [
+        "Fix JST local-midnight toISOString same-date loop",
+        "UTC-safe date arithmetic/weekend detection",
+        "Visible date-engine self-test",
+        "Separate daily/backfill checkpoints",
+        "Monotonic checkpoints",
+        "Persist/exclude 0-row dates from gap scans"
       ]
     }
   ]
