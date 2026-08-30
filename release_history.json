@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7d-beta5",
+    "version": "v7d-beta5b",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-23"
+    "migration_version": "history-24"
   },
   "releases": [
     {
@@ -542,6 +542,21 @@
         "Storage estimate gate",
         "RAM-safe VACUUM INTO local SAH snapshot",
         "quick_check/rows/date validation"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-beta5b",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "SAH Pool lifecycle stabilization and UI literal fix",
+      "changes": [
+        "Fixed literal \\\\n accidentally rendered in startup UI",
+        "Replaced one-new-Worker-per-command with one persistent serialized SQLite Worker",
+        "Prevents repeated SAH Pool install/teardown and concurrent same-pool contexts from app commands",
+        "Worker messages now carry request IDs for safe long-running serialized operations",
+        "Pool identity is explicitly displayed and returned for diagnostics",
+        "No DataLake re-import or schema migration performed by this release"
       ]
     }
   ]

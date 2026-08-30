@@ -123,9 +123,13 @@ function sampleRows(db,table,limit=3){
  const out=[]; db.exec({sql:`SELECT * FROM ${qident(table)} LIMIT ${Number(limit)}`,rowMode:"object",callback:r=>out.push(r)}); return out;
 }
 
-self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
+self.onmessage=async e=>{
+ const requestId=(e.data||{}).requestId;
+ const originalPostMessage=self.postMessage.bind(self);
+ self.postMessage=(msg,...rest)=>originalPostMessage({...msg,requestId},...rest);
+const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
  const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
- if(cmd==="init"){self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,vfs,poolClass:!!p.OpfsSAHPoolDb,capacity:p.getCapacity(),files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
+ if(cmd==="init"){self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,vfs,poolClass:!!p.OpfsSAHPoolDb,capacity:p.getCapacity(),poolName:"jq-sahpool",poolDirectory:".jq-sahpool-v7c-r5",origin:self.location.origin,files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
  
   if(cmd==="backup-stats"){
  const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;db=new p.OpfsSAHPoolDb(marketName,"r");

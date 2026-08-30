@@ -1,5 +1,14 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta5b — CURRENT (2026-08-30)
+
+- Fixed the visible literal `\n` in the startup card.
+- Reworked SQLite access from a throwaway Worker per command to one persistent serialized Worker.
+- This keeps one SAH Pool installation alive for the page session and prevents overlapping/repeated pool contexts from normal app commands.
+- Added request IDs and explicit pool identity diagnostics.
+- This release deliberately does not auto-import, delete, migrate, or overwrite the DataLake.
+
+
 ## Web/PWA v7d-beta5 — CURRENT (2026-08-30)
 
 - Continuous resumable backfill with safe stop and per-date commits.

@@ -66,34 +66,56 @@ async function importDb(){
  }catch(e){state.imported={ok:false,error:String(e)};box("importResult","fail","Import FAIL\n"+e)}finally{$("importBtn").disabled=false}
 }
 
-function workerCall(cmd,timeoutMs=180000,onStatus=null,file=null,payload=null){
+let jqSqliteWorker=null;
+let jqWorkerSeq=0;
+const jqWorkerPending=new Map();
+let jqWorkerQueue=Promise.resolve();
+
+function ensureSqliteWorker(){
+ if(jqSqliteWorker) return jqSqliteWorker;
+ const w=new Worker("./sqlite-worker.js?v=v7d-beta5bb");
+ jqSqliteWorker=w;
+ w.onmessage=e=>{
+   const d=e.data||{}, id=d.requestId;
+   const p=jqWorkerPending.get(id);
+   if(!p) return;
+   if(d.type==="status"){
+     if(p.onStatus) p.onStatus(d);
+     return;
+   }
+   clearTimeout(p.timer);
+   jqWorkerPending.delete(id);
+   d.ok?p.resolve(d):p.reject(new Error(
+     `[${d.stage||"worker"}] ${d.error||"Worker失敗"}`+
+     (d.poolFiles?`\nSAH Pool files: ${JSON.stringify(d.poolFiles)}`:"")+
+     (d.stack?`\n${d.stack}`:"")+
+     (d.filename?`\n${d.filename}:${d.lineno||0}:${d.colno||0}`:"")
+   ));
+ };
+ w.onerror=e=>{
+   for(const [id,p] of jqWorkerPending){clearTimeout(p.timer);p.reject(new Error(`Worker script error: ${e.message||"unknown"}\n${e.filename||""}:${e.lineno||0}:${e.colno||0}`))}
+   jqWorkerPending.clear(); try{w.terminate()}catch(_){}
+   if(jqSqliteWorker===w)jqSqliteWorker=null;
+ };
+ return w;
+}
+
+function workerCallRaw(cmd,timeoutMs=180000,onStatus=null,file=null,payload=null){
  return new Promise((resolve,reject)=>{
-  const w=new Worker("./sqlite-worker.js");
-  const timer=setTimeout(()=>{w.terminate();reject(new Error("タイムアウト"))},timeoutMs);
-  w.onmessage=e=>{
-    const d=e.data||{};
-    if(d.type==="status"){
-      if(onStatus)onStatus(d);
-      return;
-    }
-    clearTimeout(timer);w.terminate();
-    d.ok?resolve(d):reject(new Error(
-      `[${d.stage||"worker"}] ${d.error||"Worker失敗"}`+
-      (d.poolFiles?`\nSAH Pool files: ${JSON.stringify(d.poolFiles)}`:"")+
-      (d.stack?`\n${d.stack}`:"")+
-      (d.filename?`\n${d.filename}:${d.lineno||0}:${d.colno||0}`:"")
-    ));
-  };
-  w.onerror=e=>{
-    clearTimeout(timer);w.terminate();
-    reject(new Error(
-      `Worker script error: ${e.message||"unknown"}
-`+
-      `${e.filename||""}:${e.lineno||0}:${e.colno||0}`
-    ));
-  };
-  w.postMessage({cmd,dbName:"/"+DBNAME,file,payload});
+   const w=ensureSqliteWorker(), requestId=++jqWorkerSeq;
+   const timer=setTimeout(()=>{
+     jqWorkerPending.delete(requestId);
+     reject(new Error("タイムアウト"));
+   },timeoutMs);
+   jqWorkerPending.set(requestId,{resolve,reject,onStatus,timer});
+   w.postMessage({requestId,cmd,dbName:"/"+DBNAME,file,payload});
  });
+}
+function workerCall(cmd,timeoutMs=180000,onStatus=null,file=null,payload=null){
+ const run=()=>workerCallRaw(cmd,timeoutMs,onStatus,file,payload);
+ const p=jqWorkerQueue.then(run,run);
+ jqWorkerQueue=p.catch(()=>{});
+ return p;
 }
 
 
