@@ -17,10 +17,10 @@
   },
   "current": {
     "product": "Web/PWA",
-    "version": "v7c-r2",
+    "version": "v7c-r3",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c",
-    "migration_version": "history-2"
+    "migration_version": "history-3"
   },
   "releases": [
     {
@@ -244,6 +244,23 @@
         "Keeps 1.12GB streaming-imported OPFS DB intact"
       ],
       "notes": "v7c-r1 streaming import passed but SQLite-WASM Direct Open failed at Worker startup."
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7c-r3",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "SQLite 3.53 opfs-wl initialization path",
+      "changes": [
+        "Disabled classic opfs VFS before SQLite initialization",
+        "Enabled only SQLite 3.53 opfs-wl transparent OPFS VFS",
+        "Added Atomics.waitAsync and Web Locks capability checks",
+        "Added explicit same-origin locateFile for sqlite3.wasm",
+        "Added init-only test before opening the 1.12GB database",
+        "Strict SQLite asset validation now rejects HTML false-positive responses",
+        "Direct Open uses sqlite3.oo1.OpfsWlDb read-only"
+      ],
+      "notes": "r2 proved same-origin asset delivery but failed during SQLite initialization before DB open. r3 isolates the initialization path and avoids the classic OPFS setup path."
     }
   ]
 }

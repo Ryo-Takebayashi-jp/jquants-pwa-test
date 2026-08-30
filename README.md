@@ -59,3 +59,23 @@ Cloudflare Pages Functions の `/sqlite/*` を使い、公式 `@sqlite.org/sqlit
 3. 「SQLite assetsを確認」
 4. 3資産すべてPASSなら Direct Open
 5. エラー時は Stage と詳細をスクショ
+
+
+## v7c-r3
+
+r2は同一オリジン配信を確定できたものの、DB Open前のSQLite初期化でFAIL。
+r3ではSQLite 3.53で追加された `opfs-wl` に絞って初期化します。
+
+- classic `opfs` は事前にdisable
+- `opfs-wl` のみenable
+- `Atomics.waitAsync` / Web Locksを確認
+- `locateFile` で `/sqlite/sqlite3.wasm` を明示
+- 先に「Initだけ実行」
+- Init PASS後に Direct Open
+- 1.12GB DBの再Importは不要
+
+推奨順:
+1. SQLite assetsを確認
+2. SQLite-WASM Initだけ実行
+3. PASSなら Direct Open
+4. quick_checkはDirect Open PASS後のみ

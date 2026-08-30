@@ -1,5 +1,20 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7c-r3 — CURRENT (2026-08-30)
+
+SQLite 3.53 `opfs-wl` initialization path
+
+- Disable classic `opfs` before SQLite initialization
+- Enable only SQLite 3.53 `opfs-wl` for transparent OPFS database access
+- Check `Atomics.waitAsync()` and Web Locks explicitly
+- Resolve `sqlite3.wasm` through same-origin `/sqlite/` with `locateFile`
+- Add an init-only test before touching the 1.12GB database
+- Strictly validate Content-Type + `X-JQ-SQLite-Proxy` to prevent false PASS
+- Direct Open now uses `sqlite3.oo1.OpfsWlDb`
+
+Note: v7c-r2 proved all SQLite assets were correctly served from the same origin, but initialization still failed before DB open.
+
+
 ## Web/PWA v7c-r2 — CURRENT (2026-08-30)
 
 Same-origin SQLite-WASM asset proxy + detailed Worker diagnostics

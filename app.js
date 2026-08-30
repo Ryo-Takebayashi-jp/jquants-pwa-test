@@ -109,24 +109,51 @@ ${d.filename}:${d.lineno||0}:${d.colno||0}`:"")
 async function sqliteProxyCheck(){
  try{
   const targets=[
-   ["/sqlite/index.mjs","text/javascript"],
-   ["/sqlite/sqlite3.wasm","application/wasm"],
-   ["/sqlite/sqlite3-opfs-async-proxy.js?vfs=opfs","text/javascript"]
+   {url:"/sqlite/index.mjs", want:"javascript"},
+   {url:"/sqlite/sqlite3.wasm", want:"application/wasm"},
+   {url:"/sqlite/sqlite3-opfs-async-proxy.js?vfs=opfs-wl", want:"javascript"}
   ];
   const lines=[];
-  for(const [url,expect] of targets){
-    const r=await fetch(url,{cache:"no-store"});
-    const ct=r.headers.get("content-type")||"";
+  for(const t of targets){
+    const r=await fetch(t.url,{cache:"no-store"});
+    const ct=(r.headers.get("content-type")||"").toLowerCase();
     const prox=r.headers.get("x-jq-sqlite-proxy")||"-";
-    if(!r.ok)throw new Error(`${url}: HTTP ${r.status}`);
-    lines.push(`${url}: PASS / ${ct} / proxy=${prox}`);
+    const typeOk=t.want==="application/wasm" ? ct.includes("application/wasm") : ct.includes("javascript");
+    const proxyOk=prox==="3.53.0-build1";
+    if(!r.ok || !typeOk || !proxyOk){
+      throw new Error(`${t.url}: HTTP=${r.status} type=${ct} proxy=${prox}`);
+    }
+    lines.push(`${t.url}: PASS / ${ct} / proxy=${prox}`);
   }
-  box("proxyResult","pass","Same-origin SQLite assets: PASS\\n"+lines.join("\\n"));
+  box("proxyResult","pass","Same-origin SQLite assets: PASS\n"+lines.join("\n"));
  }catch(e){
-  box("proxyResult","fail","Same-origin SQLite assets: FAIL\\n"+e);
+  box("proxyResult","fail","Same-origin SQLite assets: FAIL\n"+e);
  }
 }
 $("proxyBtn").onclick=sqliteProxyCheck;
+
+
+async function initOnly(){
+ box("initResult","run","SQLite-WASM初期化だけを試しています…");
+ try{
+  const r=await workerCall("init",180000,(s)=>{
+   box("initResult","run",`SQLite-WASM初期化中…\nStage: ${s.stage}\n${s.detail||""}`);
+  });
+  state.init=r;
+  box("initResult","pass",
+`PASS
+SQLite version: ${r.sqliteVersion}
+Atomics.waitAsync / Web Locks: 利用可
+opfs-wl VFS: ${r.vfs?.["opfs-wl"]?"PASS":"FAIL"}
+classic opfs VFS: ${r.vfs?.["opfs"]?"有効":"無効（意図通り）"}
+OpfsWlDb class: ${r.opfsWlClass?"PASS":"FAIL"}
+初期化時間: ${(r.elapsedMs/1000).toFixed(2)}秒`);
+ }catch(e){
+  state.init={ok:false,error:String(e)};
+  box("initResult","fail","SQLite Init FAIL\n"+e);
+ }
+}
+$("initBtn").onclick=initOnly;
 
 async function openDb(){
  box("openResult","run","SQLite-WASMを起動してDBを開いています…");
@@ -166,16 +193,17 @@ async function quickCheck(){
 }
 
 function summary(){
- const env=state.env?.ready===true, imp=state.imported?.ok===true, op=state.opened?.ok===true;
+ const env=state.env?.ready===true, imp=state.imported?.ok===true, ini=state.init?.ok===true, op=state.opened?.ok===true;
  const q=state.quick?.quick==="ok";
- box("summaryResult",env&&imp&&op?"pass":"warn",
+ box("summaryResult",env&&imp&&ini&&op?"pass":"warn",
 `Cloudflare/OPFS前提: ${env?"PASS":"未PASS"}
 1.12GB Streaming Import: ${imp?"PASS":"未PASS"}
+SQLite-WASM Init(opfs-wl): ${ini?"PASS":"未PASS"}
 SQLite-WASM Direct Open: ${op?"PASS":"未PASS"}
 quick_check: ${q?"PASS":state.quick?"要確認":"未実行（任意）"}
 
-総合: ${env&&imp&&op?"新保存エンジン方式は実機成立。旧sql.js全体RAM展開方式を廃止できます。":"未完了項目を確認してください。"}
-${env&&imp&&op?"次段階v7dで、このDBへJ-Quants差分/残り期間をSQLite-WASM経由で直接追記し、10年完走テストへ進めます。":""}`);
+総合: ${env&&imp&&ini&&op?"新保存エンジン方式は実機成立。旧sql.js全体RAM展開方式を廃止できます。":"未完了項目を確認してください。"}
+${env&&imp&&ini&&op?"次段階v7dで、このDBへJ-Quants差分/残り期間をSQLite-WASM経由で直接追記し、10年完走テストへ進めます。":""}`);
 }
 
 $("envBtn").onclick=envCheck;

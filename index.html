@@ -56,36 +56,43 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>4. 公式SQLite-WASMで直接Open</h2>
-<div class="desc">Worker内で公式 @sqlite.org/sqlite-wasm を起動し、OPFS上の1.12GB DBをread-onlyで開いてメタ情報と日足範囲を取得します。</div>
+<h2>4. SQLite-WASM初期化テスト（opfs-wl）</h2>
+<div class="desc">DBをまだ開かず、SQLite 3.53の新しい opfs-wl VFSだけを有効化して初期化します。classic opfsは意図的に無効化します。</div>
+<button id="initBtn" class="secondary">SQLite-WASM Initだけ実行</button>
+<div id="initResult" class="result">未実行</div>
+</section>
+
+<section class="card">
+<h2>5. 公式SQLite-WASMで直接Open（opfs-wl）</h2>
+<div class="desc">Worker内で公式 @sqlite.org/sqlite-wasm を起動し、SQLite 3.53の opfs-wl VFSでOPFS上の1.12GB DBをread-onlyで開きます。</div>
 <button id="openBtn">SQLite-WASM Direct Open</button>
 <div id="openResult" class="result">未実行</div>
 </section>
 
 <section class="card">
-<h2>5. 整合性チェック（任意・重め）</h2>
+<h2>6. 整合性チェック（任意・重め）</h2>
 <div class="desc">PRAGMA quick_checkを実行します。1GB超DBを走査するため時間がかかる可能性があります。</div>
 <button id="quickBtn" class="secondary">quick_checkを実行</button>
 <div id="quickResult" class="result">未実行</div>
 </section>
 
 <section class="card">
-<h2>6. v7c-r2総合判定</h2>
+<h2>7. v7c-r3総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 <section class="card">
-<h2>7. 更新履歴 / Build情報</h2>
+<h2>8. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7c-r2
+<div id="historyResult" class="result">Version: v7c-r3
 Build date: 2026-08-30
 Schema version: market-poc7c
-Migration version: history-2</div>
+Migration version: history-3</div>
 </section>
 
-<footer>Version v7c-r2 / Build 2026-08-30 / Schema market-poc7c / Migration history-2<br>
+<footer>Version v7c-r3 / Build 2026-08-30 / Schema market-poc7c / Migration history-3<br>
 v7cではJ-Quants API更新はまだ行いません。まず「巨大DBを全体RAM展開なしでImport→直接Open」できることだけを確定します。</footer>
 </main>
 <script src="./app.js"></script>
