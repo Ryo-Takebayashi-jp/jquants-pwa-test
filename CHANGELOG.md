@@ -1,5 +1,18 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-beta2 — CURRENT (2026-08-30)
+
+Automatic catch-up synchronization for daily bars.
+
+- Derive the starting point from the actual `bars_daily` maximum date plus persisted checkpoints.
+- Fetch only subsequent weekdays up to a selected target date.
+- A 0-row API response is treated as a checked non-trading/holiday candidate and advances the dedicated auto-sync checkpoint.
+- Foreground runs are capped (default 20 weekdays, configurable up to 60) so iPhone Safari can resume safely instead of attempting an unbounded run.
+- Each successful date is committed before the checkpoint advances; reruns resume from the next date.
+- Add a five-weekday idempotent repair mode using the `(code,date)` UPSERT.
+- Show `COUNT(DISTINCT date)` so min/max dates are no longer mistaken for complete historical coverage.
+
+
 ## Web/PWA v7d-beta1c — CURRENT (2026-08-30)
 
 Real DataLake write hotfix.

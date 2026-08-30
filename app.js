@@ -282,3 +282,88 @@ if($("jqFiveBtn")) $("jqFiveBtn").onclick=async()=>{
   box("jqFiveResult","pass",`PASS\n完了日数: ${out.length}\n${out.map(x=>`${x.date}: ${x.rows} rows${x.skipped?" (0件)":""}`).join("\n")}\nCheckpointは各日Commit後に更新`);
  }catch(e){box("jqFiveResult","fail","FAIL\n途中までCommit済み。再実行時はUPSERTで安全に再処理できます。\n"+e)}
 };
+
+
+function isoAddDays(s,n){
+ const d=new Date(s+"T00:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10);
+}
+function maxIso(...xs){ return xs.filter(Boolean).sort().at(-1)||null; }
+function isWeekendIso(s){
+ const d=new Date(s+"T00:00:00"); return [0,6].includes(d.getDay());
+}
+function dateRangeExclusive(startInclusive,endInclusive,maxDays=20){
+ const out=[]; let d=startInclusive;
+ while(d<=endInclusive && out.length<maxDays){ if(!isWeekendIso(d))out.push(d); d=isoAddDays(d,1); }
+ return out;
+}
+async function getAutoState(){ return await workerCall("bars-auto-state",180000); }
+async function autoCommitDate(d,token){
+ const got=await jqFetchDaily(d,token);
+ if(!got.rows.length){
+   const mark=await workerCall("bars-auto-no-data",180000,null,null,{date:d});
+   return {date:d,rows:0,endpoint:got.endpoint,noData:true,checkpoint:mark.checkpoint};
+ }
+ const wr=await workerCall("jquants-bars-write",300000,null,null,{date:d,rows:got.rows});
+ const mark=await workerCall("bars-auto-mark",180000,null,null,{date:d,rows:wr.rows});
+ return {...wr,endpoint:got.endpoint,autoCheckpoint:mark.checkpoint};
+}
+if($("autoTargetDate")) $("autoTargetDate").value=new Date().toLocaleDateString("sv-SE");
+if($("autoStateBtn")) $("autoStateBtn").onclick=async()=>{
+ box("autoStateResult","run","DataLakeとCheckpointを確認中…");
+ try{
+   const r=await getAutoState(); state.autoState=r;
+   const s=r.stats||{}, cp=(r.checkpoint||[])[0], jq=(r.jqcheckpoint||[])[0];
+   const anchor=maxIso(s.max_date,cp?.last_success_date,jq?.last_success_date);
+   box("autoStateResult","pass",
+`PASS
+DataLake期間: ${s.min_date||"-"} ～ ${s.max_date||"-"}
+総行数: ${Number(s.rows||0).toLocaleString()}
+実データ日数: ${Number(s.distinct_dates||0).toLocaleString()}
+Auto checkpoint: ${cp?.last_success_date||"なし"}
+J-Quants checkpoint: ${jq?.last_success_date||"なし"}
+次回開始基準: ${anchor||"判定不能"}${anchor?` → ${isoAddDays(anchor,1)}から`:""}`);
+ }catch(e){box("autoStateResult","fail","FAIL\n"+e)}
+};
+if($("autoSyncBtn")) $("autoSyncBtn").onclick=async()=>{
+ box("autoSyncResult","run","同期計画を作成中…");
+ try{
+   const token=$("jqToken").value.trim(); if(!token)throw new Error("上のJ-Quants V2 APIキーを入力してください");
+   const target=$("autoTargetDate").value, maxDays=Math.max(1,Math.min(60,Number($("autoMaxDays").value||20)));
+   const st=await getAutoState(), s=st.stats||{}, cp=(st.checkpoint||[])[0], jq=(st.jqcheckpoint||[])[0];
+   const anchor=maxIso(s.max_date,cp?.last_success_date,jq?.last_success_date);
+   if(!anchor)throw new Error("開始基準日を判定できません");
+   const start=isoAddDays(anchor,1);
+   if(start>target){ box("autoSyncResult","pass",`PASS / 更新不要\n最終確認日: ${anchor}\nTarget: ${target}`); return; }
+   const days=dateRangeExclusive(start,target,maxDays);
+   if(!days.length){ box("autoSyncResult","pass",`PASS / 対象営業候補なし\n${start} ～ ${target}`); return; }
+   const out=[];
+   for(const d of days){
+     box("autoSyncResult","run",`${d} を同期中…\n完了 ${out.length}/${days.length}\nSafariを閉じないでください`);
+     out.push(await autoCommitDate(d,token));
+   }
+   const last=out.at(-1);
+   box("autoSyncResult","pass",
+`PASS
+処理日数: ${out.length}
+${out.map(x=>`${x.date}: ${x.rows} rows${x.noData?" (0件/休場候補)":""}`).join("\n")}
+最終Checkpoint: ${last?.date}
+${days.length>=maxDays && last?.date<target?"上限到達。もう一度押すと続きから再開します。":"Targetまで処理完了。"}`);
+ }catch(e){box("autoSyncResult","fail","FAIL\n成功済み日まではCheckpoint保存済みです。再実行すれば続きから再開します。\n"+e)}
+};
+if($("recentRepairBtn")) $("recentRepairBtn").onclick=async()=>{
+ box("recentRepairResult","run","直近5平日を再取得・UPSERT検証中…");
+ try{
+   const token=$("jqToken").value.trim(); if(!token)throw new Error("上のJ-Quants V2 APIキーを入力してください");
+   const target=$("autoTargetDate").value, arr=[]; let d=target;
+   while(arr.length<5){ if(!isWeekendIso(d))arr.push(d); d=isoAddDays(d,-1); }
+   arr.reverse(); const out=[];
+   for(const x of arr){
+     box("recentRepairResult","run",`${x} を冪等再検証中…\n${out.length}/5`);
+     const got=await jqFetchDaily(x,token);
+     if(!got.rows.length){out.push({date:x,rows:0,noData:true});continue}
+     const wr=await workerCall("jquants-bars-write",300000,null,null,{date:x,rows:got.rows});
+     out.push({date:x,rows:wr.rows});
+   }
+   box("recentRepairResult","pass",`PASS\n${out.map(x=>`${x.date}: ${x.rows} rows${x.noData?" (0件)":""}`).join("\n")}\nUPSERT再実行で重複増加なし`);
+ }catch(e){box("recentRepairResult","fail","FAIL\n"+e)}
+};

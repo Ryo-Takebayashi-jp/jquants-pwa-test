@@ -114,6 +114,56 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
 
 
 
+
+ if(cmd==="bars-auto-state"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"r");
+   const stats=execRows(db,`SELECT MIN(date) AS min_date, MAX(date) AS max_date,
+     COUNT(*) AS rows, COUNT(DISTINCT date) AS distinct_dates FROM bars_daily`);
+   let checkpoint=[];
+   try{checkpoint=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='bars_daily_auto'")}catch(_){}
+   let jqcheckpoint=[];
+   try{jqcheckpoint=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='bars_daily_jquants'")}catch(_){}
+   let syncLog=[];
+   try{syncLog=execRows(db,`SELECT COUNT(*) AS n, MIN(sync_date) AS min_date, MAX(sync_date) AS max_date
+     FROM sync_log WHERE dataset='bars_daily' OR dataset LIKE '%bars%'`)}catch(_){}
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",stats:stats[0]||{},checkpoint,jqcheckpoint,syncLog:syncLog[0]||{},elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="bars-auto-no-data"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   const payload=e.data.payload||{}, day=payload.date;
+   if(!day)throw new Error("date missing");
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   db.exec("BEGIN IMMEDIATE");
+   try{
+     db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
+       VALUES(?,?,?,?,?,?)
+       ON CONFLICT(dataset) DO UPDATE SET last_success_date=excluded.last_success_date,
+       updated_at=excluded.updated_at,status=excluded.status,note=excluded.note`,
+       bind:["bars_daily_auto",day,new Date().toISOString(),"OK",0,"API returned 0 rows (holiday/non-trading day)"]});
+     db.exec("COMMIT");
+   }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
+   const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='bars_daily_auto'");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",date:day,rows:0,checkpoint:cp,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="bars-auto-mark"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   const payload=e.data.payload||{}, day=payload.date, n=Number(payload.rows||0);
+   if(!day)throw new Error("date missing");
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
+     VALUES(?,?,?,?,?,?)
+     ON CONFLICT(dataset) DO UPDATE SET last_success_date=excluded.last_success_date,
+     updated_at=excluded.updated_at,status=excluded.status,
+     rows_written=web_sync_checkpoint.rows_written+excluded.rows_written,note=excluded.note`,
+     bind:["bars_daily_auto",day,new Date().toISOString(),"OK",n,"auto sync committed"]});
+   const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='bars_daily_auto'");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",checkpoint:cp,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+
  if(cmd==="jquants-bars-write"){
    if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
    const payload=e.data.payload||{}, day=payload.date, rows=payload.rows||[];
