@@ -1,5 +1,16 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7d-alpha1 — CURRENT (2026-08-30)
+
+Direct-write DataLake runtime foundation
+
+- SQLite-WASM writes directly to the 1.12GB SAH Pool DataLake
+- Adds `web_sync_checkpoint` and `web_runtime_migrations`
+- Transactional checkpoint UPSERT and Worker-restart resume test
+- No whole-database RAM expansion and no `db.export()`
+- This alpha intentionally does not call J-Quants yet; it validates the production write/resume foundation first
+
+
 ## Web/PWA v7c-r6 — CURRENT (2026-08-30)
 
 SAH Pool smoke/persistence diagnostic

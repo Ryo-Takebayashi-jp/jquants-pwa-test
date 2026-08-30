@@ -16,10 +16,10 @@
     "rule": "Every release or PoC revision must append a history entry. Historical entries are never silently rewritten."
   },
   "current": {
-    "version": "v7c-r6",
+    "version": "v7d-alpha1",
     "build_date": "2026-08-30",
     "schema_version": "market-poc7c-sahpool",
-    "migration_version": "history-6"
+    "migration_version": "history-7"
   },
   "releases": [
     {
@@ -293,6 +293,20 @@
         "Separate SAH Pool engine verification from 1.12GB rescue DB import",
         "Direct Open missing-DB error now explicitly instructs Step 2 import",
         "Mark rescue SQLite import as mandatory before Direct Open"
+      ]
+    },
+    {
+      "product": "Web/PWA",
+      "version": "v7d-alpha1",
+      "date": "2026-08-30",
+      "status": "CURRENT",
+      "summary": "Direct-write DataLake runtime foundation",
+      "changes": [
+        "Add web runtime migration tables to existing 1.12GB DataLake",
+        "Direct SQLite-WASM write without whole-DB RAM export",
+        "Transactional checkpoint UPSERT",
+        "Worker-restart resume test",
+        "Preserve SAH Pool and rescue-import architecture"
       ]
     }
   ]

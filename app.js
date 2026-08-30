@@ -161,6 +161,23 @@ $("envBtn").onclick=envCheck;
 $("importBtn").onclick=importDb;
 $("openBtn").onclick=openDb;
 $("quickBtn").onclick=quickCheck;
+
+$("migrateBtn").onclick=async()=>{
+ box("migrateResult","run","Runtime migration適用中…");
+ try{const r=await workerCall("runtime-migrate",180000);state.migrate=r;box("migrateResult","pass",`PASS\nmigration: ${r.migration}\n処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒`)}
+ catch(e){box("migrateResult","fail","FAIL\n"+e)}
+};
+$("appendBtn").onclick=async()=>{
+ box("appendResult","run","Direct write / checkpointテスト中…");
+ try{const r=await workerCall("append-test",180000);state.append=r;box("appendResult","pass",`PASS\n${JSON.stringify(r.rows,null,2)}\nDB全体RAM展開: なし`)}
+ catch(e){box("appendResult","fail","FAIL\n"+e)}
+};
+$("resumeBtn").onclick=async()=>{
+ box("resumeResult","run","新しいWorkerでcheckpoint再読込中…");
+ try{const r=await workerCall("resume-test",180000);state.resume=r;box("resumeResult",r.resumed?"pass":"fail",`${r.resumed?"PASS":"FAIL"}\nWorker再起動後Resume: ${r.resumed}\n${JSON.stringify(r.after,null,2)}`)}
+ catch(e){box("resumeResult","fail","FAIL\n"+e)}
+};
+
 $("summaryBtn").onclick=summary;
 
 async function showHistory(){

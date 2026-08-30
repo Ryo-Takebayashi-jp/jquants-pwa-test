@@ -25,6 +25,26 @@ async function importFile(file,name){
  });
  return {bytes,chunks};
 }
+
+function execRows(db,sql,bind=[]){
+ const rows=[]; db.exec({sql,bind,rowMode:"object",callback:r=>rows.push(r)}); return rows;
+}
+function ensureRuntimeTables(db){
+ db.exec(`CREATE TABLE IF NOT EXISTS web_sync_checkpoint(
+   dataset TEXT PRIMARY KEY,
+   last_success_date TEXT,
+   updated_at TEXT NOT NULL,
+   note TEXT
+ )`);
+ db.exec(`CREATE TABLE IF NOT EXISTS web_runtime_migrations(
+   migration_id TEXT PRIMARY KEY,
+   applied_at TEXT NOT NULL,
+   detail TEXT
+ )`);
+ db.exec({sql:`INSERT OR IGNORE INTO web_runtime_migrations(migration_id,applied_at,detail)
+   VALUES(?,?,?)`,bind:["v7d-runtime-1",new Date().toISOString(),"SQLite-WASM direct-write runtime tables"]});
+}
+
 self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
  const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
  if(cmd==="init"){self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,vfs,poolClass:!!p.OpfsSAHPoolDb,capacity:p.getCapacity(),files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
@@ -48,6 +68,42 @@ self.onmessage=async e=>{const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market
    db.close();db=null;
    self.postMessage({ok:true,type:"result",smoke,rows,value,persisted:rows===1&&value==="SAHPOOL-PERSIST-OK",elapsedMs:Math.round(performance.now()-t0)});return;
  }
+
+ if(cmd==="runtime-migrate"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureRuntimeTables(db);
+   const mig=Number(scalar(db,"SELECT COUNT(*) FROM web_runtime_migrations WHERE migration_id='v7d-runtime-1'")||0);
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",migration:mig===1,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="append-test"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureRuntimeTables(db);
+   db.exec("BEGIN IMMEDIATE");
+   try{
+     db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,note)
+       VALUES(?,?,?,?)
+       ON CONFLICT(dataset) DO UPDATE SET last_success_date=excluded.last_success_date,
+       updated_at=excluded.updated_at,note=excluded.note`,
+       bind:["v7d_append_test","2026-08-30",new Date().toISOString(),"direct-write checkpoint test"]});
+     db.exec("COMMIT");
+   }catch(e){try{db.exec("ROLLBACK")}catch(_){} throw e}
+   const rows=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='v7d_append_test'");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",rows,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="resume-test"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureRuntimeTables(db);
+   const before=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='v7d_append_test'");
+   if(!before.length)throw new Error("checkpoint missing");
+   db.exec({sql:"UPDATE web_sync_checkpoint SET note=?,updated_at=? WHERE dataset=?",
+     bind:["resume-after-worker-restart",new Date().toISOString(),"v7d_append_test"]});
+   const after=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='v7d_append_test'");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",before,after,resumed:after[0]?.note==="resume-after-worker-restart",elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+
  if(!p.getFileNames().includes(name)) throw new Error(`SAH pool DB not found: ${name}. Step 2でレスキューSQLiteをImportしてください。`);
  db=new p.OpfsSAHPoolDb(name,"r");
  if(cmd==="open"){const hasBars=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)>0,hasSync=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sync_log'")||0)>0;const out={ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsUsed:p.vfsName,filename:name,tableCount:Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table'")||0),barsCount:hasBars?Number(scalar(db,"SELECT COUNT(*) FROM bars_daily")||0):0,minDate:hasBars?scalar(db,"SELECT MIN(date) FROM bars_daily"):null,maxDate:hasBars?scalar(db,"SELECT MAX(date) FROM bars_daily"):null,syncOk:hasSync?Number(scalar(db,"SELECT COUNT(*) FROM sync_log WHERE dataset='bars_daily' AND status='OK'")||0):0,elapsedMs:Math.round(performance.now()-t0)};db.close();self.postMessage(out);return;}

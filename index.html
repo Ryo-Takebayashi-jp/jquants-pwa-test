@@ -21,7 +21,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7c-r6</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7d-alpha1</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 <main>
 <div class="notice">
 旧sql.jsのようにDB全体をRAMへ読み込みません。レスキューSQLiteは<b>ストリームでOPFSへコピー</b>し、
@@ -82,22 +82,22 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>7. v7c-r6総合判定</h2>
+<h2>7. v7d-alpha1総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 <section class="card">
-<h2>8. 更新履歴 / Build情報</h2>
+<h2>10. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7c-r6
+<div id="historyResult" class="result">Version: v7d-alpha1
 Build date: 2026-08-30
 Schema version: market-poc7c
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7c-r6 / Build 2026-08-30 / Schema market-poc7c / Migration history-6<br>
+<footer>Version v7d-alpha1 / Build 2026-08-30 / Schema market-poc7c / Migration history-7<br>
 v7cではJ-Quants API更新はまだ行いません。まず「巨大DBを全体RAM展開なしでImport→直接Open」できることだけを確定します。</footer>
 </main>
 <script src="./app.js"></script>

@@ -83,3 +83,8 @@ r3ではSQLite 3.53で追加された `opfs-wl` に絞って初期化します�
 
 ## v7c-r6
 巨大DBの前にSAH Pool自体の読み書き・Worker跨ぎ永続化を小型DBで検証します。r5のDirect Open FAILは、SAH Pool側に1.12GB DBがまだImportされていない場合にも発生します。r6では手順を明確化しました。
+
+## v7d-alpha1
+r6で1.12GB DataLakeのImport/Open/quick_checkが実機PASSしたため、Direct-write基盤へ移行。
+既存DataLakeへ小さなruntime管理テーブルだけを追加し、トランザクション書込みとWorker再起動後のcheckpoint復元を検証する。
+J-Quants API同期は次段階。まず巨大DBを再exportせず安全に追記・再開できることを確定する。
