@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha66");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha67");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha66").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha67").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2169,6 +2169,11 @@ function buildScreeningStrategies(rows){
   const opm=r.ProfitType==="OperatingProfit"?lin(r.CurrentOperatingMarginPct,[[0,25],[5,45],[10,65],[20,85],[35,95]]):50;
   const mi=lin(r.OperatingMarginChangePt,[[-5,15],[-1,35],[0,50],[2,70],[5,90]]),roe=lin(r.ROE,[[0,20],[5,40],[10,60],[15,78],[25,95]]),eq=lin(r.EquityRatioPct,[[10,25],[25,45],[40,65],[60,82],[80,90]]);
   let cf=50;if(r.LatestAvailableCFO!=null){cf=Number(r.LatestAvailableCFO)>0?70:20;if(r.LatestAvailableFCF!=null)cf+=Number(r.LatestAvailableFCF)>0?15:-15}
+  r.QVRROEScore=roe;
+  r.QVROperatingMarginScore=opm;
+  r.QVRMarginImprovementScore=mi;
+  r.QVRCFScore=cf;
+  r.QVREquityScore=eq;
   r.QVRQualityScore=Math.max(0,Math.min(100,roe*.25+opm*.20+mi*.20+cf*.20+eq*.15));
  });
  // QVR value requires peer ranks, calculated above.
@@ -2316,6 +2321,7 @@ async function runStandaloneResidualFinancialAudit(){
      lines.push(`最新: data=${latest.data_date||"-"} / disclosed=${latest.disclosed_date||"-"} ${latest.disclosed_time||""}`);
      lines.push(`DocType=${pick(o,"DocType","TypeOfDocument")} / CurPerType=${pick(o,"CurPerType","CurrentPeriodType")} / CurFYEn=${pick(o,"CurFYEn","CurrentFiscalYearEndDate")}`);
      lines.push(`Sales=${pick(o,"Sales","NCSales","NetSales")} / OP=${pick(o,"OP","NCOP","OperatingProfit")} / EPS=${pick(o,"EPS","NCEPS","EarningsPerShare")} / BPS=${pick(o,"BPS","NCBPS","BookValuePerShare")}`);
+     lines.push(`Eq=${pick(o,"Eq","NCEq")} / ShEq=${pick(o,"ShEq","NCShEq")} / ROE=${pick(o,"ROE","NCROE")} / EqAR=${pick(o,"EqAR","NCEqAR")}`);
      lines.push(`F.Sales=${pick(o,"FSales","FNCSales","ForecastSales")} / F.OP=${pick(o,"FOP","FNCOP","ForecastOperatingProfit")} / F.EPS=${pick(o,"FEPS","FNCEPS","ForecastEPS","ForecastEarningsPerShare")}`);
      lines.push("判定: raw財務DBには存在 → 正規化/最新決算選択/JOIN側を次に監査");
      lines.push("");
@@ -2339,7 +2345,8 @@ function residualFullTrace(pcRows,webSelected,webScored,codes){
   "QVRQualityMismatchPenalty","QVRCrowdingPenalty","ChasePenalty",
   "SectorForecastPERValueScore","SectorPBRValueScore","SectorDividendYieldValueScore",
   "ForecastPER","PBR","ForecastDividendYieldPct","ForecastPrimaryProfitGrowthPct",
-  "ROE","CurrentOperatingMarginPct","OperatingMarginChangePt","LatestAvailableCFO","LatestAvailableFCF","EquityRatioPct",
+  "ROE","ROESource","QVRROEScore","CurrentOperatingMarginPct","QVROperatingMarginScore","OperatingMarginChangePt","QVRMarginImprovementScore",
+  "LatestAvailableCFO","LatestAvailableFCF","QVRCFScore","EquityRatioPct","QVREquityScore",
   "LatestDisclosureDate","ProfitType","FinancialDataFlag"
  ];
  const lines=["【残差フルトレース】","選抜候補だけでなくWeb全スコア母集団まで追跡"];
@@ -2351,6 +2358,14 @@ function residualFullTrace(pcRows,webSelected,webScored,codes){
    for(const k of fields){
      const pv=pc[k],wv=q[k],ps=pv==null||String(pv).trim()===""?"(blank)":pv,ws=wv==null||String(wv).trim()===""?"(blank)":wv;
      if(ps!=="(blank)"||ws!=="(blank)")lines.push(`${k}: PC=${ps} / Web=${ws}`);
+   }
+   if(Number.isFinite(Number(pc.QVRQualityScore))&&Object.keys(q).length){
+     const pcQ=Number(pc.QVRQualityScore);
+     const other=(Number(q.QVROperatingMarginScore)||0)*.20+(Number(q.QVRMarginImprovementScore)||0)*.20+(Number(q.QVRCFScore)||0)*.20+(Number(q.QVREquityScore)||0)*.15;
+     const implied=(pcQ-other)/.25;
+     lines.push(`Quality分解(Web): ROE=${q.QVRROEScore??"(blank)"}×25% + OPM=${q.QVROperatingMarginScore??"(blank)"}×20% + Margin改善=${q.QVRMarginImprovementScore??"(blank)"}×20% + CF=${q.QVRCFScore??"(blank)"}×20% + Equity=${q.QVREquityScore??"(blank)"}×15%`);
+     lines.push(`PC Qualityから逆算したROE部品score=${Number.isFinite(implied)?implied.toFixed(4):"(blank)"} / Web ROE部品score=${q.QVRROEScore??"(blank)"}`);
+     if(Number.isFinite(implied)&&Math.abs(implied-Number(q.QVRROEScore))>1e-6)lines.push(`Quality差の主因候補: ROE部品 ${implied.toFixed(2)} vs ${q.QVRROEScore??"(blank)"}`);
    }
    const wr=Number(q.QualityValueReRatingUniverseRank);
    if(Number.isFinite(wr)){

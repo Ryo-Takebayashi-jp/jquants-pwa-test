@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha66",
+  "current_release": "v7e-alpha67",
   "history": [
     {
-      "release": "v7e-alpha66",
+      "release": "v7e-alpha67",
       "date": "2026-09-02",
-      "note": "Bundled full residual trace across complete scored universe; no data refresh required."
+      "note": "QVR Quality decomposition + V2 ShEq/NCShEq ROE normalization fix + inferred PC ROE component audit."
     }
   ]
 }

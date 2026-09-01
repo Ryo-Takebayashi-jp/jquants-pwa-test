@@ -1,10 +1,12 @@
 # CHANGELOG
 
-## v7e-alpha66 — 2026-09-02
-- 97.8%残差を1回の更新で広く診断する「残差フルトレース」を追加。
-- 5戦略の全スコア母集団を保持し、Top20外にもUniverseRankを付与。
-- PC_ONLY銘柄でもWeb母集団上のQVR/Quality/Value/ReRating/原材料/FinancialDataFlagを確認可能。
-- QVR順位近傍（境界周辺）のコード・スコアを同時表示。
-- 自動判定: 母集団欠落 / 財務フラグ除外 / QVR欠損 / Top20境界外 / 候補統合経路 / PC側境界差。
-- alpha64までの97.8%選抜式は変更していない。
-- データ再取得・財務履歴更新は不要。既存DataLakeから再計算のみ。
+## v7e-alpha67 — 2026-09-02
+- PC版 screening.py のQVR Quality式を再監査。Web式そのものはPCと一致していることを確認。
+- 6176/3989のQuality差がともに正確に11.25ptで、ROE component 45pt × 25% と一致するためROE経路を重点修正。
+- V2 fins/summary の株主資本フィールド ShEq / NCShEq をROEフォールバック計算へ追加。
+- 前年FY自己資本の選択をPC版 `_previous_fy` と同じ「FY末日が約365日前」方式へ変更。
+- ROESourceを正規化→Screening母集団まで伝播。
+- QVR Qualityを5部品（ROE/OPM/Margin改善/CF/Equity）として保存・表示。
+- PC QVRQualityScoreから必要ROE componentを逆算し、Web実値との差を自動表示。
+- raw監査にも Eq/ShEq/ROE/EqAR を追加。
+- 既存DataLakeのみ使用。API/財務履歴の再取得は不要。
