@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha31",
+  "current_release": "v7e-alpha32",
   "history": [
     {
-      "release": "v7e-alpha31",
+      "release": "v7e-alpha32",
       "date": "2026-09-01",
-      "note": "Use raw Volume for Web Screening to match desktop _adjusted_entries behavior; refresh all alpha31 version labels."
+      "note": "Add J-Quants V2 equities/master shard and Catalog registration after daily technical parity completion."
     }
   ]
 }

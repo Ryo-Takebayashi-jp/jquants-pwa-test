@@ -1,9 +1,10 @@
 # CHANGELOG
 
-## v7e-alpha31 — 2026-09-01
-- PC/Web日足テクニカルParityの最終残差を修正。
-- Web Screeningの出来高系列を `COALESCE(adj_volume, volume)` からPC版と同じ raw `volume` に変更。
-- PC版 `technical._adjusted_entries()` はOHLCだけをAdjFactorで最新基準へ補正し、Screeningの出来高は元rowの `Vo/Volume` をそのまま使用するため、この挙動へ統一。
-- alpha30のWilder RSI長期履歴化・欠損Volume除外平均は維持。
-- 画面/Workerのバージョン表記とcache-bustを v7e-alpha31 に更新。
-- Low20D/60Dは修正済PC版と同じ「調整後安値の期間最小値」を維持。
+## v7e-alpha32 — 2026-09-01
+- 日足テクニカルParity PASS後の次工程として、J-Quants V2 銘柄マスター層を追加。
+- `/v2/equities/master` を基準日指定で取得するクライアントを追加。
+- `/jq_equities_master_v1.sqlite` Shardを新設。
+- Code / Date / Company / Market / Sector17 / Sector33 / Scale / Margin / ProductCategory / BasePrice と raw_json を保存。
+- Catalogへ equities_master shard のcoverage/stateを登録。
+- APIキーは従来どおりセッション入力のみ。DB/localStorageへ保存しない。
+- alpha31の日足テクニカル完全Parityを維持。

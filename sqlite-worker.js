@@ -979,6 +979,83 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      try{if(pdb)pdb.close()}catch(_){}
    }
  }
+
+ if(cmd==="equities-master-write"){
+   const payload=d.payload||{}, rows=payload.rows||[], requestedDate=String(payload.date||"");
+   const dbName="/jq_equities_master_v1.sqlite"; let mdb=null;
+   try{
+     status("master-open","銘柄マスターShardを開いています");
+     mdb=new p.OpfsSAHPoolDb(dbName,"c");
+     mdb.exec(`CREATE TABLE IF NOT EXISTS equities_master(
+       code TEXT NOT NULL,
+       effective_date TEXT NOT NULL,
+       company_name TEXT, company_name_en TEXT,
+       market_code TEXT, market_name TEXT,
+       sector17_code TEXT, sector17_name TEXT,
+       sector33_code TEXT, sector33_name TEXT,
+       scale_category TEXT, margin_code TEXT, margin_name TEXT,
+       product_category TEXT, base_price REAL,
+       raw_json TEXT,
+       PRIMARY KEY(code,effective_date)
+     ) WITHOUT ROWID`);
+     mdb.exec(`CREATE INDEX IF NOT EXISTS idx_eq_master_date ON equities_master(effective_date)`);
+     const stmt=mdb.prepare(`INSERT OR REPLACE INTO equities_master(
+       code,effective_date,company_name,company_name_en,market_code,market_name,
+       sector17_code,sector17_name,sector33_code,sector33_name,scale_category,
+       margin_code,margin_name,product_category,base_price,raw_json
+     ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+     mdb.exec("BEGIN");
+     try{
+       for(const r of rows){
+         const code=String(r.Code??r.code??"").trim();
+         const ed=String(r.Date??r.date??requestedDate??"").slice(0,10);
+         if(!code||!ed) continue;
+         stmt.bind([
+           code,ed,
+           r.CoName??r.CompanyName??null,r.CoNameEn??r.CompanyNameEnglish??null,
+           r.Mkt??r.MarketCode??null,r.MktNm??r.MarketCodeName??null,
+           r.S17??r.Sector17Code??null,r.S17Nm??r.Sector17CodeName??null,
+           r.S33??r.Sector33Code??null,r.S33Nm??r.Sector33CodeName??null,
+           r.ScaleCat??r.ScaleCategory??null,
+           r.Mrgn??r.MarginCode??null,r.MrgnNm??r.MarginCodeName??null,
+           r.ProdCat??r.ProductCategory??null,
+           Number.isFinite(Number(r.BasePrice))?Number(r.BasePrice):null,
+           JSON.stringify(r)
+         ]).stepReset();
+       }
+       mdb.exec("COMMIT");
+     }catch(err){try{mdb.exec("ROLLBACK")}catch(_){} throw err}
+     stmt.finalize();
+     const count=Number(scalar(mdb,"SELECT count(*) FROM equities_master")||0);
+     const minDate=scalar(mdb,"SELECT min(effective_date) FROM equities_master");
+     const maxDate=scalar(mdb,"SELECT max(effective_date) FROM equities_master");
+     const quickCheck=scalar(mdb,"PRAGMA quick_check");
+     mdb.close();mdb=null;
+
+     let cdb=null;
+     try{
+       cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+       cdb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+         shard_key TEXT PRIMARY KEY, logical_name TEXT NOT NULL, dataset TEXT NOT NULL,
+         range_start TEXT, range_end TEXT, schema_version TEXT, state TEXT NOT NULL, updated_at TEXT NOT NULL
+       )`);
+       const now=new Date().toISOString().replace(/'/g,"''");
+       const esc=x=>String(x||"").replaceAll("'","''");
+       cdb.exec(`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at)
+         VALUES('equities_master','${esc(dbName)}','equities_master','${esc(minDate)}','${esc(maxDate)}','master-v1','ready','${now}')
+         ON CONFLICT(shard_key) DO UPDATE SET logical_name=excluded.logical_name,dataset=excluded.dataset,
+         range_start=excluded.range_start,range_end=excluded.range_end,schema_version=excluded.schema_version,
+         state=excluded.state,updated_at=excluded.updated_at`);
+       cdb.close();
+     }catch(_){try{if(cdb)cdb.close()}catch(__){}}
+     self.postMessage({ok:true,type:"result",dbName,rows:count,minDate,maxDate,quickCheck});
+     return;
+   }catch(err){
+     try{if(mdb)mdb.close()}catch(_){}
+     throw err;
+   }
+ }
+
  if(cmd==="technical-screening-poc"){
    const payload=e.data.payload||{};
    const asOf=String(payload.asOf||"");

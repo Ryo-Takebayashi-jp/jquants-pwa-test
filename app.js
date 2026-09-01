@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha31");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha32");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -255,6 +255,32 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function jqAuthHeaders(token){
  return {"x-api-key":token,"Accept":"application/json"};
 }
+
+async function jqFetchEquitiesMaster(date, token){
+ if(!token) throw new Error("APIキーを入力してください");
+ const normalized=String(date||"").replaceAll("-","");
+ let url=`/api/jquants/equities/master${normalized?`?date=${encodeURIComponent(normalized)}`:""}`;
+ let all=[], pageToken=null, pages=0;
+ do{
+   const u=new URL(url,location.origin);
+   if(pageToken) u.searchParams.set("pagination_key",pageToken);
+   let res;
+   for(let attempt=0;attempt<5;attempt++){
+     res=await fetch(u,{headers:jqAuthHeaders(token),cache:"no-store"});
+     if(res.status!==429) break;
+     const ra=Number(res.headers.get("Retry-After")||0);
+     await sleep(ra?ra*1000:Math.min(16000,1000*(2**attempt)));
+   }
+   const text=await res.text(); let j={}; try{j=text?JSON.parse(text):{}}catch(_){}
+   if(!res.ok) throw new Error(`J-Quants HTTP ${res.status}: ${j.message||j.error||text.slice(0,300)}`);
+   const rows=j.data||[];
+   if(!Array.isArray(rows)) throw new Error("J-Quants V2 equities/master response data not recognized");
+   all.push(...rows); pageToken=j.pagination_key||j.paginationKey||null;
+   pages++; if(pages>100) throw new Error("pagination safety stop");
+ }while(pageToken);
+ return {rows:all,endpoint:"/v2/equities/master",pages};
+}
+
 async function jqFetchDaily(date, token){
  if(!token) throw new Error("APIキーを入力してください");
  const normalized=String(date).replaceAll("-","");
@@ -1129,7 +1155,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha31",
+   appVersion:"v7e-alpha32",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1632,6 +1658,19 @@ ${e.message||e}
 
 同じ①→②を再実行できます（UPSERT）。`);
  }finally{$("autoGapRepairBtn").disabled=false}
+};
+
+
+if($("masterFetchBtn")) $("masterFetchBtn").onclick=async()=>{
+ const date=$("masterDate").value||localTodayIso();
+ const token=prodTokenValue(); if(!token){box("masterResult","fail","APIキーを入力してください");return}
+ box("masterResult","run",`銘柄マスター取得中…\n基準日: ${date}`);
+ try{
+   const got=await jqFetchEquitiesMaster(date,token);
+   const wr=await workerCall("equities-master-write",300000,null,null,{date,rows:got.rows});
+   box("masterResult","pass",
+     `PASS\nEndpoint: ${got.endpoint}\n基準日: ${date}\nAPI rows: ${got.rows.length}\n保存 rows: ${wr.rows}\nDB: ${wr.dbName}\nquick_check: ${wr.quickCheck}\n適用日: ${wr.minDate||"-"} ～ ${wr.maxDate||"-"}`);
+ }catch(e){box("masterResult","fail","FAIL\n"+e)}
 };
 
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();
