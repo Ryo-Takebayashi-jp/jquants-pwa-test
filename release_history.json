@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha46",
+  "current_release": "v7e-alpha47",
   "history": [
     {
-      "release": "v7e-alpha46",
+      "release": "v7e-alpha47",
       "date": "2026-09-01",
-      "note": "Insert advanced technical calculations into the actual technical-screening-poc loop and scope regression checks to that command."
+      "note": "Fix 52-week high/low parity by using adjusted High/Low over 252 trading sessions instead of Close."
     }
   ]
 }

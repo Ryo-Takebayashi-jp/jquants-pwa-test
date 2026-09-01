@@ -1,8 +1,10 @@
 # CHANGELOG
 
-## v7e-alpha46 — 2026-09-01
-- alpha45で残っていた `[05-calc] Worker失敗` を根本修正。
-- 原因: 高度テクニカルの計算式は別処理ブロックには存在していたが、`technical-screening-poc` の実際の計算ループには挿入されていなかった。
-- alpha45の検証条件がファイル全体を見てしまい、別ブロックの `high52/atr14/ichi` を誤検出して修正をスキップしていた。
-- 今回は `technical-screening-poc` コマンド内の volRatio→rows.push 区間だけを限定検証し、MA200/ATR/52週/MACD/一目/TrendState計算を実際に挿入。
-- alpha43までのPortfolio/JQP/需給統合とParity UIは維持。
+## v7e-alpha47 — 2026-09-01
+- JQP Technical Parityで残っていた52週系4項目を修正。
+- 原因: Web版が52週高値/安値を終値(Close)の最大・最小で計算していた。
+- PC版は過去252取引日の調整後High/Lowを使用。
+- High52Week = max(High, 252 sessions)
+- Low52Week = min(Low, 252 sessions)
+- DistanceFrom52WeekHighPct / LowPct も修正後のHigh52Week/Low52Weekを基準に再計算。
+- alpha46で50/54一致していた他50項目は変更なし。

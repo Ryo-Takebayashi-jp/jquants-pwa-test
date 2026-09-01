@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha46");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha47");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha46").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha47").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1297,7 +1297,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha46",
+   appVersion:"v7e-alpha47",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1996,7 +1996,7 @@ if($("jqpTechnicalParityBtn")) $("jqpTechnicalParityBtn").onclick=async()=>{
  const stat={};for(const [p] of [...nums,...strs])stat[p]={ok:0,n:0,max:0};let compared=0,missing=0;
  for(const r of pc.rows){const t=tm.get(norm(r.NormalizedCode));if(!t){missing++;continue}compared++;for(const [p,k] of nums){if(r[p]===""||t[k]==null)continue;const x=Number(r[p]),y=Number(t[k]);if(!Number.isFinite(x)||!Number.isFinite(y))continue;const d=Math.abs(x-y);stat[p].n++;stat[p].max=Math.max(stat[p].max,d);if(d<=.0011)stat[p].ok++}for(const [p,k] of strs){if(r[p]==="")continue;stat[p].n++;if(String(r[p])===String(t[k]??""))stat[p].ok++}}
  const all=[...nums,...strs].map(([p])=>[p,stat[p]]).filter(([,x])=>x.n),bad=all.filter(([,x])=>x.ok!==x.n);
- box("jqpTechnicalParityResult",bad.length===0&&missing===0?"pass":"warn",`JQP Technical Parity\n基準日: ${asOf}\nWeb計算母集団: ${(tr.all||[]).length}\n比較銘柄: ${compared}\nWeb欠損: ${missing}\n一致フィールド: ${all.length-bad.length}/${all.length}\n\n${bad.length?bad.map(([p,x])=>`${p}: ${x.ok}/${x.n} / maxΔ ${x.max.toFixed(4)}`).join("\n"):"不一致項目なし"}`);
+ box("jqpTechnicalParityResult",bad.length===0&&missing===0?"pass":"warn",`JQP Technical Parity\n基準日: ${asOf}\nWeb計算母集団: ${(tr.all||[]).length}\n52週定義: 過去252取引日のHigh/Low\n比較銘柄: ${compared}\nWeb欠損: ${missing}\n一致フィールド: ${all.length-bad.length}/${all.length}\n\n${bad.length?bad.map(([p,x])=>`${p}: ${x.ok}/${x.n} / maxΔ ${x.max.toFixed(4)}`).join("\n"):"不一致項目なし"}`);
  }catch(e){box("jqpTechnicalParityResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
 };
 if($("portfolioIntegratedBtn")) $("portfolioIntegratedBtn").onclick=async()=>{

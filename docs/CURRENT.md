@@ -1,8 +1,10 @@
-# v7e-alpha45
+# v7e-alpha47
 
 今回の実機テストは1つだけ:
-- PC版 `technical_snapshot.csv` を選択
+- `technical_snapshot.csv` を選択
 - 「テクニカル全項目Parityを実行」
 
-alpha44のWorker 05-calcエラー修正版。
-Parityで不一致項目が出た場合は、その定義差だけを次工程で詰める。
+期待値:
+- 一致フィールド 54/54
+- Web欠損 0
+- 不一致項目なし
