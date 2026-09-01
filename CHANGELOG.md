@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha18 — CURRENT (2026-09-01)
+- 正式バックアップUIを開発者診断外へ移動。
+- JQB v1単一ファイルコンテナと1DBずつの復元を追加。
+- 3GB級巨大Blob化を禁止し、安全な外部Streaming書込API利用時のみ単一ファイル作成。
+- alpha17複数DB方式は互換バックアップとして保持。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha17 — CURRENT (2026-09-01)
 - Catalog + Shardsの正式な外部バックアップ機能を追加。
 - Catalog登録済みready shard、bars_recent、年別bars shardを自動インベントリ。

@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha17");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha18");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1129,7 +1129,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha17",
+   appVersion:"v7e-alpha18",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1308,3 +1308,9 @@ ${lines.join("\n")}
 判定: ${r.allOk?"Catalog＋Shard復元監査 PASS":"異常DBがあります"}`);
  }catch(e){box("shardRestoreAuditResult","fail","FAIL\n"+(e.message||String(e)))}
 };
+
+let jqbInventory=null;
+if($("jqbInspectBtn"))$("jqbInspectBtn").onclick=async()=>{box("jqbInspectResult","run","Catalog＋全Shardを監査中…");try{let r=await workerCall("shard-backup-inventory",300000,s=>box("jqbInspectResult","run",`${s.stage||""}\n${s.detail||""}`));jqbInventory=r;box("jqbInspectResult",r.allOk?"pass":"fail",`${r.allOk?"PASS":"FAIL"}\n対象DB: ${r.items.length}\n合計: ${fmt(r.totalBytes)}\nquick_check: ${r.allOk?"ALL ok":"要確認"}\n\n${r.items.map((x,i)=>`${i+1}. ${x.fileName} / ${fmt(x.bytes)} / ${x.quickCheck}`).join("\n")}\n\n1ファイルStreaming保存: ${window.showSaveFilePicker?"利用可能":"Safari未対応"}`);$("jqbCreateBtn").disabled=!r.allOk}catch(e){box("jqbInspectResult","fail","FAIL\n"+(e.message||e))}};
+if($("jqbCreateBtn"))$("jqbCreateBtn").onclick=async()=>{if(!jqbInventory?.allOk)return;if(!window.showSaveFilePicker){box("jqbCreateResult","fail","このSafariでは3GB級バックアップを安全に1ファイルへ逐次保存するAPIが利用できません。\n\n全3GBをRAMへ載せる危険な方式にはしません。現時点ではalpha17の複数SQLite外部バックアップを保持してください。");return}box("jqbCreateResult","run","JQB作成準備中…");try{let handle=await showSaveFilePicker({suggestedName:`JQuants_Backup_${new Date().toISOString().slice(0,10).replaceAll("-","")}.jqb`,types:[{description:"J-Quants Backup",accept:{"application/octet-stream":[".jqb"]}}]}),wr=await handle.createWritable(),items=jqbInventory.items;await wr.write(jqbLine({magic:JQB_MAGIC,version:1,createdAt:new Date().toISOString(),fileCount:items.length,totalBytes:jqbInventory.totalBytes}));let done=0;for(let x of items){box("jqbCreateResult","run",`1ファイル作成中…\n${done+1} / ${items.length}\n現在: ${x.fileName}`);let r=await workerCall("shard-backup-export",900000,null,null,{name:x.name});await wr.write(jqbLine({type:"sqlite",name:x.fileName,bytes:r.bytes,sha256:r.sha256||null}));await wr.write(new Uint8Array(r.buffer));await wr.write(te.encode("\n"));done++}await wr.close();box("jqbCreateResult","pass",`PASS\nJQB: 1ファイル\nDB: ${items.length}\nSQLite合計: ${fmt(jqbInventory.totalBytes)}\n外部保存完了`)}catch(e){box("jqbCreateResult","fail","FAIL\n"+(e.message||e))}};
+if($("jqbRestoreBtn"))$("jqbRestoreBtn").onclick=async()=>{let f=$("jqbRestoreFile").files?.[0];if(!f){box("jqbRestoreResult","warn",".jqbを選択してください");return}let o=0,done=0,total=0;try{let h=await jqbReadLine(f,o);o=h.next;let root=JSON.parse(h.text);if(root.magic!==JQB_MAGIC||root.version!==1)throw new Error("JQB v1ではありません");for(let i=0;i<root.fileCount;i++){h=await jqbReadLine(f,o);o=h.next;let e=JSON.parse(h.text),end=o+Number(e.bytes);if(e.type!=="sqlite"||end>f.size)throw new Error("JQB entry不正");box("jqbRestoreResult","run",`復元中… ${i+1}/${root.fileCount}\n${e.name}`);let slice=f.slice(o,end,"application/vnd.sqlite3"),r=await workerCall("shard-restore-import",1800000,null,slice,{name:"/"+e.name});if(r.quickCheck!=="ok")throw new Error(`${e.name}: quick_check=${r.quickCheck}`);done++;total+=e.bytes;o=end+1}box("jqbRestoreResult","pass",`PASS\n復元DB: ${done}\n容量: ${fmt(total)}\nquick_check: ALL ok`)}catch(e){box("jqbRestoreResult","fail",`FAIL\n復元済み: ${done}\n${e.message||e}`)}};
+if($("jqbAuditBtn"))$("jqbAuditBtn").onclick=async()=>{box("jqbAuditResult","run","全Shard監査中…");try{let r=await workerCall("shard-backup-inventory",300000);box("jqbAuditResult",r.allOk?"pass":"fail",`${r.allOk?"PASS":"FAIL"}\nDB: ${r.items.length}\n合計: ${fmt(r.totalBytes)}\nquick_check: ${r.allOk?"ALL ok":"異常あり"}`)}catch(e){box("jqbAuditResult","fail","FAIL\n"+(e.message||e))}};
