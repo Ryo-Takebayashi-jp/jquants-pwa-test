@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha38");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha39");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -222,7 +222,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha38").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha39").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -288,6 +288,17 @@ async function jqFetchFinsSummary(date,token){
 }
 async function jqFetchEarningsCalendar(date,token){
  return jqFetchV2Rows("/equities/earnings-calendar",{date:String(date||"").replaceAll("-","")},token);
+}
+async function jqFetchFinsHistory(from,to,token,onProgress){
+ const dates=isoWeekdays(from,to),rows=[]; let calls=0,empty=0;
+ for(let i=0;i<dates.length;i++){
+   const d=dates[i];
+   const r=await jqFetchV2Rows("/fins/summary",{date:d.replaceAll("-","")},token);
+   rows.push(...r.rows); calls++; if(!r.rows.length)empty++;
+   if(onProgress&&(i%5===0||i===dates.length-1))onProgress(i+1,dates.length,rows.length);
+   if(i<dates.length-1)await sleep(1100);
+ }
+ return {rows,calls,empty,endpoint:"/v2/fins/summary",strategy:"date-scan"};
 }
 
 async function jqFetchRange(path,from,to,token){
@@ -1276,7 +1287,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha38",
+   appVersion:"v7e-alpha39",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1901,6 +1912,31 @@ if($("supplyDemandAllBtn")) $("supplyDemandAllBtn").onclick=async()=>{
  }finally{btn.disabled=false}
 };
 
+
+if($("runtimeSelfTestBtn")) $("runtimeSelfTestBtn").onclick=async()=>{
+ const btn=$("runtimeSelfTestBtn");btn.disabled=true;box("runtimeSelfTestResult","run","SQLite runtime / SAH Pool を確認中…");
+ try{const r=await workerCall("catalog-list",120000);box("runtimeSelfTestResult","pass",`PASS\nSQLite Worker: OK\nCatalog: OK\n登録Shard: ${r.rows?.length??0}`)}
+ catch(e){box("runtimeSelfTestResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
+};
+if($("finsHistoryBtn")) $("finsHistoryBtn").onclick=async()=>{
+ const btn=$("finsHistoryBtn"),from=$("finsHistoryFrom").value,to=$("finsHistoryTo").value,token=prodTokenValue();
+ if(!token){box("finsHistoryResult","warn","ページ最上部のAPIキーを入力してください");return}
+ btn.disabled=true;box("finsHistoryResult","run",`財務履歴取得中…\n${from} ～ ${to}`);
+ try{
+   const got=await jqFetchFinsHistory(from,to,token,(done,total,rows)=>box("finsHistoryResult","run",`財務履歴取得中…\nAPI照会 ${done}/${total}\n取得 rows ${rows}`));
+   const wr=await workerCall("fins-summary-write",300000,null,null,{date:to,rows:got.rows});
+   box("finsHistoryResult","pass",`PASS\nAPI照会: ${got.calls}回 / 0件 ${got.empty}回\nAPI rows: ${got.rows.length}\n保存 rows: ${wr.rows}\nquick_check: ${wr.quickCheck}`);
+   latestFinancialNormalized=null;
+ }catch(e){box("finsHistoryResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
+};
+if($("supplyDemandSummaryBtn")) $("supplyDemandSummaryBtn").onclick=async()=>{
+ const btn=$("supplyDemandSummaryBtn");btn.disabled=true;box("supplyDemandSummaryResult","run","需給Shardを横断監査中…");
+ try{
+   const r=await workerCall("supply-demand-summary",180000),ok=r.datasets.filter(x=>!x.error&&x.count>0).length;
+   const lines=r.datasets.map(x=>`${x.label}: ${x.error?"NG "+x.error:`${x.count} rows / ${x.minDate||"-"}～${x.maxDate||"-"} / fields ${x.fields.length}`}`);
+   box("supplyDemandSummaryResult",ok===5?"pass":"warn",`需給統合監査: ${ok}/5\n`+lines.join("\n"));
+ }catch(e){box("supplyDemandSummaryResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
+};
 
 let latestFinancialNormalized=null;
 if($("financialNormalizeBtn")) $("financialNormalizeBtn").onclick=async()=>{

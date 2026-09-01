@@ -36,7 +36,20 @@ async function initSqlite(){
  if(_sqliteInitPromise)return _sqliteInitPromise;
  _sqliteInitPromise=(async()=>{
    status("import-module","/sqlite/index.mjs");
-   const mod=await import("/sqlite/index.mjs");
+   let mod=null,lastErr=null;
+   for(let attempt=1;attempt<=3&&!mod;attempt++){
+     try{
+       const probe=await fetch(`/sqlite/index.mjs?probe=${Date.now()}-${attempt}`,{cache:"no-store"});
+       if(!probe.ok) throw new Error(`SQLite module probe HTTP ${probe.status}: ${await probe.text()}`);
+       const ct=probe.headers.get("content-type")||"";
+       if(!/javascript|ecmascript|module/i.test(ct)) throw new Error(`SQLite module Content-Type invalid: ${ct||"(none)"}`);
+       mod=await import(`/sqlite/index.mjs?v=v7e-alpha39-${attempt}`);
+     }catch(e){
+       lastErr=e; status("import-retry",`attempt ${attempt}/3: ${e?.message||e}`);
+       if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));
+     }
+   }
+   if(!mod) throw new Error(`SQLite runtime load failed after 3 attempts: ${lastErr?.message||lastErr}`);
    status("initialize-sqlite","SQLite 3.53 + opfs-sahpool (Worker常駐)");
    sqlite3=await mod.default({
      locateFile:p=>new URL(`/sqlite/${p}`,self.location.origin).href,
@@ -1209,6 +1222,26 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
 
+ if(cmd==="catalog-list"){
+   let db=null;
+   try{db=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");const rows=execRows(db,"SELECT * FROM shard_catalog ORDER BY dataset, shard_key");db.close();db=null;self.postMessage({ok:true,type:"result",rows});return}
+   catch(err){try{if(db)db.close()}catch(_){} throw err}
+ }
+ if(cmd==="supply-demand-summary"){
+   const defs=[["/jq_margin_interest_v1.sqlite","margin_interest","信用取引週末残高"],["/jq_margin_alert_v1.sqlite","margin_alert","日々公表信用"],["/jq_short_ratio_v1.sqlite","short_ratio","空売り比率"],["/jq_short_sale_report_v1.sqlite","short_sale_report","空売り報告"],["/jq_investor_types_v1.sqlite","investor_types","投資部門別"]];
+   const out=[];
+   for(const [dbName,table,label] of defs){
+     let db=null;
+     try{
+       db=new p.OpfsSAHPoolDb(dbName,"r");const count=Number(scalar(db,`SELECT count(*) FROM ${table}`)||0);
+       const minDate=scalar(db,`SELECT min(data_date) FROM ${table}`),maxDate=scalar(db,`SELECT max(data_date) FROM ${table}`);
+       const samples=execRows(db,`SELECT raw_json FROM ${table} ORDER BY data_date DESC LIMIT 30`),fields=new Set();
+       for(const x of samples){try{Object.keys(JSON.parse(String(x.raw_json||"{}"))).forEach(k=>fields.add(k))}catch(_){}}
+       out.push({label,dbName,count,minDate,maxDate,fields:[...fields].sort()});db.close();db=null;
+     }catch(e){try{if(db)db.close()}catch(_){} out.push({label,dbName,count:0,error:String(e?.message||e),fields:[]})}
+   }
+   self.postMessage({ok:true,type:"result",datasets:out});return;
+ }
  if(cmd==="financial-normalize-latest"){
    let db=null;
    try{
