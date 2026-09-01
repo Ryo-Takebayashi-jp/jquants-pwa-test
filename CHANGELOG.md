@@ -1,5 +1,14 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha2 — CURRENT (2026-09-01)
+- Catalog + Shards bootstrapを段階診断化。
+- `shard-bootstrap` を 01〜08 のステージに分解し、どの工程で失敗したかをUIへ返す。
+- SQLのパラメータbind依存を外し、bootstrap用UPSERTを単純なSQL実行へ変更。
+- 既存1.12GB DataLakeはOpen/変更/削除/移行しない。
+- `shard-health` も段階診断化。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha1 — CURRENT (2026-09-01)
 - Catalog + Shards architecture bootstrap.
 - Creates small `/jq_catalog_v1.sqlite` and `/jq_bars_recent_v1.sqlite`.

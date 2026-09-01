@@ -1,12 +1,12 @@
-# J-Quants Local-first PWA v7e-alpha1
+# J-Quants Local-first PWA v7e-alpha2
 
-巨大単一SQLiteから Catalog + Shards + lazy open へ移行する最初の実機ゲート。
+## 今回の目的
+alpha1の `sqlite-worker.js` 例外を段階診断して、失敗箇所を明確化します。
 
 ## 実機テスト
 1. Cloudflare Pagesへ配置
-2. iPhoneで「Catalog + bars_recent を作成」
-3. PASS後「Catalog経由で bars_recent を再Open」
-4. PASSとShard Open時間を確認
+2. iPhoneで「① Catalog + bars_recent を作成」
+3. PASSなら「② Catalog経由で bars_recent を再Open」
+4. FAILなら `stage / message / stack` が表示されるので、その画面を共有
 
-この版の新機能は既存1.12GB DataLakeをOpen/変更/削除/移行しません。
-2段階PASS後、次版で安全なbars shard移行を実装します。
+新機能は既存1.12GB DataLakeをOpen/変更/削除/移行しません。

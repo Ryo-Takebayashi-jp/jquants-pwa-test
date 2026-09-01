@@ -698,24 +698,44 @@ if($("writeGateBtn")){
 
 
 if($("shardBootstrapBtn")) $("shardBootstrapBtn").onclick=async()=>{
- box("shardBootstrapResult","run","小型Catalog + bars_recent Shardを作成中…");
- try{const r=await workerCall("shard-bootstrap",60000,s=>box("shardBootstrapResult","run",s.detail||s.stage));
- box("shardBootstrapResult","pass",`PASS
+ box("shardBootstrapResult","run","開始…");
+ try{
+   const r=await workerCall("shard-bootstrap",60000,s=>{
+     box("shardBootstrapResult","run",`進行中: ${s.stage||"-"}
+${s.detail||""}`);
+   });
+   box("shardBootstrapResult","pass",`PASS
 Catalog: ${r.catalogName}
 Recent shard: ${r.recentName}
 登録: ${JSON.stringify(r.catalogRows)}
 処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒
-既存巨大DataLake: 未Open / 未変更`);}
- catch(e){box("shardBootstrapResult","fail","FAIL\n"+e);}
+既存巨大DataLake: 未Open / 未変更`);
+ }catch(e){
+   const x=e&&typeof e==="object"?e:{message:String(e)};
+   box("shardBootstrapResult","fail",`FAIL
+stage: ${x.stage||"unknown"}
+message: ${x.message||String(e)}
+stack: ${x.stack||"-"}`);
+ }
 };
 if($("shardHealthBtn")) $("shardHealthBtn").onclick=async()=>{
- box("shardHealthResult","run","Catalogからbars_recentを解決して再Open中…");
- try{const r=await workerCall("shard-health",60000,s=>box("shardHealthResult","run",s.detail||s.stage));
- box("shardHealthResult",r.ok?"pass":"fail",`${r.ok?"PASS":"FAIL"}
+ box("shardHealthResult","run","開始…");
+ try{
+   const r=await workerCall("shard-health",60000,s=>{
+     box("shardHealthResult","run",`進行中: ${s.stage||"-"}
+${s.detail||""}`);
+   });
+   box("shardHealthResult",r.ok?"pass":"fail",`${r.ok?"PASS":"FAIL"}
 Resolved shard: ${r.shard?.logical_name||"-"}
 bars_daily: ${r.tableOk?"YES":"NO"} / ${Number(r.count||0).toLocaleString()} rows
 Shard Open: ${(r.openMs/1000).toFixed(3)}秒
 meta: ${JSON.stringify(r.meta)}
-既存巨大DataLake: 未Open / 未変更`);}
- catch(e){box("shardHealthResult","fail","FAIL\n"+e);}
+既存巨大DataLake: 未Open / 未変更`);
+ }catch(e){
+   const x=e&&typeof e==="object"?e:{message:String(e)};
+   box("shardHealthResult","fail",`FAIL
+stage: ${x.stage||"unknown"}
+message: ${x.message||String(e)}
+stack: ${x.stack||"-"}`);
+ }
 };

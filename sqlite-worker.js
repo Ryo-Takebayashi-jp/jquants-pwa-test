@@ -152,48 +152,153 @@ self.onmessage=async e=>{
  const originalPostMessage=self.postMessage.bind(self);
  self.postMessage=(msg,...rest)=>originalPostMessage({...msg,requestId},...rest);
 const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
+
  if(cmd==="shard-bootstrap"){
-   status("shard-bootstrap","Catalog + bars_recent を小型DBとして作成");
    const catalogName="/jq_catalog_v1.sqlite", recentName="/jq_bars_recent_v1.sqlite";
-   let cdb,rdb;
+   let cdb=null,rdb=null,stage="start";
+   const mark=(s,detail="")=>{stage=s;status(s,detail)};
    try{
+     mark("01-catalog-open","Catalog DB open");
      cdb=new p.OpfsSAHPoolDb(catalogName,"c");
-     cdb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(shard_key TEXT PRIMARY KEY,logical_name TEXT NOT NULL,dataset TEXT NOT NULL,range_start TEXT,range_end TEXT,schema_version TEXT NOT NULL,state TEXT NOT NULL,updated_at TEXT NOT NULL)`);
-     cdb.exec(`CREATE TABLE IF NOT EXISTS catalog_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
-     cdb.exec({sql:`INSERT INTO catalog_meta(key,value) VALUES('architecture','catalog-shards-v1') ON CONFLICT(key) DO UPDATE SET value=excluded.value`});
+
+     mark("02-catalog-schema","Catalog schema create");
+     cdb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+       shard_key TEXT PRIMARY KEY,
+       logical_name TEXT NOT NULL,
+       dataset TEXT NOT NULL,
+       range_start TEXT,
+       range_end TEXT,
+       schema_version TEXT NOT NULL,
+       state TEXT NOT NULL,
+       updated_at TEXT NOT NULL
+     )`);
+     cdb.exec(`CREATE TABLE IF NOT EXISTS catalog_meta(
+       key TEXT PRIMARY KEY,
+       value TEXT NOT NULL
+     )`);
+     cdb.exec(`INSERT INTO catalog_meta(key,value)
+              VALUES('architecture','catalog-shards-v1')
+              ON CONFLICT(key) DO UPDATE SET value='catalog-shards-v1'`);
+
+     mark("03-recent-open","bars_recent DB open");
      rdb=new p.OpfsSAHPoolDb(recentName,"c");
-     rdb.exec(`CREATE TABLE IF NOT EXISTS bars_daily(code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,upper_limit REAL,lower_limit REAL,value REAL,adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,PRIMARY KEY(code,date)) WITHOUT ROWID`);
+
+     mark("04-recent-schema","bars_recent schema create");
+     rdb.exec(`CREATE TABLE IF NOT EXISTS bars_daily(
+       code TEXT NOT NULL,
+       date TEXT NOT NULL,
+       o REAL,h REAL,l REAL,c REAL,
+       upper_limit REAL,lower_limit REAL,value REAL,
+       adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,
+       adj_factor REAL,adj_volume REAL,volume REAL,
+       turnover_value REAL,raw_json TEXT,
+       PRIMARY KEY(code,date)
+     ) WITHOUT ROWID`);
      rdb.exec(`CREATE INDEX IF NOT EXISTS idx_bars_recent_date ON bars_daily(date)`);
-     rdb.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
-     rdb.exec({sql:`INSERT INTO shard_meta(key,value) VALUES('schema_version','bars-v1') ON CONFLICT(key) DO UPDATE SET value=excluded.value`});
-     rdb.exec({sql:`INSERT INTO shard_meta(key,value) VALUES('role','bars_recent') ON CONFLICT(key) DO UPDATE SET value=excluded.value`});
+     rdb.exec(`CREATE TABLE IF NOT EXISTS shard_meta(
+       key TEXT PRIMARY KEY,
+       value TEXT NOT NULL
+     )`);
+     rdb.exec(`INSERT INTO shard_meta(key,value)
+              VALUES('schema_version','bars-v1')
+              ON CONFLICT(key) DO UPDATE SET value='bars-v1'`);
+     rdb.exec(`INSERT INTO shard_meta(key,value)
+              VALUES('role','bars_recent')
+              ON CONFLICT(key) DO UPDATE SET value='bars_recent'`);
+
+     mark("05-recent-close","bars_recent close");
      rdb.close();rdb=null;
-     const now=new Date().toISOString();
-     cdb.exec({sql:`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(shard_key) DO UPDATE SET logical_name=excluded.logical_name,dataset=excluded.dataset,schema_version=excluded.schema_version,state=excluded.state,updated_at=excluded.updated_at`,bind:["bars_recent",recentName,"bars_daily",null,null,"bars-v1","ready",now]});
+
+     mark("06-catalog-register","Catalog register shard");
+     const now=new Date().toISOString().replace(/'/g,"''");
+     cdb.exec(`INSERT INTO shard_catalog(
+       shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at
+     ) VALUES(
+       'bars_recent','${recentName}','bars_daily',NULL,NULL,'bars-v1','ready','${now}'
+     )
+     ON CONFLICT(shard_key) DO UPDATE SET
+       logical_name='${recentName}',
+       dataset='bars_daily',
+       schema_version='bars-v1',
+       state='ready',
+       updated_at='${now}'`);
+
+     mark("07-catalog-readback","Catalog readback");
      const catalogRows=execRows(cdb,"SELECT * FROM shard_catalog ORDER BY shard_key");
+
+     mark("08-catalog-close","Catalog close");
      cdb.close();cdb=null;
-     self.postMessage({ok:true,type:"result",catalogName,recentName,catalogRows,poolFiles:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;
-   }finally{try{if(rdb)rdb.close()}catch(_){} try{if(cdb)cdb.close()}catch(_){}}
+
+     self.postMessage({
+       ok:true,type:"result",stage:"PASS",
+       catalogName,recentName,catalogRows,
+       poolFiles:p.getFileNames(),
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }catch(err){
+     self.postMessage({
+       ok:false,type:"error",stage,
+       message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }finally{
+     try{if(rdb)rdb.close()}catch(_){}
+     try{if(cdb)cdb.close()}catch(_){}
+   }
  }
  if(cmd==="shard-health"){
-   status("shard-health","CatalogからShardを解決して小型DBだけOpen");
-   const catalogName="/jq_catalog_v1.sqlite";let cdb,sdb;
+   const catalogName="/jq_catalog_v1.sqlite";
+   let cdb=null,sdb=null,stage="start";
+   const mark=(s,detail="")=>{stage=s;status(s,detail)};
    try{
+     mark("01-catalog-open","Catalog DB open");
      cdb=new p.OpfsSAHPoolDb(catalogName,"r");
+
+     mark("02-catalog-read","Catalog read");
      const rows=execRows(cdb,"SELECT * FROM shard_catalog ORDER BY shard_key");
      const recent=rows.find(x=>x.shard_key==="bars_recent");
-     if(!recent)throw new Error("bars_recent is not registered in catalog");
+     if(!recent) throw new Error("bars_recent is not registered in catalog");
+
+     mark("03-catalog-close","Catalog close");
      cdb.close();cdb=null;
-     const o=performance.now();sdb=new p.OpfsSAHPoolDb(recent.logical_name,"r");const openMs=Math.round(performance.now()-o);
+
+     mark("04-shard-open","bars_recent open");
+     const open0=performance.now();
+     sdb=new p.OpfsSAHPoolDb(recent.logical_name,"r");
+     const openMs=Math.round(performance.now()-open0);
+
+     mark("05-shard-check","bars_recent health check");
      const tableOk=Number(scalar(sdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)===1;
      const count=tableOk?Number(scalar(sdb,"SELECT COUNT(*) FROM bars_daily")||0):0;
      const meta=execRows(sdb,"SELECT * FROM shard_meta ORDER BY key");
+
+     mark("06-shard-close","bars_recent close");
      sdb.close();sdb=null;
-     self.postMessage({ok:tableOk,type:"result",catalogName,shard:recent,tableOk,count,meta,openMs,poolFiles:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;
-   }finally{try{if(sdb)sdb.close()}catch(_){} try{if(cdb)cdb.close()}catch(_){}}
+
+     self.postMessage({
+       ok:tableOk,type:"result",stage:"PASS",
+       catalogName,shard:recent,tableOk,count,meta,openMs,
+       poolFiles:p.getFileNames(),
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }catch(err){
+     self.postMessage({
+       ok:false,type:"error",stage,
+       message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }finally{
+     try{if(sdb)sdb.close()}catch(_){}
+     try{if(cdb)cdb.close()}catch(_){}
+   }
  }
 
- const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
  if(cmd==="init"){self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,vfs,poolClass:!!p.OpfsSAHPoolDb,capacity:p.getCapacity(),poolName:"jq-sahpool",poolDirectory:".jq-sahpool-v7c-r5",origin:self.location.origin,files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
  
   if(cmd==="backup-stats"){
