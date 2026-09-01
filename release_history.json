@@ -613,8 +613,13 @@
       ]
     }
   ],
-  "current_release": "v7e-alpha16",
+  "current_release": "v7e-alpha17",
   "history": [
+    {
+      "release": "v7e-alpha17",
+      "date": "2026-09-01",
+      "note": "External Catalog+Shards backup/restore: inventory+quick_check, per-DB SAH Pool export, manifest/SHA-256, streaming multi-file restore and post-restore audit."
+    },
     {
       "release": "v7e-alpha16",
       "date": "2026-09-01",

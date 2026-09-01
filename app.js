@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha16");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha17");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1111,4 +1111,200 @@ ${e.message||String(e)}
 ${cp2?.nextDate?`次回再開位置: ${cp2.nextDate}`:""}
 Legacy DataLake: 未使用 / 未変更`);
  }
+};
+
+
+let shardBackupInventory=null;
+let shardBackupHashes={};
+
+function downloadBlob(blob,fileName){
+ const a=document.createElement("a");
+ const u=URL.createObjectURL(blob);
+ a.href=u; a.download=fileName; a.style.display="none";
+ document.body.appendChild(a);
+ a.click();
+ setTimeout(()=>{URL.revokeObjectURL(u);a.remove()},15000);
+}
+function backupManifestObject(){
+ if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
+ return {
+   format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
+   appVersion:"v7e-alpha17",
+   createdAt:new Date().toISOString(),
+   pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
+   files:shardBackupInventory.items.map(x=>({
+     name:x.name,fileName:x.fileName,bytes:x.bytes,quickCheck:x.quickCheck,
+     tables:x.tables||[],rows:x.rows,minDate:x.minDate,maxDate:x.maxDate,tradingDays:x.tradingDays,
+     sha256:shardBackupHashes[x.name]||null
+   }))
+ };
+}
+async function exportShardBackupFile(name,outputId=null){
+ if(outputId) box(outputId,"run",`${name}\nSQLiteを外部保存用にExport中…`);
+ const r=await workerCall("shard-backup-export",900000,
+   s=>{if(outputId)box(outputId,"run",`${name}\n${s.stage||""} ${s.detail||""}`)},
+   null,{name});
+ const blob=new Blob([r.buffer],{type:"application/vnd.sqlite3"});
+ downloadBlob(blob,r.fileName);
+ if(r.sha256) shardBackupHashes[name]=r.sha256;
+ if(outputId) box(outputId,"pass",`PASS
+保存: ${r.fileName}
+サイズ: ${fmt(r.bytes)}
+SHA-256: ${r.sha256||"未取得"}
+処理時間: ${(r.elapsedMs/1000).toFixed(1)}秒`);
+ return r;
+}
+
+if($("shardBackupInventoryBtn")) $("shardBackupInventoryBtn").onclick=async()=>{
+ box("shardBackupInventoryResult","run","Catalog＋Shardを監査中…");
+ try{
+   const r=await workerCall("shard-backup-inventory",300000,
+     s=>box("shardBackupInventoryResult","run",`${s.stage||""}\n${s.detail||""}`));
+   shardBackupInventory=r; shardBackupHashes={};
+   const lines=r.items.map((x,i)=>
+     `${String(i+1).padStart(2,"0")}. ${x.fileName}
+   ${fmt(x.bytes)} / quick_check ${x.quickCheck}`+
+     (x.rows!=null?` / ${Number(x.rows).toLocaleString()}行 / ${x.minDate||"-"}〜${x.maxDate||"-"}`:"")
+   );
+   box("shardBackupInventoryResult",r.allOk?"pass":"fail",
+`${r.allOk?"PASS":"要確認"}
+対象DB: ${r.items.length}
+合計: ${fmt(r.totalBytes)}
+SAH Pool: ${r.allocated??"?"} / ${r.capacity??"?"} slots
+
+${lines.join("\n")}
+
+判定: ${r.allOk?"全対象DB quick_check ok":"ERRORのDBがあります。バックアップ前に確認してください。"}`);
+   const sel=$("shardBackupSelect"); sel.innerHTML="";
+   for(const x of r.items){
+     const o=document.createElement("option");o.value=x.name;o.textContent=`${x.fileName} (${fmt(x.bytes)})`;sel.appendChild(o);
+   }
+   $("shardBackupManifestBtn").disabled=!r.allOk;
+   $("shardBackupAllBtn").disabled=!r.allOk;
+   $("shardBackupOneBtn").disabled=!r.allOk;
+ }catch(e){
+   shardBackupInventory=null;
+   box("shardBackupInventoryResult","fail","FAIL\n"+(e.message||String(e)));
+ }
+};
+
+if($("shardBackupManifestBtn")) $("shardBackupManifestBtn").onclick=()=>{
+ try{
+   const manifest=backupManifestObject();
+   const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+   downloadBlob(new Blob([JSON.stringify(manifest,null,2)],{type:"application/json"}),
+     `jquants_backup_manifest_${stamp}.json`);
+   box("shardBackupManifestResult","pass",`PASS
+Manifestを保存しました。
+対象DB: ${manifest.files.length}
+※DB本体も③または④で保存してください。`);
+ }catch(e){box("shardBackupManifestResult","fail","FAIL\n"+(e.message||String(e)))}
+};
+
+if($("shardBackupOneBtn")) $("shardBackupOneBtn").onclick=async()=>{
+ const name=$("shardBackupSelect").value;
+ if(!name){box("shardBackupOneResult","warn","保存するDBを選択してください。");return}
+ $("shardBackupOneBtn").disabled=true;
+ try{await exportShardBackupFile(name,"shardBackupOneResult")}
+ catch(e){box("shardBackupOneResult","fail","FAIL\n"+(e.message||String(e)))}
+ finally{$("shardBackupOneBtn").disabled=false}
+};
+
+if($("shardBackupAllBtn")) $("shardBackupAllBtn").onclick=async()=>{
+ if(!shardBackupInventory?.allOk){box("shardBackupAllResult","warn","先に①をPASSさせてください。");return}
+ $("shardBackupAllBtn").disabled=true;
+ const items=shardBackupInventory.items;
+ let done=0,total=0;
+ try{
+   for(const x of items){
+     box("shardBackupAllResult","run",`全DB外部保存中…
+${done+1} / ${items.length}
+現在: ${x.fileName}
+完了容量: ${fmt(total)}
+
+Safariから複数ダウンロード許可を求められた場合は許可してください。`);
+     const r=await exportShardBackupFile(x.name,null);
+     done++; total+=Number(r.bytes||0);
+     await new Promise(res=>setTimeout(res,700));
+   }
+   const manifest=backupManifestObject();
+   const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+   downloadBlob(new Blob([JSON.stringify(manifest,null,2)],{type:"application/json"}),
+     `jquants_backup_manifest_${stamp}.json`);
+   box("shardBackupAllResult","pass",`PASS
+DB保存: ${done} / ${items.length}
+合計: ${fmt(total)}
+Manifest: 保存
+SHA-256: ${Object.keys(shardBackupHashes).length}ファイル記録
+
+外部バックアップ一式の作成完了。
+※Filesアプリ側でSQLite群＋Manifestが見えることを確認してください。`);
+ }catch(e){
+   box("shardBackupAllResult","fail",`途中停止
+完了: ${done} / ${items.length}
+${e.message||String(e)}
+
+Safariが複数ダウンロードを止めた場合は④で残りを1ファイルずつ保存できます。`);
+ }finally{$("shardBackupAllBtn").disabled=false}
+};
+
+if($("shardRestoreBtn")) $("shardRestoreBtn").onclick=async()=>{
+ const files=Array.from($("shardRestoreFiles").files||[]);
+ if(!files.length){box("shardRestoreResult","warn","復元する.sqliteファイルを選択してください。");return}
+ const unsafe=files.filter(f=>!/^jq_[A-Za-z0-9_.-]+\.sqlite$/.test(f.name));
+ if(unsafe.length){
+   box("shardRestoreResult","fail","ファイル名が復元対象形式ではありません:\n"+unsafe.map(x=>x.name).join("\n"));return;
+ }
+ $("shardRestoreBtn").disabled=true;
+ let done=0,total=0;
+ try{
+   for(const f of files){
+     const head=new Uint8Array(await f.slice(0,16).arrayBuffer());
+     if(!sqliteHeaderOk(head)) throw new Error(`${f.name}: SQLite header不一致`);
+     box("shardRestoreResult","run",`復元中…
+${done+1} / ${files.length}
+現在: ${f.name}
+サイズ: ${fmt(f.size)}
+完了容量: ${fmt(total)}
+
+Streaming Import → quick_check`);
+     const r=await workerCall("shard-restore-import",1800000,
+       s=>box("shardRestoreResult","run",`復元中…
+${done+1} / ${files.length}
+現在: ${f.name}
+Stage: ${s.stage||"-"}
+${s.detail||""}`),
+       f,{name:"/"+f.name});
+     if(r.quickCheck!=="ok") throw new Error(`${f.name}: quick_check=${r.quickCheck}`);
+     done++; total+=Number(r.importedBytes||f.size);
+   }
+   box("shardRestoreResult","pass",`PASS
+復元: ${done} / ${files.length}
+合計: ${fmt(total)}
+各DB quick_check: ok
+
+次に⑥「復元後の全Shard監査」を実行してください。`);
+ }catch(e){
+   box("shardRestoreResult","fail",`FAIL
+復元済み: ${done} / ${files.length}
+${e.message||String(e)}
+
+正常復元済みDBはそのまま残っています。原因修正後に再実行できます。`);
+ }finally{$("shardRestoreBtn").disabled=false}
+};
+
+if($("shardRestoreAuditBtn")) $("shardRestoreAuditBtn").onclick=async()=>{
+ box("shardRestoreAuditResult","run","復元後のCatalog＋Shardを全監査中…");
+ try{
+   const r=await workerCall("shard-backup-inventory",300000);
+   const lines=r.items.map(x=>`${x.fileName}: quick_check ${x.quickCheck}`+
+     (x.rows!=null?` / ${Number(x.rows).toLocaleString()}行 / ${x.minDate||"-"}〜${x.maxDate||"-"}`:""));
+   box("shardRestoreAuditResult",r.allOk?"pass":"fail",`${r.allOk?"PASS":"FAIL"}
+DB数: ${r.items.length}
+合計: ${fmt(r.totalBytes)}
+
+${lines.join("\n")}
+
+判定: ${r.allOk?"Catalog＋Shard復元監査 PASS":"異常DBがあります"}`);
+ }catch(e){box("shardRestoreAuditResult","fail","FAIL\n"+(e.message||String(e)))}
 };

@@ -1,5 +1,20 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha17 — CURRENT (2026-09-01)
+- Catalog + Shardsの正式な外部バックアップ機能を追加。
+- Catalog登録済みready shard、bars_recent、年別bars shardを自動インベントリ。
+- バックアップ前に全対象DBのPRAGMA quick_check、サイズ、bars_daily行数・期間を監査。
+- SQLite SAH Pool `exportFile()` を用い、DBを1ファイルずつ外部保存。
+- 全DB順次保存とSafari向け1ファイル保存の両モードを用意。
+- バックアップManifest JSONを生成。Export済みDBはSHA-256を記録。
+- Filesから複数SQLiteを選択する復元機能を追加。
+- 復元は既存Streaming Importを利用し、1DBごとにquick_check。
+- 復元後のCatalog + Shards一括監査を追加。
+- Legacy巨大DataLake向け同一ブラウザ内snapshotは旧機能として折りたたみへ移動。
+- 外部バックアップはSafariサイトデータ消去に巻き込まれない正式運用前提へ変更。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha16 — CURRENT (2026-09-01)
 - alpha15の `from/to` 年間取得を廃止。V2日足APIが要求する `date` 指定方式へ修正。
 - 2020〜2025を1ボタンで直接年別Shardへ補完する全期間バックフィルを追加。

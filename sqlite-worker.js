@@ -590,6 +590,135 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
 
+
+ if(cmd==="shard-backup-inventory"){
+   const files=poolFileNamesSafe(p);
+   const wanted=new Set();
+   const catalogName="/jq_catalog_v1.sqlite";
+   let cdb=null;
+   try{
+     if(files.includes(catalogName)){
+       wanted.add(catalogName);
+       try{
+         cdb=new p.OpfsSAHPoolDb(catalogName,"r");
+         const hasCatalog=Number(scalar(cdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='shard_catalog'")||0)>0;
+         if(hasCatalog){
+           for(const r of execRows(cdb,"SELECT logical_name FROM shard_catalog WHERE state='ready' ORDER BY shard_key")){
+             let n=String(r.logical_name||"");
+             if(n && !n.startsWith("/")) n="/"+n;
+             if(n) wanted.add(n);
+           }
+         }
+       }finally{try{if(cdb)cdb.close()}catch(_){} cdb=null}
+     }
+     for(const n of files){
+       if(/^\/jq_bars_(?:recent|\d{4})_v1\.sqlite$/.test(n)) wanted.add(n);
+       if(/^\/jq_(?:financials|supply_demand|private)(?:_[a-z0-9_-]+)?_v\d+\.sqlite$/i.test(n)) wanted.add(n);
+     }
+
+     const items=[];
+     for(const name of Array.from(wanted).sort()){
+       if(!files.includes(name)) continue;
+       let dbx=null;
+       try{
+         dbx=new p.OpfsSAHPoolDb(name,"r");
+         const qc=String(scalar(dbx,"PRAGMA quick_check")||"");
+         const pc=Number(scalar(dbx,"PRAGMA page_count")||0);
+         const ps=Number(scalar(dbx,"PRAGMA page_size")||0);
+         const tables=execRows(dbx,"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").map(r=>String(r.name));
+         let rows=null,minDate=null,maxDate=null,tradingDays=null;
+         if(tables.includes("bars_daily")){
+           rows=Number(scalar(dbx,"SELECT COUNT(*) FROM bars_daily")||0);
+           minDate=scalar(dbx,"SELECT MIN(date) FROM bars_daily");
+           maxDate=scalar(dbx,"SELECT MAX(date) FROM bars_daily");
+           tradingDays=Number(scalar(dbx,"SELECT COUNT(DISTINCT date) FROM bars_daily")||0);
+         }
+         items.push({name,fileName:name.replace(/^\/+/,""),bytes:pc*ps,quickCheck:qc,tables,rows,minDate,maxDate,tradingDays});
+       }catch(err){
+         items.push({name,fileName:name.replace(/^\/+/,""),bytes:0,quickCheck:"ERROR",error:String(err?.message||err),tables:[]});
+       }finally{try{if(dbx)dbx.close()}catch(_){}}
+     }
+     const totalBytes=items.reduce((a,x)=>a+Number(x.bytes||0),0);
+     const allOk=items.length>0 && items.every(x=>x.quickCheck==="ok");
+     self.postMessage({ok:true,type:"result",stage:"PASS",items,totalBytes,allOk,
+       capacity:typeof p.getCapacity==="function"?p.getCapacity():null,
+       allocated:typeof p.getFileCount==="function"?p.getFileCount():null,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage:"backup-inventory",message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(cdb)cdb.close()}catch(_){}}
+ }
+
+ if(cmd==="shard-backup-export"){
+   const payload=e.data.payload||{};
+   let name=String(payload.name||"");
+   if(name && !name.startsWith("/")) name="/"+name;
+   try{
+     const files=poolFileNamesSafe(p);
+     if(!files.includes(name)) throw new Error(`backup target not found: ${name}`);
+     status("backup-export",`exportFile ${name}`);
+     const bytes=p.exportFile(name);
+     if(!(bytes instanceof Uint8Array)) throw new Error("exportFile did not return Uint8Array");
+     let sha256=null;
+     try{
+       const digest=await crypto.subtle.digest("SHA-256",bytes);
+       sha256=Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,"0")).join("");
+     }catch(_){}
+     const ab=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);
+     self.postMessage({ok:true,type:"result",stage:"PASS",name,fileName:name.replace(/^\/+/,""),
+       bytes:bytes.byteLength,sha256,buffer:ab,elapsedMs:Math.round(performance.now()-t0)},[ab]);
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage:"backup-export",message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }
+ }
+
+ if(cmd==="shard-restore-import"){
+   const payload=e.data.payload||{};
+   let name=String(payload.name||"");
+   if(name && !name.startsWith("/")) name="/"+name;
+   if(!/^\/jq_[a-zA-Z0-9_.-]+\.sqlite$/.test(name)){
+     self.postMessage({ok:false,type:"error",stage:"restore-validate",message:`unsafe restore name: ${name}`});
+     return;
+   }
+   if(!e.data.file){
+     self.postMessage({ok:false,type:"error",stage:"restore-validate",message:"restore file missing"});
+     return;
+   }
+   let rdb=null;
+   try{
+     status("restore-import",`${name}: streaming import start`);
+     const out=await importFile(e.data.file,name);
+     status("restore-verify",`${name}: quick_check`);
+     rdb=new p.OpfsSAHPoolDb(name,"r");
+     const qc=String(scalar(rdb,"PRAGMA quick_check")||"");
+     const pc=Number(scalar(rdb,"PRAGMA page_count")||0);
+     const ps=Number(scalar(rdb,"PRAGMA page_size")||0);
+     const tables=execRows(rdb,"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").map(r=>String(r.name));
+     let rows=null,minDate=null,maxDate=null,tradingDays=null;
+     if(tables.includes("bars_daily")){
+       rows=Number(scalar(rdb,"SELECT COUNT(*) FROM bars_daily")||0);
+       minDate=scalar(rdb,"SELECT MIN(date) FROM bars_daily");
+       maxDate=scalar(rdb,"SELECT MAX(date) FROM bars_daily");
+       tradingDays=Number(scalar(rdb,"SELECT COUNT(DISTINCT date) FROM bars_daily")||0);
+     }
+     rdb.close();rdb=null;
+     if(qc!=="ok") throw new Error(`quick_check=${qc}`);
+     self.postMessage({ok:true,type:"result",stage:"PASS",name,fileName:name.replace(/^\/+/,""),
+       importedBytes:out.bytes,chunks:out.chunks,dbBytes:pc*ps,quickCheck:qc,tables,rows,minDate,maxDate,tradingDays,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage:"restore-import",message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(rdb)rdb.close()}catch(_){}}
+ }
  if(cmd==="shard-write-api-date"){
    const payload=e.data.payload||{}, date=String(payload.date||""), rows=payload.rows||[];
    let db=null,stage="01-validate";
