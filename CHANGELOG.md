@@ -1,5 +1,17 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha15 — CURRENT (2026-09-01)
+- alpha14で全収録年の年別Shard化がiPhone実機PASS。
+- Legacy DataLakeに存在しない2020〜2025を、旧巨大DBを再構築せずJ-Quants V2 APIから年別Shardへ直接補完する導線を追加。
+- V2 daily barsを `from=YYYY0101&to=YYYY1231` + paginationで1年単位取得。
+- ⑦はAPI取得のみ（DB書込なし）。
+- ⑧はAPI rowsを `/jq_bars_YYYY_v1.sqlite` へUPSERTし、営業日数・期間・quick_checkを検証後Catalogへready登録。
+- APIキーは画面メモリ内だけで使用し保存しない。
+- Legacy DataLakeは補完処理では開かない。
+- まず2025年を単年で実機検証してから2020〜2024の連続補完へ進む。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha14 — CURRENT (2026-09-01)
 - 2025以前を個別指定しても `04-destination-open` で失敗することを確認し、年データ固有問題を否定。
 - SQLite公式仕様を再確認し、`initialCapacity` は「既存Poolには効かない」ことを確認。

@@ -588,6 +588,107 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      try{if(srcDb)srcDb.close()}catch(_){}
    }
  }
+
+ if(cmd==="shard-write-api-year"){
+   const payload=e.data.payload||{}, year=Number(payload.year), rows=payload.rows||[];
+   let dstDb=null,catDb=null,stage="01-validate";
+   try{
+     if(!Number.isFinite(year)||year<2000||year>2100) throw new Error("invalid year");
+     if(!Array.isArray(rows)||!rows.length) throw new Error("API rows empty");
+     const shardKey=`bars_${year}`, shardName=`/jq_bars_${year}_v1.sqlite`;
+     stage="02-destination-open";
+     dstDb=new p.OpfsSAHPoolDb(shardName,"c");
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS bars_daily(
+       code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,
+       upper_limit REAL,lower_limit REAL,value REAL,
+       adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,
+       adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,
+       PRIMARY KEY(code,date)
+     ) WITHOUT ROWID`);
+     dstDb.exec(`CREATE INDEX IF NOT EXISTS idx_bars_year_date ON bars_daily(date)`);
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+
+     const cols=tableInfo(dstDb,"bars_daily").map(x=>x.name);
+     const aliases={
+       date:["Date","date"],code:["Code","code"],
+       o:["O","o","Open","open"],h:["H","h","High","high"],l:["L","l","Low","low"],c:["C","c","Close","close"],
+       upper_limit:["UL","UpperLimit","upper_limit"],lower_limit:["LL","LowerLimit","lower_limit"],
+       volume:["Vo","Volume","volume"],value:["Va","Value","TurnoverValue","value","turnover_value"],
+       adj_factor:["AdjFactor","AdjustmentFactor","adj_factor","adjustment_factor"],
+       adj_o:["AdjO","AdjustmentOpen","adj_o","adjustment_open"],
+       adj_h:["AdjH","AdjustmentHigh","adj_h","adjustment_high"],
+       adj_l:["AdjL","AdjustmentLow","adj_l","adjustment_low"],
+       adj_c:["AdjC","AdjustmentClose","adj_c","adjustment_close"],
+       adj_volume:["AdjVo","AdjustmentVolume","adj_volume","adjustment_volume"],
+       turnover_value:["Va","TurnoverValue","turnover_value"],raw_json:["__RAW_JSON__"]
+     };
+     function pick(obj,c){
+       if(c==="raw_json") return JSON.stringify(obj);
+       for(const k of (aliases[c]||[c])) if(Object.prototype.hasOwnProperty.call(obj,k)) return obj[k];
+       return null;
+     }
+     const insertCols=cols.filter(c=>pick(rows[0],c)!==null||["date","code"].includes(c));
+     const updates=insertCols.filter(c=>!["code","date"].includes(c))
+       .map(c=>`${qident(c)}=excluded.${qident(c)}`).join(",");
+     const sql=`INSERT INTO bars_daily(${insertCols.map(qident).join(",")})
+       VALUES(${insertCols.map(()=>"?").join(",")})
+       ON CONFLICT(code,date) DO UPDATE SET ${updates}`;
+     const stmt=dstDb.prepare(sql);
+     let written=0;
+     stage="03-write";
+     try{
+       dstDb.exec("BEGIN");
+       for(const r of rows){
+         stmt.bind(insertCols.map(c=>pick(r,c))).stepReset();
+         written++;
+         if(written%50000===0) status("03-write",`${written.toLocaleString()} / ${rows.length.toLocaleString()} rows`);
+       }
+       dstDb.exec("COMMIT");
+     }catch(err){try{dstDb.exec("ROLLBACK")}catch(_){} throw err}
+     finally{stmt.finalize()}
+
+     stage="04-verify";
+     const from=`${year}-01-01`,to=`${year}-12-31`;
+     const verified=Number(scalar(dstDb,`SELECT COUNT(*) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const days=Number(scalar(dstDb,`SELECT COUNT(DISTINCT date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const minDate=String(scalar(dstDb,`SELECT MIN(date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||"");
+     const maxDate=String(scalar(dstDb,`SELECT MAX(date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||"");
+     const qc=String(scalar(dstDb,"PRAGMA quick_check")||"");
+     if(qc!=="ok") throw new Error(`quick_check=${qc}`);
+     if(!verified||!days) throw new Error("verified year is empty");
+
+     const at=new Date().toISOString().replace(/'/g,"''");
+     for(const [k,v] of Object.entries({
+       role:shardKey,schema_version:"bars-v1",calendar_year:String(year),
+       range_start:minDate,range_end:maxDate,source_db:"J-Quants V2 API",migrated_at:at
+     })){
+       const kk=String(k).replace(/'/g,"''"),vv=String(v).replace(/'/g,"''");
+       dstDb.exec(`INSERT INTO shard_meta(key,value) VALUES('${kk}','${vv}')
+         ON CONFLICT(key) DO UPDATE SET value='${vv}'`);
+     }
+     dstDb.close();dstDb=null;
+
+     stage="05-catalog";
+     catDb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+     catDb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+       shard_key TEXT PRIMARY KEY,logical_name TEXT NOT NULL,dataset TEXT NOT NULL,
+       range_start TEXT,range_end TEXT,schema_version TEXT NOT NULL,state TEXT NOT NULL,updated_at TEXT NOT NULL)`);
+     catDb.exec(`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at)
+       VALUES('${shardKey}','${shardName}','bars_daily','${minDate}','${maxDate}','bars-v1','ready','${at}')
+       ON CONFLICT(shard_key) DO UPDATE SET logical_name='${shardName}',dataset='bars_daily',
+       range_start='${minDate}',range_end='${maxDate}',schema_version='bars-v1',state='ready',updated_at='${at}'`);
+     catDb.close();catDb=null;
+
+     self.postMessage({ok:true,type:"result",stage:"PASS",year,shardName,
+       apiRows:rows.length,writtenRows:written,verifiedRows:verified,tradingDays:days,
+       minDate,maxDate,quickCheck:qc,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(catDb)catDb.close()}catch(_){} try{if(dstDb)dstDb.close()}catch(_){}}
+ }
  if(cmd==="shard-health"){
    const catalogName="/jq_catalog_v1.sqlite";
    let cdb=null,sdb=null,stage="start";

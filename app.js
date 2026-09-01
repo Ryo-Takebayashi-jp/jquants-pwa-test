@@ -941,3 +941,89 @@ files: ${JSON.stringify(r.poolFiles)}
 message: ${x.message||String(e)}`);
  }
 };
+
+async function jqFetchYearRange(year,token,onProgress){
+ if(!token) throw new Error("APIキーを入力してください");
+ const from=`${year}0101`,to=`${year}1231`;
+ let all=[],pageToken=null,pages=0;
+ do{
+   const u=new URL("/api/jquants/equities/bars/daily",location.origin);
+   u.searchParams.set("from",from); u.searchParams.set("to",to);
+   if(pageToken) u.searchParams.set("pagination_key",pageToken);
+   let res;
+   for(let attempt=0;attempt<6;attempt++){
+     res=await fetch(u,{headers:jqAuthHeaders(token),cache:"no-store"});
+     if(res.status!==429) break;
+     const ra=Number(res.headers.get("Retry-After")||0);
+     await sleep(ra?ra*1000:Math.min(30000,1000*(2**attempt)));
+   }
+   const text=await res.text(); let j={};
+   try{j=text?JSON.parse(text):{}}catch(_){}
+   if(!res.ok) throw new Error(`J-Quants HTTP ${res.status}: ${j.message||j.error||text.slice(0,300)}`);
+   const rows=j.data||[];
+   if(!Array.isArray(rows)) throw new Error("J-Quants V2 response data not recognized");
+   all.push(...rows); pages++;
+   if(onProgress) onProgress({pages,rows:all.length});
+   pageToken=j.pagination_key||j.paginationKey||null;
+   if(pages>500) throw new Error("pagination safety stop");
+ }while(pageToken);
+ return {year,rows:all,pages,from,to};
+}
+
+let _shardApiYearCache=null;
+if($("shardApiFetchBtn")) $("shardApiFetchBtn").onclick=async()=>{
+ const year=Number($("shardApiYear").value),token=$("shardApiToken").value.trim();
+ box("shardApiFetchResult","run",`${year}年をJ-Quantsから取得中… DB書込なし`);
+ try{
+   const r=await jqFetchYearRange(year,token,p=>
+     box("shardApiFetchResult","run",`${year}年 API取得中…\npage: ${p.pages}\nrows: ${p.rows.toLocaleString()}`));
+   if(!r.rows.length) throw new Error(`${year}年のAPIデータが0件です。契約プランの履歴範囲も確認してください。`);
+   _shardApiYearCache=r;
+   const dates=r.rows.map(x=>String(x.Date||x.date||"")).filter(Boolean).sort();
+   box("shardApiFetchResult","pass",`PASS
+対象年: ${year}
+API rows: ${r.rows.length.toLocaleString()}
+pages: ${r.pages}
+API range: ${dates[0]||"-"} ～ ${dates[dates.length-1]||"-"}
+DB書込: なし
+次: ⑧で年別Shardへ直接補完`);
+ }catch(e){
+   _shardApiYearCache=null;
+   box("shardApiFetchResult","fail",`FAIL\n${e.message||String(e)}`);
+ }
+};
+
+if($("shardApiWriteBtn")) $("shardApiWriteBtn").onclick=async()=>{
+ const year=Number($("shardApiYear").value),token=$("shardApiToken").value.trim();
+ box("shardApiWriteResult","run",`${year}年を取得して年別Shardへ直接補完中…`);
+ try{
+   let r=_shardApiYearCache;
+   if(!r||Number(r.year)!==year){
+     r=await jqFetchYearRange(year,token,p=>
+       box("shardApiWriteResult","run",`${year}年 API取得中…\npage: ${p.pages}\nrows: ${p.rows.toLocaleString()}`));
+   }
+   if(!r.rows.length) throw new Error(`${year}年のAPIデータが0件です`);
+   const wr=await workerCall("shard-write-api-year",900000,
+     s=>box("shardApiWriteResult","run",`${year}年 Shard書込中…\n${s.stage||"-"} ${s.detail||""}`),
+     null,{year,rows:r.rows});
+   box("shardApiWriteResult","pass",`PASS
+Shard: ${wr.shardName}
+対象年: ${wr.year}
+期間: ${wr.minDate} ～ ${wr.maxDate}
+営業日数: ${Number(wr.tradingDays).toLocaleString()}
+API rows: ${Number(wr.apiRows).toLocaleString()}
+Write attempts: ${Number(wr.writtenRows).toLocaleString()}
+Verified rows: ${Number(wr.verifiedRows).toLocaleString()}
+quick_check: ${wr.quickCheck}
+Catalog: bars_${wr.year} ready
+Legacy DataLake: 未使用 / 未変更
+判定: J-Quants API → 年別Shard直接補完 PASS`);
+   _shardApiYearCache=null;
+ }catch(e){
+   const x=e&&typeof e==="object"?e:{message:String(e)};
+   box("shardApiWriteResult","fail",`FAIL
+stage: ${x.stage||"API"}
+message: ${x.message||String(e)}
+Legacy DataLake: 未使用 / 未変更`);
+ }
+};
