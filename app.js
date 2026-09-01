@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha64");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha65");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha64").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha65").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2290,6 +2290,44 @@ function sectorRelativeAudit(pcRows,webRows,targetCode="6838"){
 }
 
 
+
+async function residualFinancialJoinAudit(pcRows,webRows){
+ const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+ const pcMap=new Map(pcRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const webMap=new Map(webRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const pcSet=new Set(pcMap.keys()),webSet=new Set(webMap.keys());
+ const focus=[...new Set([...pcSet].filter(c=>!webSet.has(c)).concat([...webSet].filter(c=>!pcSet.has(c))))].slice(0,8);
+ const lines=["【残差銘柄 財務JOIN監査】",`対象: ${focus.join(", ")||"なし"}`];
+ if(!focus.length)return lines.concat("差分なし").join("\n");
+ let rawRows=[];
+ try{
+   const res=await callSqliteWorker("fins-summary-code-audit",{codes:focus});
+   rawRows=Array.isArray(res?.rows)?res.rows:Array.isArray(res)?res:[];
+ }catch(e){lines.push(`raw監査 ERROR: ${e?.message||e}`);return lines.join("\n")}
+ const byCode=new Map();
+ for(const r of rawRows){const c=norm(r.code??r.Code);if(!c)continue;if(!byCode.has(c))byCode.set(c,[]);byCode.get(c).push(r)}
+ const fields=["ForecastPER","ForecastDividendYieldPct","CurrentOperatingMarginPct","OperatingMarginChangePct","ForecastEPS","EPS","BPS","PBR"];
+ for(const c of focus){
+   const p=pcMap.get(c)||{},q=webMap.get(c)||{},rs=byCode.get(c)||[];
+   const latest=rs.slice().sort((x,y)=>String(y.disclosed_date||y.data_date||"").localeCompare(String(x.disclosed_date||x.data_date||"")))[0];
+   lines.push(`--- ${c} ${p.CompanyName||q.CompanyName||p.Name||q.Name||""} ${pcSet.has(c)&&!webSet.has(c)?"PC_ONLY":"WEB_ONLY"} ---`);
+   lines.push(`raw財務DB: ${rs.length}件${latest?` / 最新=${latest.disclosed_date||latest.data_date||"-"}`:""}`);
+   for(const k of fields){
+     const pv=p[k],qv=q[k],ps=pv==null||String(pv).trim()===""?"(blank)":pv,qs=qv==null||String(qv).trim()===""?"(blank)":qv;
+     if(ps!=="(blank)"||qs!=="(blank)")lines.push(`${k}: PC=${ps} / Web=${qs}`);
+   }
+   if(latest){
+     let obj={};try{obj=JSON.parse(latest.raw_json||"{}")}catch{}
+     const pick=(...ks)=>{for(const k of ks)if(obj[k]!=null&&String(obj[k]).trim()!=="")return obj[k];return "(blank)"};
+     lines.push(`raw latest: Disc=${pick("DiscDate","DisclosedDate","Date")} | Doc=${pick("DocType","TypeOfDocument")} | CurFYEn=${pick("CurFYEn","CurrentFiscalYearEndDate")} | EPS=${pick("EPS","EarningsPerShare")} | F.EPS=${pick("F_EPS","ForecastEPS","ForecastEarningsPerShare")} | BPS=${pick("BPS","BookValuePerShare")} | OP=${pick("OP","OperatingProfit")} | F.OP=${pick("F_OP","ForecastOperatingProfit")}`);
+   }
+   const qMissing=!q||Object.keys(q).length===0;
+   const qFieldsBlank=fields.every(k=>q[k]==null||String(q[k]).trim()==="");
+   lines.push(`判定: ${!rs.length?"① raw財務DB欠落":qMissing?"② Screening母集団JOIN前後で脱落":qFieldsBlank?"③ rawあり→正規化/最新決算選択で欠落":"④ raw/正規化あり→スコア/Top20境界"}`);
+ }
+ return lines.join("\n");
+}
+
 function residualBoundaryAudit(pcRows,webRows,codes){
  const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
  const pm=new Map(pcRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
@@ -2321,7 +2359,7 @@ if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=asyn
  for(const c of pmap.keys())if(!wmap.has(c))missing.push(c);
  const exact=missing.length===0&&extra.length===0&&strategy===both,d=screeningBoundaryDiagnostics(pcRows,latestScreeningCandidates);
  const residualCodes=[...new Set([...missing,...extra])];
- const residualAudit=residualBoundaryAudit(pcRows,latestScreeningCandidates,residualCodes);
+ const residualAudit=(residualBoundaryAudit(pcRows,latestScreeningCandidates,residualCodes)+"\n\n"+await residualFinancialJoinAudit(pcRows,latestScreeningCandidates));
  // alpha62: pinpoint the first QVR component divergence on common rows.
  const qvrFields=[
   "QualityValueReRatingScore","QVRQualityScore","QVRValueScore","QVRReRatingScore","QVRCrowdingPenalty","QVRQualityMismatchPenalty",

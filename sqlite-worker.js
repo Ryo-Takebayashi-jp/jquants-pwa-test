@@ -190,7 +190,23 @@ self.onmessage=async e=>{
  const originalPostMessage=nativePostMessage;
  self.postMessage=(msg,...rest)=>originalPostMessage({...msg,requestId},...rest);
 const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
- if(cmd==="raw-ping"){
+ 
+if(cmd==="fins-summary-code-audit"){
+ const codes=(msg.codes||[]).map(x=>String(x||"").trim()).filter(Boolean),rows=[];
+ const db=await openDb("/jq_fins_summary_v1.sqlite");
+ try{
+   for(const c0 of codes){
+     const variants=[c0,c0.length===4?c0+"0":c0];
+     for(const c of [...new Set(variants)]){
+       const got=db.selectObjects("SELECT data_date,code,disclosed_date,disclosed_time,raw_json FROM fins_summary_raw WHERE code=? ORDER BY COALESCE(disclosed_date,data_date) DESC",[c]);
+       for(const r of got)rows.push(r);
+     }
+   }
+ }finally{try{db.close()}catch{}}
+ postMessage({ok:true,requestId:msg.requestId,rows});return;
+}
+
+if(cmd==="raw-ping"){
    self.postMessage({ok:true,type:"result",pong:true,seq:d.seq||0,elapsedMs:Math.round(performance.now()-t0)});
    return;
  }

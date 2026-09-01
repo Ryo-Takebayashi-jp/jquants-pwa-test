@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha64",
+  "current_release": "v7e-alpha65",
   "history": [
     {
-      "release": "v7e-alpha64",
+      "release": "v7e-alpha65",
       "date": "2026-09-02",
-      "note": "Residual boundary auto-audit for remaining PC/Web screening parity differences."
+      "note": "Residual Financial Summary raw/JOIN audit; selection logic unchanged."
     }
   ]
 }
