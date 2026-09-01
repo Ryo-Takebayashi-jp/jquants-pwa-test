@@ -1,5 +1,16 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha8 — CURRENT (2026-09-01)
+- alpha7のraw PINGで PING #1 は0.061秒PASS、PING #2で停止することを確認。
+- 根本原因をWorkerのresponse routingに特定。
+- `self.postMessage` を各メッセージでラップしていたため、2回目のwrapperが1回目wrapperをさらに包み、
+  requestId #2がrequestId #1へ上書きされていた。
+- native `postMessage` をWorker起動時に1回だけ保存し、毎回そこからrequestId wrapperを作るよう修正。
+- SQLite/SAH Pool以前のWorker通信バグであり、SAH Pool自体の不具合ではなかった可能性が高い。
+- 既存1.12GB DataLakeには新診断から触れない。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha7 — CURRENT (2026-09-01)
 - alpha6の⓪Aが2回目Workerメッセージで停止したため、SQLite/SAH Poolを完全に通らない raw PING/PONG を追加。
 - 同一Workerへraw PINGを2回連続送信し、Worker通信そのものとSQLite初期化後状態を分離。

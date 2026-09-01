@@ -1,3 +1,4 @@
+const nativePostMessage=self.postMessage.bind(self);
 const status=(stage,detail="")=>self.postMessage({type:"status",stage,detail});
 function scalar(db,sql){let v=null;db.exec({sql,rowMode:"array",callback:r=>{if(v===null)v=r[0]}});return v}
 function poolFileNamesSafe(p){
@@ -167,7 +168,7 @@ function getCachedMarketDb(p,name){
 }
 self.onmessage=async e=>{
  const requestId=(e.data||{}).requestId;
- const originalPostMessage=self.postMessage.bind(self);
+ const originalPostMessage=nativePostMessage;
  self.postMessage=(msg,...rest)=>originalPostMessage({...msg,requestId},...rest);
 const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
  if(cmd==="raw-ping"){

@@ -1,10 +1,31 @@
-# J-Quants Local-first PWA v7e-alpha7
+# J-Quants Local-first PWA v7e-alpha8
 
-## 今回は⓪Pだけテスト
-「⓪P SQLite未使用・Worker PINGを2回」を押してください。
+## 原因
+Worker側で `self.postMessage` をメッセージごとにラップしていました。
 
-- 2回ともPASS → Worker通信は正常。SQLite/SAH Pool初期化後のWorker状態が原因候補。
-- 2回目で停止 → SQLiteと無関係にWorkerの複数メッセージ処理側が原因。
-- 1回目から停止 → Worker通信/workerCall実装を最優先で修正。
+1回目:
+native postMessage → requestId #1 wrapper
 
-このテストはSQLiteもSAH Poolも初期化せず、既存DataLakeにも触れません。
+2回目:
+requestId #1 wrapper → requestId #2 wrapper
+
+となり、2回目のレスポンスでも最後に requestId #1 が上書きされ、
+画面側は「2回目の返事が来ていない」と判断して待ち続けていました。
+
+## 修正
+Worker起動時にnative `postMessage`を1回だけ保存。
+各メッセージのresponse wrapperは必ずnative関数を直接使います。
+
+## 実機テスト
+まず「⓪P SQLite未使用・Worker PINGを2回」を実行してください。
+
+期待値:
+- PING #1 PASS
+- PING #2 PASS
+
+通ったら続けて、
+- ⓪A Worker常駐Runtimeを2回確認
+- ① Catalog + bars_recent作成
+- ② Catalog経由で再Open
+
+まで試せます。
