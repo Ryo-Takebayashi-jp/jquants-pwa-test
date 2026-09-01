@@ -1,14 +1,13 @@
 # CHANGELOG
 
-## v7e-alpha34 — 2026-09-01
-- 開発加速版。市場基礎2種 + Standard需給5種を一括追加。
-- TOPIX日足 Shard `/jq_topix_v1.sqlite`。
-- 営業日カレンダー Shard `/jq_market_calendar_v1.sqlite`。
-- 信用取引週末残高 `/jq_margin_interest_v1.sqlite`。
-- 日々公表信用 `/jq_margin_alert_v1.sqlite`。
-- 空売り比率 `/jq_short_ratio_v1.sqlite`。
-- 空売り報告 `/jq_short_sale_report_v1.sqlite`。
-- 投資部門別 `/jq_investor_types_v1.sqlite`。
-- すべてCatalogへcoverage/state登録。raw_json完全保持。
-- 需給5種はPlan差・個別API失敗時も他データセットの取得を継続するPlan-Adaptive実装。
-- alpha31日足Parity、alpha33 Master/Financials/Earningsを維持。
+## v7e-alpha35 — 2026-09-01
+- 需給APIを一律 from/to で呼ぶ誤実装を廃止し、エンドポイント別の取得戦略へ分離。
+- 信用取引週末残高: 全市場取得は金曜日ごとの `date` 走査。
+- 日々公表信用: 全市場取得は平日ごとの `date` 走査。
+- 空売り比率: range取得を維持。
+- 空売り報告: `disc_date_from` / `disc_date_to` で取得。
+- 投資部門別: range取得を維持。
+- date走査中は API照会数 / 取得rows を進捗表示。
+- 市場基礎の初期開始日を実機確認済み契約境界 2016-09-01 に修正。
+- 需給初回テスト範囲を2026-08-01～2026-09-01へ短縮し、API負荷を抑制。
+- Plan-Adaptive（一項目失敗でも残り継続）は維持。

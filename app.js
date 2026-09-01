@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha34");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha35");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -295,10 +295,46 @@ async function jqFetchRange(path,from,to,token){
 }
 async function jqFetchTopix(from,to,token){return jqFetchRange("/indices/bars/daily/topix",from,to,token)}
 async function jqFetchMarketCalendar(from,to,token){return jqFetchRange("/markets/calendar",from,to,token)}
-async function jqFetchMarginInterest(from,to,token){return jqFetchRange("/markets/margin-interest",from,to,token)}
-async function jqFetchMarginAlert(from,to,token){return jqFetchRange("/markets/margin-alert",from,to,token)}
-async function jqFetchShortRatio(from,to,token){return jqFetchRange("/markets/short-ratio",from,to,token)}
-async function jqFetchShortSaleReport(from,to,token){return jqFetchRange("/markets/short-sale-report",from,to,token)}
+function isoDays(from,to){
+ const out=[],a=new Date(from+"T00:00:00"),b=new Date(to+"T00:00:00");
+ for(let d=new Date(a);d<=b;d.setDate(d.getDate()+1))out.push(d.toISOString().slice(0,10));
+ return out;
+}
+function isoWeekdays(from,to){return isoDays(from,to).filter(x=>{const d=new Date(x+"T00:00:00").getDay();return d!==0&&d!==6})}
+async function jqFetchByDates(path,dates,token,onProgress){
+ let rows=[],calls=0,empty=0;
+ for(let i=0;i<dates.length;i++){
+   const date=dates[i];
+   try{
+     const r=await jqFetchV2Rows(path,{date:date.replaceAll("-","")},token);
+     rows.push(...r.rows); calls++; if(!r.rows.length)empty++;
+   }catch(e){
+     if(/subscription covers/i.test(String(e))) throw e;
+     throw new Error(`${path} ${date}: ${e.message||e}`);
+   }
+   if(onProgress && (i%5===0||i===dates.length-1))onProgress(i+1,dates.length,rows.length);
+   if(i<dates.length-1)await sleep(120);
+ }
+ return {rows,calls,empty,endpoint:`/v2${path}`,strategy:"date-scan"};
+}
+async function jqFetchMarginInterest(from,to,token,onProgress){
+ // Weekly margin interest requires code OR date. For all-market DataLake, date scan is far cheaper than 4,441 code scans.
+ const dates=isoWeekdays(from,to).filter(x=>new Date(x+"T00:00:00").getDay()===5);
+ return jqFetchByDates("/markets/margin-interest",dates,token,onProgress);
+}
+async function jqFetchMarginAlert(from,to,token,onProgress){
+ // Daily-publication margin supports all-listed retrieval by a specific date.
+ return jqFetchByDates("/markets/margin-alert",isoWeekdays(from,to),token,onProgress);
+}
+async function jqFetchShortRatio(from,to,token){
+ // Sector short ratio supports range retrieval without stock code.
+ return jqFetchRange("/markets/short-ratio",from,to,token);
+}
+async function jqFetchShortSaleReport(from,to,token){
+ // V2 short-sale-report uses disclosure-date range, not generic from/to.
+ return jqFetchV2Rows("/markets/short-sale-report",
+   {disc_date_from:String(from).replaceAll("-",""),disc_date_to:String(to).replaceAll("-","")},token);
+}
 async function jqFetchInvestorTypes(from,to,token){return jqFetchRange("/equities/investor-types",from,to,token)}
 
 async function jqFetchEquitiesMaster(date, token){
@@ -1226,7 +1262,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha34",
+   appVersion:"v7e-alpha35",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1804,9 +1840,11 @@ async function runRangeDataset(btnId,resultId,fromId,toId,fetcher,workerCmd,labe
  if(!token){box(resultId,"fail","APIキーを入力してください");return {ok:false}}
  btn.disabled=true;box(resultId,"run",`${label}取得中…\n${from} ～ ${to}`);
  try{
-   const got=await fetcher(from,to,token);
+   const got=await fetcher(from,to,token,(done,total,rows)=>{
+     box(resultId,"run",`${label}取得中…\n${from} ～ ${to}\nAPI照会: ${done}/${total}\n取得 rows: ${rows}`);
+   });
    const wr=await workerCall(workerCmd,300000,null,null,{from,to,rows:got.rows});
-   box(resultId,"pass",`PASS\nEndpoint: ${got.endpoint}\n範囲: ${from} ～ ${to}\nAPI rows: ${got.rows.length}\n保存 rows: ${wr.rows}\nDB: ${wr.dbName}\nquick_check: ${wr.quickCheck}\n適用日: ${wr.minDate||"-"} ～ ${wr.maxDate||"-"}`);
+   box(resultId,"pass",`PASS\nEndpoint: ${got.endpoint}\n取得方式: ${got.strategy||"range"}${got.calls!=null?` / API照会 ${got.calls}回 / 0件 ${got.empty}回`:""}\n範囲: ${from} ～ ${to}\nAPI rows: ${got.rows.length}\n保存 rows: ${wr.rows}\nDB: ${wr.dbName}\nquick_check: ${wr.quickCheck}\n適用日: ${wr.minDate||"-"} ～ ${wr.maxDate||"-"}`);
    return {ok:true,rows:got.rows.length};
  }catch(e){
    box(resultId,"fail","FAIL\n"+(e?.message||e));
