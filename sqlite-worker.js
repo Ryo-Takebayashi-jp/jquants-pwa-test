@@ -311,6 +311,71 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      try{if(cdb)cdb.close()}catch(_){}
    }
  }
+
+ if(cmd==="shard-migrate-pilot"){
+   const catalogName="/jq_catalog_v1.sqlite", recentName="/jq_bars_recent_v1.sqlite";
+   const sourceName=name, dayLimit=Math.max(1,Math.min(10,Number(d.payload?.days||5)));
+   let srcDb=null,dstDb=null,catDb=null,stage="start";
+   const mark=(s,detail="")=>{stage=s;status(s,detail)};
+   try{
+     mark("01-source-open",`Legacy DataLake read-only: ${sourceName}`);
+     const resolved=resolveExistingMarketDb(p,sourceName);
+     srcDb=new p.OpfsSAHPoolDb(resolved.name,"r");
+     mark("02-source-dates",`Latest ${dayLimit} trading dates`);
+     const dates=execRows(srcDb,`SELECT date,COUNT(*) AS rows FROM bars_daily GROUP BY date ORDER BY date DESC LIMIT ${dayLimit}`)
+       .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+     if(!dates.length)throw new Error("No bars_daily dates found");
+     const from=String(dates[0].date),to=String(dates[dates.length-1].date);
+     const expected=dates.reduce((a,x)=>a+Number(x.rows||0),0);
+
+     mark("03-destination-open",`bars_recent: ${from} - ${to}`);
+     dstDb=new p.OpfsSAHPoolDb(recentName,"c");
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS bars_daily(code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,upper_limit REAL,lower_limit REAL,value REAL,adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,PRIMARY KEY(code,date)) WITHOUT ROWID`);
+     dstDb.exec(`CREATE INDEX IF NOT EXISTS idx_bars_recent_date ON bars_daily(date)`);
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+
+     const srcCols=new Set(tableInfo(srcDb,"bars_daily").map(x=>x.name));
+     const cols=tableInfo(dstDb,"bars_daily").map(x=>x.name).filter(x=>srcCols.has(x));
+     if(!cols.includes("code")||!cols.includes("date"))throw new Error("Schema mismatch: code/date missing");
+     const updates=cols.filter(x=>!["code","date"].includes(x)).map(x=>`${qident(x)}=excluded.${qident(x)}`).join(",");
+     const sql=`INSERT INTO bars_daily(${cols.map(qident).join(",")}) VALUES(${cols.map(()=>"?").join(",")}) ON CONFLICT(code,date) DO UPDATE SET ${updates}`;
+     const stmt=dstDb.prepare(sql); let written=0;
+     try{
+       dstDb.exec("BEGIN");
+       for(const x of dates){
+         const day=String(x.date); mark("04-copy",`${day}: ${Number(x.rows||0).toLocaleString()} rows`);
+         srcDb.exec({sql:`SELECT ${cols.map(qident).join(",")} FROM bars_daily WHERE date=? ORDER BY code`,bind:[day],rowMode:"array",
+           callback:r=>{stmt.bind(r).stepReset();written++}});
+       }
+       dstDb.exec("COMMIT");
+     }catch(err){try{dstDb.exec("ROLLBACK")}catch(_){} throw err}
+     finally{stmt.finalize()}
+
+     mark("05-verify","Row/date/quick_check verification");
+     const actual=Number(scalar(dstDb,`SELECT COUNT(*) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const distinctDates=Number(scalar(dstDb,`SELECT COUNT(DISTINCT date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const minDate=scalar(dstDb,"SELECT MIN(date) FROM bars_daily"),maxDate=scalar(dstDb,"SELECT MAX(date) FROM bars_daily");
+     const qc=String(scalar(dstDb,"PRAGMA quick_check")||"");
+     if(actual!==expected)throw new Error(`Row mismatch source=${expected}, destination=${actual}`);
+     if(distinctDates!==dates.length)throw new Error(`Date mismatch source=${dates.length}, destination=${distinctDates}`);
+     if(qc!=="ok")throw new Error(`quick_check=${qc}`);
+     const at=new Date().toISOString().replace(/'/g,"''");
+     dstDb.exec(`INSERT INTO shard_meta(key,value) VALUES('range_start','${minDate}') ON CONFLICT(key) DO UPDATE SET value='${minDate}'`);
+     dstDb.exec(`INSERT INTO shard_meta(key,value) VALUES('range_end','${maxDate}') ON CONFLICT(key) DO UPDATE SET value='${maxDate}'`);
+     dstDb.close();dstDb=null; srcDb.close();srcDb=null;
+
+     mark("06-catalog-update","Catalog update after verification");
+     catDb=new p.OpfsSAHPoolDb(catalogName,"c");
+     catDb.exec(`UPDATE shard_catalog SET range_start='${minDate}',range_end='${maxDate}',state='pilot-migrated',updated_at='${at}' WHERE shard_key='bars_recent'`);
+     const catalogRows=execRows(catDb,"SELECT * FROM shard_catalog WHERE shard_key='bars_recent'");
+     catDb.close();catDb=null;
+     self.postMessage({ok:true,type:"result",stage:"PASS",source:resolved.name,days:dates.length,dates,
+       expectedRows:expected,writtenRows:written,verifiedRows:actual,minDate,maxDate,quickCheck:qc,catalogRows,
+       elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return;
+   }finally{try{if(catDb)catDb.close()}catch(_){} try{if(dstDb)dstDb.close()}catch(_){} try{if(srcDb)srcDb.close()}catch(_){}}
+ }
  if(cmd==="shard-health"){
    const catalogName="/jq_catalog_v1.sqlite";
    let cdb=null,sdb=null,stage="start";

@@ -1,5 +1,14 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha9 — CURRENT (2026-09-01)
+- alpha8でWorker PING×2、常駐Runtime×2、close→reOpen、Catalog作成、Catalog経由Shard再OpenがiPhone実機PASS。
+- Legacy 1.12GB DataLakeから bars_recent へ最新1～10営業日だけをコピーする少量移行パイロットを追加（既定5日）。
+- Legacy DataLakeはread-only。
+- source/destination件数、対象営業日数、PRAGMA quick_checkを照合し、全PASS後だけCatalog rangeを更新。
+- 全量移行・年別Shard化はまだ行わない。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha8 — CURRENT (2026-09-01)
 - alpha7のraw PINGで PING #1 は0.061秒PASS、PING #2で停止することを確認。
 - 根本原因をWorkerのresponse routingに特定。
