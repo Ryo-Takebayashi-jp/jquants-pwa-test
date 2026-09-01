@@ -77,6 +77,8 @@ async function importFile(file,name){
  return {bytes,chunks};
 }
 
+
+function scalarBind(db,sql,bind=[]){let out=null;db.exec({sql,bind,rowMode:"array",callback:r=>{if(out===null)out=r[0]}});return out;}
 function execRows(db,sql,bind=[]){
  const rows=[]; db.exec({sql,bind,rowMode:"object",callback:r=>rows.push(r)}); return rows;
 }
@@ -720,6 +722,126 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }finally{try{if(rdb)rdb.close()}catch(_){}}
  }
 
+
+ if(cmd==="catalog-coverage-audit"){
+   let cdb=null,stage="01-catalog-open";
+   try{
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const has=Number(scalar(cdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='shard_catalog'")||0)>0;
+     if(!has) throw new Error("shard_catalog missing");
+     const rows=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end,state,updated_at
+       FROM shard_catalog WHERE dataset='bars_daily' AND state='ready' ORDER BY range_start,shard_key`);
+     cdb.close();cdb=null;
+
+     const years=rows.filter(r=>/^bars_\d{4}$/.test(String(r.shard_key||"")));
+     const recent=rows.find(r=>String(r.shard_key)==="bars_recent")||null;
+     const gaps=[];
+     function daysBetween(a,b){
+       if(!a||!b)return null;
+       const x=new Date(a+"T00:00:00Z"),y=new Date(b+"T00:00:00Z");
+       return Math.round((y-x)/86400000);
+     }
+     for(let i=1;i<years.length;i++){
+       const prev=years[i-1],cur=years[i];
+       const d=daysBetween(String(prev.range_end||""),String(cur.range_start||""));
+       if(d!=null && d>14) gaps.push({
+         after:String(prev.shard_key),before:String(cur.shard_key),
+         prevEnd:String(prev.range_end||""),nextStart:String(cur.range_start||""),calendarGapDays:d
+       });
+     }
+     self.postMessage({ok:true,type:"result",stage:"PASS",yearShards:years,recent,gaps,
+       coverageStart:years.length?String(years[0].range_start||""):null,
+       coverageEnd:years.length?String(years[years.length-1].range_end||""):null,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(cdb)cdb.close()}catch(_){}}
+ }
+
+ if(cmd==="catalog-read-bars-range"){
+   const payload=e.data.payload||{};
+   const from=String(payload.from||""),to=String(payload.to||"");
+   const code=String(payload.code||"").trim();
+   const sampleLimit=Math.max(1,Math.min(200,Number(payload.sampleLimit||50)));
+   let cdb=null,stage="01-validate";
+   try{
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)
+       throw new Error("from/to invalid");
+     stage="02-catalog";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cat=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end,state
+       FROM shard_catalog
+       WHERE dataset='bars_daily' AND state='ready'
+         AND COALESCE(range_end,'9999-12-31')>=?
+         AND COALESCE(range_start,'0000-01-01')<=?
+       ORDER BY range_start,shard_key`,[from,to]);
+     cdb.close();cdb=null;
+
+     // Prefer canonical year shards. Use bars_recent only as fallback for years
+     // which have no ready year shard, preventing duplicate (code,date) reads.
+     const y1=Number(from.slice(0,4)),y2=Number(to.slice(0,4));
+     const selected=[],catalogWarnings=[];
+     for(let y=y1;y<=y2;y++){
+       const yf=`${y}-01-01`,yt=`${y}-12-31`;
+       const segFrom=from>yf?from:yf,segTo=to<yt?to:yt;
+       let entry=cat.find(r=>String(r.shard_key)===`bars_${y}`);
+       if(!entry){
+         const rr=cat.find(r=>String(r.shard_key)==="bars_recent" &&
+           String(r.range_end||"9999-12-31")>=segFrom && String(r.range_start||"0000-01-01")<=segTo);
+         if(rr){
+           entry=rr;
+           catalogWarnings.push(`${y}: year shard missing; bars_recent fallback`);
+         }else{
+           catalogWarnings.push(`${y}: no ready shard for requested range`);
+           continue;
+         }
+       }
+       selected.push({year:y,segFrom,segTo,...entry});
+     }
+     if(!selected.length) throw new Error("Catalog could not resolve any shard for requested range");
+
+     stage="03-read";
+     const shardStats=[],samples=[];
+     let totalRows=0;
+     const seen=new Set();
+     for(const s of selected){
+       let db=null;
+       try{
+         const name=String(s.logical_name||"");
+         db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
+         const where=["date>=?","date<=?"],bind=[s.segFrom,s.segTo];
+         if(code){where.push("code=?");bind.push(code)}
+         const count=Number(scalarBind(db,`SELECT COUNT(*) FROM bars_daily WHERE ${where.join(" AND ")}`,bind)||0);
+         const minDate=scalarBind(db,`SELECT MIN(date) FROM bars_daily WHERE ${where.join(" AND ")}`,bind);
+         const maxDate=scalarBind(db,`SELECT MAX(date) FROM bars_daily WHERE ${where.join(" AND ")}`,bind);
+         totalRows+=count;
+         shardStats.push({shardKey:String(s.shard_key),logicalName:name,segFrom:s.segFrom,segTo:s.segTo,count,minDate,maxDate});
+
+         if(samples.length<sampleLimit){
+           const lim=sampleLimit-samples.length;
+           const rs=execRows(db,`SELECT code,date,o,h,l,c,volume,turnover_value
+             FROM bars_daily WHERE ${where.join(" AND ")}
+             ORDER BY date,code LIMIT ${Number(lim)}`,bind);
+           for(const r of rs){
+             const k=`${r.code}|${r.date}`;
+             if(!seen.has(k)){seen.add(k);samples.push(r)}
+           }
+         }
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+     self.postMessage({ok:true,type:"result",stage:"PASS",from,to,code:code||null,
+       selected:shardStats,totalRows,samples,catalogWarnings,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(cdb)cdb.close()}catch(_){}}
+ }
  if(cmd==="shard-native-daily-write"){
    const payload=e.data.payload||{}, date=String(payload.date||""), rows=payload.rows||[];
    let recentDb=null,yearDb=null,catDb=null,stage="01-validate";

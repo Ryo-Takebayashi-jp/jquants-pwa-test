@@ -1,5 +1,15 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha20 — CURRENT (2026-09-01)
+- Catalog + Shardsの本番読み取りルーターを追加。
+- from/toをCatalogへ渡し、必要な年別bars_YYYYだけを自動選択して読み取り。
+- 複数年跨ぎを1つの論理DataLakeクエリとして扱う。
+- 年別Shardをcanonical sourceとして優先し、bars_recentは年Shard欠損時のみfallback。
+- Catalog coverage auditを追加。年別Shard間の14日超境界Gapを警告。
+- 読み取りテストでShard別件数・範囲・総件数・sampleを表示。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha19 — CURRENT (2026-09-01)
 - Catalog + Shardsを本番日次更新の書込先へ変更。
 - 1日のJ-Quants V2 barsをbars_recent＋当年bars_YYYYへ同時UPSERT。

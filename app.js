@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha19");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha20");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1129,7 +1129,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha19",
+   appVersion:"v7e-alpha20",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1371,4 +1371,59 @@ Legacy DataLake: 未使用
 ${e.stage?`stage: ${e.stage}\n`:""}${e.message||String(e)}
 Legacy DataLake: 未使用`);
  }finally{$("prodDailyWriteBtn").disabled=false}
+};
+
+function isoMinusDays(n){
+ const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-n);
+ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+if($("catalogReadTo")&&!$("catalogReadTo").value) $("catalogReadTo").value=todayIsoLocal();
+if($("catalogReadFrom")&&!$("catalogReadFrom").value) $("catalogReadFrom").value=isoMinusDays(10);
+
+if($("catalogAuditBtn")) $("catalogAuditBtn").onclick=async()=>{
+ box("catalogAuditResult","run","Catalogの年別Shard収録範囲を監査中…");
+ try{
+   const r=await workerCall("catalog-coverage-audit",300000);
+   const ys=r.yearShards.map(x=>`${x.shard_key}: ${x.range_start||"-"} ～ ${x.range_end||"-"}`);
+   const gapText=r.gaps.length?r.gaps.map(g=>`${g.after} → ${g.before}: ${g.prevEnd} ～ ${g.nextStart} (${g.calendarGapDays}日)`).join("\n"):"大きな境界Gapなし";
+   box("catalogAuditResult",r.gaps.length?"warn":"pass",`${r.gaps.length?"要確認":"PASS"}
+年別Shard: ${r.yearShards.length}
+全体範囲: ${r.coverageStart||"-"} ～ ${r.coverageEnd||"-"}
+bars_recent: ${r.recent?`${r.recent.range_start} ～ ${r.recent.range_end}`:"なし"}
+
+${ys.join("\n")}
+
+14日超のShard境界Gap:
+${gapText}
+
+※長いGapは欠損の可能性があるため、分析利用前に補完対象として扱います。`);
+ }catch(e){box("catalogAuditResult","fail","FAIL\n"+(e.message||String(e)))}
+};
+
+if($("catalogReadBtn")) $("catalogReadBtn").onclick=async()=>{
+ const from=$("catalogReadFrom").value,to=$("catalogReadTo").value,code=$("catalogReadCode").value.trim();
+ box("catalogReadResult","run",`${from} ～ ${to}
+${code?`Code: ${code}`:"市場全体"}
+Catalogで必要Shardを解決中…`);
+ try{
+   const r=await workerCall("catalog-read-bars-range",300000,
+     s=>box("catalogReadResult","run",`${from} ～ ${to}
+${s.stage||"-"} ${s.detail||""}`),null,{from,to,code,sampleLimit:30});
+   const shards=r.selected.map(x=>`${x.shardKey}: ${x.segFrom}～${x.segTo} / ${Number(x.count).toLocaleString()}行 / ${x.minDate||"-"}～${x.maxDate||"-"}`);
+   const sample=r.samples.slice(0,8).map(x=>`${x.date} ${x.code} C=${x.c??"-"} V=${x.volume??"-"}`);
+   box("catalogReadResult","pass",`PASS
+Query: ${r.from} ～ ${r.to}${r.code?` / ${r.code}`:""}
+Resolved Shards: ${r.selected.length}
+Total rows: ${Number(r.totalRows).toLocaleString()}
+処理時間: ${(r.elapsedMs/1000).toFixed(3)}秒
+
+${shards.join("\n")}
+
+${r.catalogWarnings.length?`Catalog warning:\n${r.catalogWarnings.join("\n")}\n`:""}
+Sample:
+${sample.join("\n")||"なし"}
+
+判定: Catalog → Shard自動ルーティング PASS`);
+ }catch(e){box("catalogReadResult","fail",`FAIL
+${e.stage?`stage: ${e.stage}\n`:""}${e.message||String(e)}`)}
 };

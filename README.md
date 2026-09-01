@@ -1,23 +1,23 @@
-# J-Quants Local-first PWA v7e-alpha19
+# J-Quants Local-first PWA v7e-alpha20
 
-## 今回の主目的
-Catalog + Shardsを「移行済みデータ」から「本番運用DataLake」へ昇格。
+## Catalog read router
+Catalog + Shardsの「読む側」を追加。
 
-### 1. Shard-native日次更新
-- J-Quants V2 `date=YYYYMMDD` で1日分の日足を取得
-- `jq_bars_recent_v1.sqlite` と `jq_bars_YYYY_v1.sqlite` へ同時UPSERT
-- bars_recentは直近30取引日に自動トリム
-- 両DBの日次行数とquick_checkを検証後、Catalogのrangeを更新
-- Legacy巨大DataLakeは未使用
+### 新機能
+- Catalog収録範囲監査
+- 年別Shard間に14日超の境界Gapがあれば警告
+- from/to + 任意codeを指定してCatalog経由で読み取り
+- 必要な `bars_YYYY` だけを自動open
+- 複数年をまたぐrangeも1クエリとして扱う
+- canonical year shardを優先し、bars_recentは年Shard欠損時のみfallback
+- Shardごとの件数、期間、総件数、sampleを返す
 
-### 2. UI整理
-- 「本番 日次更新」を開発者診断の外へ配置
-- 「正式バックアップ / 復元」を開発者診断の外へ配置
-- Safari未対応だったJQB単一ファイル作成UIは正式導線から撤去
-- 複数SQLite外部バックアップ方式を正式仕様として維持
+### 実機確認
+1. ① Catalog収録範囲を監査
+2. Gap警告が出た場合は内容を保存（欠損補完対象）
+3. 直近10日で②読み取りテスト
+4. その後、年をまたぐ範囲でも②をテスト
 
-### 実機テスト
-1. ページ上部〜本番導線で「本番 日次更新」「正式バックアップ / 復元」が見えること
-2. 直近の既知取引日で① API取得だけ確認
-3. PASS後に② Shardへ本番日次更新
-4. bars_recent / bars_YYYY / CatalogがPASSすること
+## 既存
+- alpha19 Shard-native本番日次更新
+- 正式複数SQLite外部バックアップ/復元

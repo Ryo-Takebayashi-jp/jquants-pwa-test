@@ -613,8 +613,13 @@
       ]
     }
   ],
-  "current_release": "v7e-alpha19",
+  "current_release": "v7e-alpha20",
   "history": [
+    {
+      "release": "v7e-alpha20",
+      "date": "2026-09-01",
+      "note": "Catalog-driven read router across yearly shards plus coverage-gap audit."
+    },
     {
       "release": "v7e-alpha19",
       "date": "2026-09-01",
