@@ -1,13 +1,11 @@
 # CHANGELOG
 
-## v7e-alpha35 — 2026-09-01
-- 需給APIを一律 from/to で呼ぶ誤実装を廃止し、エンドポイント別の取得戦略へ分離。
-- 信用取引週末残高: 全市場取得は金曜日ごとの `date` 走査。
-- 日々公表信用: 全市場取得は平日ごとの `date` 走査。
-- 空売り比率: range取得を維持。
-- 空売り報告: `disc_date_from` / `disc_date_to` で取得。
-- 投資部門別: range取得を維持。
-- date走査中は API照会数 / 取得rows を進捗表示。
-- 市場基礎の初期開始日を実機確認済み契約境界 2016-09-01 に修正。
-- 需給初回テスト範囲を2026-08-01～2026-09-01へ短縮し、API負荷を抑制。
-- Plan-Adaptive（一項目失敗でも残り継続）は維持。
+## v7e-alpha36 — 2026-09-01
+- alpha35がiPhoneで古い需給ロジックを実行していた問題を修正。Service Worker cache名がalpha29のまま残っていたため、alpha36へ明示更新。
+- index.htmlのapp.js、Worker、Service Worker登録にalpha36のquery cache-bustを付与。
+- 空売り比率はAPI仕様どおり `date` 単位走査へ変更（rangeのみは不可）。
+- 空売り報告はAPI仕様どおり `disc_date` 単位走査へ変更（disc_date_from/toだけに依存しない）。
+- 信用週末残高は金曜日 `date`、日々公表信用は平日 `date` の既存alpha35方式を維持。
+- 投資部門別はrange取得を維持。
+- J-Quants APIキー共通入力欄をページ最上部に移設。全取得処理が同じセッショントークンを利用。
+- 銘柄マスター内の重複APIキー入力欄は廃止し、上部共通欄へ統一。

@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha35");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha36");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -222,7 +222,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha36").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -326,14 +326,21 @@ async function jqFetchMarginAlert(from,to,token,onProgress){
  // Daily-publication margin supports all-listed retrieval by a specific date.
  return jqFetchByDates("/markets/margin-alert",isoWeekdays(from,to),token,onProgress);
 }
-async function jqFetchShortRatio(from,to,token){
- // Sector short ratio supports range retrieval without stock code.
- return jqFetchRange("/markets/short-ratio",from,to,token);
+async function jqFetchShortRatio(from,to,token,onProgress){
+ // API requires date OR s33. For all-market history, scan dates rather than 33 sector codes.
+ return jqFetchByDates("/markets/short-ratio",isoWeekdays(from,to),token,onProgress);
 }
-async function jqFetchShortSaleReport(from,to,token){
- // V2 short-sale-report uses disclosure-date range, not generic from/to.
- return jqFetchV2Rows("/markets/short-sale-report",
-   {disc_date_from:String(from).replaceAll("-",""),disc_date_to:String(to).replaceAll("-","")},token);
+async function jqFetchShortSaleReport(from,to,token,onProgress){
+ // API requires code OR disc_date OR calc_date. For all-market history, scan disclosure dates.
+ let rows=[],calls=0,empty=0,dates=isoWeekdays(from,to);
+ for(let i=0;i<dates.length;i++){
+   const date=dates[i];
+   const r=await jqFetchV2Rows("/markets/short-sale-report",{disc_date:date.replaceAll("-","")},token);
+   rows.push(...r.rows); calls++; if(!r.rows.length)empty++;
+   if(onProgress && (i%5===0||i===dates.length-1))onProgress(i+1,dates.length,rows.length);
+   if(i<dates.length-1)await sleep(120);
+ }
+ return {rows,calls,empty,endpoint:"/v2/markets/short-sale-report",strategy:"disc-date-scan"};
 }
 async function jqFetchInvestorTypes(from,to,token){return jqFetchRange("/equities/investor-types",from,to,token)}
 
@@ -520,7 +527,7 @@ if($("recentRepairBtn")) $("recentRepairBtn").onclick=async()=>{
 
 let lastGapPlan=[];
 let sessionJqToken="";
-const JQ_TOKEN_INPUT_IDS=["masterToken","prodToken","jqToken","simpleGapToken","shardApiToken","prodDailyToken","gapToken"];
+const JQ_TOKEN_INPUT_IDS=["globalToken","masterToken","prodToken","jqToken","simpleGapToken","shardApiToken","prodDailyToken","gapToken"];
 function prodTokenValue(){
   for(const id of JQ_TOKEN_INPUT_IDS){
     const el=$(id), v=el?.value?.trim?.()||"";
@@ -545,7 +552,14 @@ function bindSessionTokenInputs(){
     el.addEventListener("change",sync);
   }
 }
+
 bindSessionTokenInputs();
+if($("globalToken")){
+ const syncGlobalStatus=()=>box("globalTokenStatus",$("globalToken").value.trim()?"pass":"warn",
+   $("globalToken").value.trim()?"APIキー入力済み（セッションのみ）":"未入力");
+ $("globalToken").addEventListener("input",syncGlobalStatus);
+ syncGlobalStatus();
+}
 function localTodayIso(){return new Date().toLocaleDateString("sv-SE")}
 async function runDailyCatchupTo(target,token,maxDays=20){
   const st=await getAutoState(), s=st.stats||{}, cp=(st.checkpoint||[])[0], jq=(st.jqcheckpoint||[])[0];
@@ -1262,7 +1276,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha35",
+   appVersion:"v7e-alpha36",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1771,10 +1785,10 @@ ${e.message||e}
 if($("masterFetchBtn")) $("masterFetchBtn").onclick=async()=>{
  const btn=$("masterFetchBtn");
  const date=$("masterDate").value||localTodayIso();
- const token=($("masterToken")?.value?.trim?.()||prodTokenValue());
+ const token=prodTokenValue();
  if(!token){
    box("masterResult","fail","APIキーを入力してください。\n※このカードのAPIキー欄、または上部のDataLake更新欄のどちらでも使えます。");
-   $("masterToken")?.focus();
+   $("globalToken")?.focus();
    return;
  }
  sessionJqToken=token;

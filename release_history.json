@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha35",
+  "current_release": "v7e-alpha36",
   "history": [
     {
-      "release": "v7e-alpha35",
+      "release": "v7e-alpha36",
       "date": "2026-09-01",
-      "note": "Fix supply-demand acquisition by endpoint-specific parameter strategy: date scans for weekly/daily margin, disclosure-date range for short-sale reports."
+      "note": "Fix stale alpha29 service-worker cache, force alpha36 JS/worker cache bust, move API key to top, and use date/disclosure-date scans for supply-demand endpoints."
     }
   ]
 }
