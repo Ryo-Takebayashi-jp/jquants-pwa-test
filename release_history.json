@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha63",
+  "current_release": "v7e-alpha64",
   "history": [
     {
-      "release": "v7e-alpha63",
+      "release": "v7e-alpha64",
       "date": "2026-09-02",
-      "note": "Fix null-to-zero contamination in sector-relative QVR ranks and add peer percentile audit."
+      "note": "Residual boundary auto-audit for remaining PC/Web screening parity differences."
     }
   ]
 }

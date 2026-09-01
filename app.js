@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha63");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha64");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha63").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha64").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2289,6 +2289,26 @@ function sectorRelativeAudit(pcRows,webRows,targetCode="6838"){
  return lines.join("\n");
 }
 
+
+function residualBoundaryAudit(pcRows,webRows,codes){
+ const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+ const pm=new Map(pcRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const wm=new Map(webRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const fields=["QualityValueReRatingScore","QVRQualityScore","QVRValueScore","QVRReRatingScore","SectorForecastPERValueScore","SectorPBRValueScore","SectorDividendYieldValueScore","ForecastPER","PBR","ForecastDividendYieldPct","ROE","CurrentOperatingMarginPct","OperatingMarginChangePt","LatestAvailableCFO","LatestAvailableFCF","EquityRatioPct"];
+ const lines=[];
+ for(const c of codes){
+   const p=pm.get(c),q=wm.get(c);lines.push(`--- ${c} ${q?.CompanyName||p?.CompanyName||p?.Name||""} ${p&&!q?"PC_ONLY":q&&!p?"WEB_ONLY":"BOTH"} ---`);
+   const base=q||p;
+   lines.push(`Sector33=${base?.Sector33||"(blank)"} | Primary PC=${p?.PrimaryStrategy||"-"} / Web=${q?.PrimaryStrategy||"-"}`);
+   for(const k of fields){
+     const pv=p?.[k],wv=q?.[k],ps=pv==null||String(pv).trim()===""?"(blank)":pv,ws=wv==null||String(wv).trim()===""?"(blank)":wv;
+     if(ps!=="(blank)"||ws!=="(blank)")lines.push(`${k}: PC=${ps} / Web=${ws}`);
+   }
+   if(q)lines.push(sectorRelativeAudit(pcRows,webRows,c));
+ }
+ return lines.join("\n");
+}
+
 if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=async()=>{try{
  const f=$("screeningStrategyParityFile").files?.[0];if(!f)throw new Error("screening_candidates.csvを選択してください");
  if(!latestScreeningCandidates.length)throw new Error("先にWebの5戦略選抜を実行してください");
@@ -2300,6 +2320,8 @@ if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=asyn
  for(const [c,w] of wmap){const p=pmap.get(c);if(!p){extra.push(c);continue}both++;if(String(p.PrimaryStrategy||"")===String(w.PrimaryStrategy||""))strategy++;else diff.push(`${c}: PC=${p.PrimaryStrategy||"-"} / Web=${w.PrimaryStrategy||"-"}`)}
  for(const c of pmap.keys())if(!wmap.has(c))missing.push(c);
  const exact=missing.length===0&&extra.length===0&&strategy===both,d=screeningBoundaryDiagnostics(pcRows,latestScreeningCandidates);
+ const residualCodes=[...new Set([...missing,...extra])];
+ const residualAudit=residualBoundaryAudit(pcRows,latestScreeningCandidates,residualCodes);
  // alpha62: pinpoint the first QVR component divergence on common rows.
  const qvrFields=[
   "QualityValueReRatingScore","QVRQualityScore","QVRValueScore","QVRReRatingScore","QVRCrowdingPenalty","QVRQualityMismatchPenalty",
@@ -2335,7 +2357,10 @@ ${exact?"完全一致 PASS":"選抜ロジック調整対象"}
 ${d.byStrategy.join("\n")||"なし"}
 
 【差分銘柄 rank PC/Web】
-${d.detail.slice(0,40).join("\n")||"なし"}${diff.length?"\n\nPrimary差分:\n"+diff.slice(0,12).join("\n"):""}${auditText}`)
+${d.detail.slice(0,40).join("\n")||"なし"}${diff.length?"\n\nPrimary差分:\n"+diff.slice(0,12).join("\n"):""}
+
+【残差銘柄4点 自動監査】
+${residualAudit||"残差なし"}${auditText}`)
 }catch(e){box("screeningStrategyParityResult","fail","FAIL\n"+(e?.message||e))}};
 
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();
