@@ -1,5 +1,28 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha14 — CURRENT (2026-09-01)
+- 2025以前を個別指定しても `04-destination-open` で失敗することを確認し、年データ固有問題を否定。
+- SQLite公式仕様を再確認し、`initialCapacity` は「既存Poolには効かない」ことを確認。
+- alpha13の `initialCapacity: 32` だけでは既存6-slot Poolを拡張できないため修正。
+- Worker初期化時に `await pool.reserveMinimumCapacity(32)` を実行。
+- `reserveMinimumCapacity()` は既存容量が32未満のときだけ拡張し、容量変更は永続化される。
+- ⑤Aは設定値ではなく `getCapacity()` / `getFileCount()` の実値を表示。
+- 年別Shard移行ロジック自体は変更なし。
+- Legacy DataLakeはread-only / 未変更。
+
+# J-Quants Project Changelog
+
+## Web/PWA v7e-alpha13 — CURRENT (2026-09-01)
+- alpha12の全年度一括移行で、2026年Shard作成後に次年の destination-open で失敗。
+- 原因候補をSAH Poolの保存枠不足に特定。
+- SAH Pool `initialCapacity` を 6 → 32 へ拡張。
+- Legacy DB / Catalog / bars_recent / diagnostic DB / 複数年Shardを同時に保持できる余裕を確保。
+- 前面に「⑤A Shard保存枠を確認」を追加。
+- 年別Shardの移行・照合ロジック自体は変更なし。
+- Legacy DataLakeはread-only / 未変更。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha12 — CURRENT (2026-09-01)
 - alpha11の2026年年別Shard移行がiPhone実機PASS。
   - 63営業日 / 279,928行

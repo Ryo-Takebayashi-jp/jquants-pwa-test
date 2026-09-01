@@ -49,9 +49,13 @@ async function initSqlite(){
    pool=await sqlite3.installOpfsSAHPoolVfs({
      name:"jq-sahpool",
      directory:".jq-sahpool-v7c-r5",
-     initialCapacity:6
+     initialCapacity:32
    });
-   return {sqlite3,pool,runtimeId:"worker-persistent-v1"};
+   status("reserve-sahpool-capacity","reserveMinimumCapacity(32)");
+   if(typeof pool.reserveMinimumCapacity!=="function")
+     throw new Error("reserveMinimumCapacity() not exposed by this SQLite build");
+   const poolCapacity=await pool.reserveMinimumCapacity(32);
+   return {sqlite3,pool,poolCapacity,runtimeId:"worker-persistent-v1"};
  })().catch(err=>{
    _sqliteInitPromise=null;
    sqlite3=null; pool=null;
@@ -378,6 +382,21 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
 
+
+ if(cmd==="pool-capacity-status"){
+   const files=poolFileNamesSafe(p);
+   const actualCapacity=typeof p.getCapacity==="function"?Number(p.getCapacity()):null;
+   const actualFileCount=typeof p.getFileCount==="function"?Number(p.getFileCount()):files.length;
+   self.postMessage({
+     ok:true,type:"result",stage:"PASS",
+     poolFiles:files,
+     actualCapacity,
+     actualFileCount,
+     freeSlots:actualCapacity==null?null:Math.max(0,actualCapacity-actualFileCount),
+     elapsedMs:Math.round(performance.now()-t0)
+   });
+   return;
+ }
  if(cmd==="shard-year-inventory"){
    let srcDb=null,stage="01-source-open";
    try{

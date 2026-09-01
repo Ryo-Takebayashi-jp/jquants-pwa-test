@@ -613,8 +613,18 @@
       ]
     }
   ],
-  "current_release": "v7e-alpha12",
+  "current_release": "v7e-alpha14",
   "history": [
+    {
+      "release": "v7e-alpha14",
+      "date": "2026-09-01",
+      "note": "Fix existing SAH Pool capacity correctly with reserveMinimumCapacity(32); initialCapacity alone does not expand an already-created pool."
+    },
+    {
+      "release": "v7e-alpha13",
+      "date": "2026-09-01",
+      "note": "Expand SAH Pool initialCapacity from 6 to 32 after multi-year migration hit destination-open capacity limits; add capacity status check."
+    },
     {
       "release": "v7e-alpha12",
       "date": "2026-09-01",

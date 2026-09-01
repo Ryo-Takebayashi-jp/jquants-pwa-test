@@ -924,3 +924,20 @@ stack: ${x.stack||"-"}
 Legacy DataLake: read-only / 未変更`);
  }
 };
+
+if($("poolCapacityBtn")) $("poolCapacityBtn").onclick=async()=>{
+ box("poolCapacityResult","run","SAH Pool保存枠を確認中…");
+ try{
+   const r=await workerCall("pool-capacity-status",60000,null);
+   box("poolCapacityResult","pass",`PASS
+Actual capacity: ${r.actualCapacity}
+Allocated files: ${r.actualFileCount}
+Free slots: ${r.freeSlots}
+files: ${JSON.stringify(r.poolFiles)}
+判定: reserveMinimumCapacity(32) 適用済み`);
+ }catch(e){
+   const x=e&&typeof e==="object"?e:{message:String(e)};
+   box("poolCapacityResult","fail",`FAIL
+message: ${x.message||String(e)}`);
+ }
+};

@@ -1,24 +1,20 @@
-# J-Quants Local-first PWA v7e-alpha12
+# J-Quants Local-first PWA v7e-alpha14
 
-## 今回の本命
-2026年の年別Shard移行が実機PASSしたため、Legacy DataLakeに収録されている全年度を自動検出し、
-新しい年から順番に年別Shardへ移行できるようにしました。
+## alpha13修正
+SQLite公式仕様では `initialCapacity` はPoolが空の初回作成時だけ有効です。
+既に6枠で作られた現在のPoolに `initialCapacity:32` を指定しても拡張されません。
 
-前面の「Web版 DataLake」で:
-- ⑤ 収録年を確認
-- ⑥ 過去年を順番に一括移行
+alpha14ではWorker初期化時に
 
-を使います。
+`await pool.reserveMinimumCapacity(32)`
 
-各年は必ず
-- Source/Destination行数一致
-- 営業日数一致
-- MIN/MAX日付一致
-- PRAGMA quick_check=ok
-を確認し、PASS後だけCatalogへ bars_YYYY を ready 登録します。
+を実行して、既存Poolを実際に32枠まで拡張します。
+この変更は永続化され、既に32以上なら何もしません。
 
-Legacy DataLakeはread-onlyで変更しません。
+## 実機テスト
+1. ⑤A Shard保存枠を確認
+   - Actual capacity: 32 を確認
+2. ⑥ 過去年を順番に一括移行
 
-## UI
-Web版 DataLakeを前面へ移しました。
-旧巨大DataLake操作・SAH診断・旧PoC等は「開発者診断（通常は開かなくてOK）」へ収納しています。
+⑤Bは前回PASS済みなので省略可です。
+Legacy DataLakeはread-onlyです。
