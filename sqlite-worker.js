@@ -1536,7 +1536,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
                  h=Number(r.h),l=Number(r.l);
            if(!Number.isFinite(c)||c<=0)continue;
            if(!byCode.has(code))byCode.set(code,[]);
-           byCode.get(code).push({date:d,c,v,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c});
+           byCode.get(code).push({date:d,c,v,tv:Number.isFinite(tv)?tv:null,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c});
          }
        }finally{try{if(db)db.close()}catch(_){}}
      }
@@ -1636,10 +1636,10 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          const pd=macs.at(-2)-sigs.at(-2),cd=macs.at(-1)-sigs.at(-1);
          macdState=pd<=0&&cd>0?"GoldenCross":pd>=0&&cd<0?"DeadCross":cd>0?"AboveSignal":cd<0?"BelowSignal":"OnSignal";
        }
-       const recent5v=arr.slice(-5).map(x=>x.v).filter(Number.isFinite),recent20v=arr.slice(-20).map(x=>x.v).filter(Number.isFinite);
+       const recent5v=a.slice(-5).map(x=>x.v).filter(Number.isFinite),recent20v=a.slice(-20).map(x=>x.v).filter(Number.isFinite);
        const volumeRatio5To20=(recent5v.length&&recent20v.length&&recent20v.reduce((p,c)=>p+c,0)!==0)
          ?(recent5v.reduce((p,c)=>p+c,0)/recent5v.length)/(recent20v.reduce((p,c)=>p+c,0)/recent20v.length):null;
-       const recentTV=arr.slice(-20).map(x=>x.tv).filter(Number.isFinite);
+       const recentTV=a.slice(-20).map(x=>x.tv).filter(Number.isFinite);
        const averageTradingValue20D=recentTV.length?recentTV.reduce((p,c)=>p+c,0)/recentTV.length:null;
        const positionVs60DHighPct=closes.length>=60?last.c/Math.max(...closes.slice(-60))*100:null;
        const macdHist5Ago=(macs.length>=6&&sigs.length>=6)?macs.at(-6)-sigs.at(-6):null;

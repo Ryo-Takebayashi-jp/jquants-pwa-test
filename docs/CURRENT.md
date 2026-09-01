@@ -1,16 +1,13 @@
-# v7e-alpha55 実機テスト
+# v7e-alpha56
 
-初回だけ:
-1. APIキー入力
-2. Screening開発エリア → 「不足している財務履歴だけ取得」
-   - 2025-01-01〜2026-09-01
-   - 取得済み日を自動スキップ
-   - 数分かかります
+今回の実機確認はページ上部のScreening開発フローだけ。
 
-完了後:
-3. 財務データを正規化
-4. Screening母集団を構築
-5. 5戦略でTop20を選抜
-6. screening_candidates.csvで選抜Parity
+① 財務履歴補完
+- alpha55でPASS済みなら再実行不要。
 
-PEDは真のイベント窓未実装のため、この版では意図的に空欄。まず4戦略+QVRの一致改善を測ります。
+② 財務データ正規化
+③ Screening母集団を構築
+④ 5戦略でTop20を選抜
+⑤ screening_candidates.csvで選抜Parity
+
+今回は特に③がalpha55の修正確認ポイント。
