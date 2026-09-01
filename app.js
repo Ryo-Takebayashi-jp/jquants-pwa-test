@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha26");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha27");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1129,7 +1129,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha26",
+   appVersion:"v7e-alpha27",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1864,4 +1864,55 @@ ${fields}
  }finally{
    $("parityRunBtn").disabled=false;
  }
+};
+
+if($("holdParityBtn"))$("holdParityBtn").onclick=async()=>{
+ const f=$("holdParityCsv").files?.[0],asOf=$("holdParityAsOf").value;
+ if(!f){box("holdParityResult","warn","PC版 technical_snapshot.csv を選択してください。");return}
+ $("holdParityBtn").disabled=true;$("holdParityTable").innerHTML="";
+ try{
+   const mat=parseSimpleCsv(await f.text());if(mat.length<2)throw new Error("CSVデータなし");
+   const head=mat[0].map(x=>x.trim()),ix=n=>head.indexOf(n);
+   if(ix("NormalizedCode")<0)throw new Error("NormalizedCode列がありません");
+   const pc=new Map();
+   for(const row of mat.slice(1)){
+     const code=normCodeForParity(row[ix("NormalizedCode")]);if(!code)continue;
+     const o={};head.forEach((k,i)=>o[k]=row[i]);pc.set(code,o);
+   }
+   box("holdParityResult","run",`PC版 ${pc.size}銘柄を読込。Webマイ銘柄を計算中…`);
+   const web=await workerCall("my-stocks-analysis",600000,null,null,{asOf});
+   const specs=[
+    ["RawClose","close",0.02],["MA5","ma5",0.02],["MA25","ma25",0.02],["MA75","ma75",0.02],
+    ["MA25DeviationPct","distMa25",0.02],["MA75DeviationPct","distMa75",0.02],
+    ["Return5D","ret5",0.02],["Return20D","ret20",0.02],["RSI14","rsi14",0.05],
+    ["High20D","high20",0.02],["Low20D","low20",0.02],["High60D","high60",0.02],["Low60D","low60",0.02]
+   ].filter(s=>ix(s[0])>=0);
+   let compared=0,perfect=0,missingPc=0;const diffs=[];
+   for(const x of web.rows){
+     const code=normCodeForParity(x.code),p=pc.get(code);
+     if(!p){missingPc++;continue}
+     compared++;const bad=[];
+     for(const [pf,wf,tol] of specs){
+       const pv=Number(p[pf]),wv=Number(x[wf]);
+       if(!Number.isFinite(pv)&&!Number.isFinite(wv))continue;
+       if(!Number.isFinite(pv)||!Number.isFinite(wv)||Math.abs(pv-wv)>tol)
+         bad.push(`${pf}: PC=${Number.isFinite(pv)?pv.toFixed(4):p[pf]||"-"} Web=${Number.isFinite(wv)?wv.toFixed(4):"-"}`);
+     }
+     if(bad.length)diffs.push({code,name:x.name,bad});else perfect++;
+   }
+   const verdict=diffs.length===0&&missingPc===0?"PASS":"要確認";
+   box("holdParityResult",verdict==="PASS"?"pass":"warn",`${verdict}
+Web登録銘柄: ${web.count}
+PC版銘柄: ${pc.size}
+比較できた銘柄: ${compared}
+全項目一致: ${perfect}
+不一致: ${diffs.length}
+PC側にないWeb銘柄: ${missingPc}
+基準日: ${web.asOf}`);
+   const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+   let h='<div style="overflow:auto"><table><thead><tr><th>Code</th><th>Name</th><th>差分</th></tr></thead><tbody>';
+   for(const x of diffs)h+=`<tr><td>${esc(x.code)}</td><td>${esc(x.name)}</td><td>${x.bad.map(esc).join("<br>")}</td></tr>`;
+   h+="</tbody></table></div>";$("holdParityTable").innerHTML=diffs.length?h:"";
+ }catch(e){box("holdParityResult","fail","FAIL\n"+(e.message||e))}
+ finally{$("holdParityBtn").disabled=false}
 };

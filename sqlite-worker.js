@@ -913,10 +913,19 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      const pct=(a,b)=>b?((a/b)-1)*100:null;
      function rsi14(xs){
        if(xs.length<15)return null;
-       let g=0,l=0;const z=xs.slice(-15);
-       for(let i=1;i<z.length;i++){const d=z[i]-z[i-1];if(d>0)g+=d;else l-=d}
-       if(l===0)return 100;
-       const rs=(g/14)/(l/14);
+       let gain=0,loss=0;
+       for(let i=1;i<=14;i++){
+         const d=xs[i]-xs[i-1];
+         if(d>0)gain+=d;else loss-=d;
+       }
+       let avgGain=gain/14,avgLoss=loss/14;
+       for(let i=15;i<xs.length;i++){
+         const d=xs[i]-xs[i-1],g=d>0?d:0,l=d<0?-d:0;
+         avgGain=((avgGain*13)+g)/14;
+         avgLoss=((avgLoss*13)+l)/14;
+       }
+       if(avgLoss===0)return 100;
+       const rs=avgGain/avgLoss;
        return 100-(100/(1+rs));
      }
 

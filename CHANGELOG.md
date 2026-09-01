@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha27 — CURRENT (2026-09-01)
+- マイ銘柄Parityと新規発掘Screening計算値ParityをUI/用途とも分離。
+- technical_snapshot.csvによる保有銘柄PC/Web突合を追加。
+- screening_candidates.csv突合は「PC候補銘柄の計算値比較」であり候補選定一致ではないことを明示。
+- RSI14をWilder smoothing方式へ修正し、PC版との再突合に対応。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha26 — CURRENT (2026-09-01)
 - privateマイ銘柄とScreening Core 1を接続し、登録銘柄だけのテクニカル分析を追加。
 - PC版 screening_candidates.csv とWeb Core 1の同一基準日Parity Testを追加。
