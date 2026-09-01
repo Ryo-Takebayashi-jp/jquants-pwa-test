@@ -905,7 +905,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          usedShards.push(String(s.shard_key));
          for(const r of rs){
            const d=String(r.date);if(!chosenSet.has(d))continue;
-           const code=String(r.code),c=Number(r.c),v=Number(r.volume||0),
+           const code=String(r.code),c=Number(r.c),v=(r.volume==null||r.volume==="")?null:Number(r.volume),
                  h=Number(r.h),l=Number(r.l);
            if(!Number.isFinite(c)||c<=0)continue;
            if(!byCode.has(code))byCode.set(code,[]);
@@ -942,7 +942,9 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const ma5=avg(closes.slice(-5)),ma25=avg(closes.slice(-25)),ma75=avg(closes.slice(-75));
        const ret5=closes.length>=6?pct(last.c,closes[closes.length-6]):null;
        const ret20=closes.length>=21?pct(last.c,closes[closes.length-21]):null;
-       const vol20=avg(vols.slice(-20)),volRatio=vol20>0?last.v/vol20:null;
+       const vol20vals=vols.slice(-20).filter(v=>Number.isFinite(v));
+       const vol20=vol20vals.length?avg(vol20vals):null;
+       const volRatio=(Number.isFinite(last.v)&&vol20>0)?last.v/vol20:null;
        const high20=Math.max(...highs.slice(-20)),low20=Math.min(...lows.slice(-20));
        const high60=Math.max(...highs.slice(-60)),low60=Math.min(...lows.slice(-60));
        const lowClose20=Math.min(...closes.slice(-20)),lowClose60=Math.min(...closes.slice(-60));
@@ -980,7 +982,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  if(cmd==="technical-screening-poc"){
    const payload=e.data.payload||{};
    const asOf=String(payload.asOf||"");
-   const lookback=Math.max(75,Math.min(160,Number(payload.lookback||100)));
+   const lookback=Math.max(75,Math.min(360,Number(payload.lookback||320)));
    const topN=Math.max(10,Math.min(200,Number(payload.topN||50)));
    let cdb=null,stage="01-validate";
    try{
@@ -1030,7 +1032,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          usedShards.push(String(s.shard_key));
          for(const r of rs){
            const d=String(r.date); if(!chosenSet.has(d))continue;
-           const code=String(r.code), c=Number(r.c),v=Number(r.volume||0),
+           const code=String(r.code), c=Number(r.c),v=(r.volume==null||r.volume==="")?null:Number(r.volume),
                  h=Number(r.h),l=Number(r.l);
            if(!Number.isFinite(c)||c<=0)continue;
            if(!byCode.has(code))byCode.set(code,[]);
@@ -1069,10 +1071,11 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const pos60=high60>low60?((last.c-low60)/(high60-low60))*100:null;
        const prev5=closes.length>=6?closes[closes.length-6]:null;
        const prev20=closes.length>=21?closes[closes.length-21]:null;
-       const vol20=avg(vols.slice(-20));
+       const vol20vals=vols.slice(-20).filter(v=>Number.isFinite(v));
+       const vol20=vol20vals.length?avg(vol20vals):null;
        const rs=rsi14(closes);
        const ret5=prev5?pct(last.c,prev5):null,ret20=prev20?pct(last.c,prev20):null;
-       const volRatio=vol20>0?last.v/vol20:null;
+       const volRatio=(Number.isFinite(last.v)&&vol20>0)?last.v/vol20:null;
        // Transparent PoC score: trend + momentum + volume. Not yet the desktop production screener.
        let score=0;
        if(last.c>ma25)score+=1;

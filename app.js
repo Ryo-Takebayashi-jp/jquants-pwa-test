@@ -1785,7 +1785,7 @@ if($("parityRunBtn"))$("parityRunBtn").onclick=async()=>{
    box("parityResult","run",`PC版: ${pc.size}銘柄
 Web版Core 1を${asOf}で全銘柄計算中…`);
 
-   const web=await workerCall("technical-screening-poc",600000,null,null,{asOf,lookback:100,topN:10,returnAll:true});
+   const web=await workerCall("technical-screening-poc",600000,null,null,{asOf,lookback:320,topN:10,returnAll:true});
    const wm=new Map((web.all||[]).map(x=>[normCodeForParity(x.code),x]));
 
    const specs=[
