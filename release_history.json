@@ -17,6 +17,11 @@
       "version": "v7e-alpha61",
       "date": "2026-09-01",
       "summary": "QVR exactness: PC crowding penalty + margin-long 1W supply join + QVR component diagnostics"
+    },
+    {
+      "version": "v7e-alpha64",
+      "date": "2026-09-02",
+      "summary": "QVR OPM propagation fix: carry ProfitType from normalized financials into Screening base; add raw ProfitType/OPM audit."
     }
   ]
 }

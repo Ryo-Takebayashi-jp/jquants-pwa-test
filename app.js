@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha63");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha64");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha63").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha64").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2268,7 +2268,7 @@ function qvrMaterialAudit(d){
  }
  rows.sort((a,b)=>(d.onlyPc.includes(a.code)||d.onlyWeb.includes(a.code)?-1:1)-(d.onlyPc.includes(b.code)||d.onlyWeb.includes(b.code)?-1:1));
  const fmt=v=>v==null||v===''?'-':(Number.isFinite(Number(v))?Number(v).toFixed(4).replace(/\.0000$/,''):String(v));
- const text=rows.slice(0,18).map(x=>{const q=x.qdiff.slice(0,4).map(f=>`${f}=${fmt(x.p[f])}/${fmt(x.w[f])}`).join(' | ');const v=x.vdiff.slice(0,4).map(f=>`${f}=${fmt(x.p[f])}/${fmt(x.w[f])}`).join(' | ');return `${x.code} ${x.first}\n  Quality部品score PC/Web: ROE ${fmt(x.pc.roe)}/${fmt(x.wc.roe)} | OPM ${fmt(x.pc.opm)}/${fmt(x.wc.opm)} | Margin改善 ${fmt(x.pc.mi)}/${fmt(x.wc.mi)} | CF ${fmt(x.pc.cf)}/${fmt(x.wc.cf)} | Equity ${fmt(x.pc.eq)}/${fmt(x.wc.eq)}\n  ${q||v||'peer-rank/合成差'}`}).join('\n');
+ const text=rows.slice(0,18).map(x=>{const q=x.qdiff.slice(0,4).map(f=>`${f}=${fmt(x.p[f])}/${fmt(x.w[f])}`).join(' | ');const v=x.vdiff.slice(0,4).map(f=>`${f}=${fmt(x.p[f])}/${fmt(x.w[f])}`).join(' | ');const opmRaw=`ProfitType=${fmt(x.p.ProfitType)}/${fmt(x.w.ProfitType)} | OPMraw=${fmt(x.p.CurrentOperatingMarginPct)}/${fmt(x.w.CurrentOperatingMarginPct)}`;return `${x.code} ${x.first}\n  Quality部品score PC/Web: ROE ${fmt(x.pc.roe)}/${fmt(x.wc.roe)} | OPM ${fmt(x.pc.opm)}/${fmt(x.wc.opm)} | Margin改善 ${fmt(x.pc.mi)}/${fmt(x.wc.mi)} | CF ${fmt(x.pc.cf)}/${fmt(x.wc.cf)} | Equity ${fmt(x.pc.eq)}/${fmt(x.wc.eq)}\n  ${opmRaw}\n  ${q||v||'peer-rank/合成差'}`}).join('\n');
  return {rows,summary:Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join(' / ')||'原材料差なし',text};
 }
 
