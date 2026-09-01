@@ -159,7 +159,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    let cdb=null,rdb=null,stage="start";
    const mark=(s,detail="")=>{stage=s;status(s,detail)};
    try{
-     mark("01-catalog-open","Catalog DB open");
+     mark("01-catalog-open","Catalog DB reopen (mode=c)");
      cdb=new p.OpfsSAHPoolDb(catalogName,"c");
 
      mark("02-catalog-schema","Catalog schema create");
@@ -256,7 +256,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    const mark=(s,detail="")=>{stage=s;status(s,detail)};
    try{
      mark("01-catalog-open","Catalog DB open");
-     cdb=new p.OpfsSAHPoolDb(catalogName,"r");
+     cdb=new p.OpfsSAHPoolDb(catalogName,"c");
 
      mark("02-catalog-read","Catalog read");
      const rows=execRows(cdb,"SELECT * FROM shard_catalog ORDER BY shard_key");
@@ -266,9 +266,9 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      mark("03-catalog-close","Catalog close");
      cdb.close();cdb=null;
 
-     mark("04-shard-open","bars_recent open");
+     mark("04-shard-open","bars_recent reopen (mode=c)");
      const open0=performance.now();
-     sdb=new p.OpfsSAHPoolDb(recent.logical_name,"r");
+     sdb=new p.OpfsSAHPoolDb(recent.logical_name,"c");
      const openMs=Math.round(performance.now()-open0);
 
      mark("05-shard-check","bars_recent health check");

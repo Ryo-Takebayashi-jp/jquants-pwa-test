@@ -1,5 +1,14 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha4 — CURRENT (2026-09-01)
+- alpha3で小型Catalog作成が0.45秒でPASS。
+- 再Openが `01-catalog-open` で停止したため、SAH Poolのread-only `r` モードを切り分け。
+- Catalog/Shardの再Openを一時的に `c` モードへ変更してiPhone実機テスト。
+- `c` モードで再Openが通れば、iOS上のSAH Pool read-only reopenが主因候補。
+- 既存1.12GB DataLakeは新Catalog機能からOpen/変更/削除/移行しない。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha3 — CURRENT (2026-09-01)
 - alpha2でCatalog診断ブロックを挿入した際に欠落した `await initSqlite()` と `s/p` 初期化を復元。
 - `01-catalog-open` の `p is undefined` 相当の失敗を修正。

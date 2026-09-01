@@ -613,8 +613,13 @@
       ]
     }
   ],
-  "current_release": "v7e-alpha3",
+  "current_release": "v7e-alpha4",
   "history": [
+    {
+      "release": "v7e-alpha4",
+      "date": "2026-09-01",
+      "note": "Reopen-mode isolation test: use SAH Pool mode=c instead of mode=r for catalog and shard reopen on iPhone."
+    },
     {
       "release": "v7e-alpha3",
       "date": "2026-09-01",
