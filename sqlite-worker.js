@@ -899,7 +899,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
                   COALESCE(adj_h,h,adj_c,c) AS h,
                   COALESCE(adj_l,l,adj_c,c) AS l,
                   COALESCE(adj_c,c) AS c,
-                  COALESCE(adj_volume,volume) AS volume
+                  volume AS volume
            FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph})
            AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,actualAsOf,...wanted]);
          usedShards.push(String(s.shard_key));
@@ -1027,7 +1027,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
                   COALESCE(adj_h,h,adj_c,c) AS h,
                   COALESCE(adj_l,l,adj_c,c) AS l,
                   COALESCE(adj_c,c) AS c,
-                  COALESCE(adj_volume,volume) AS volume FROM bars_daily
+                  volume AS volume FROM bars_daily
            WHERE date>=? AND date<=? AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,actualAsOf]);
          usedShards.push(String(s.shard_key));
          for(const r of rs){
