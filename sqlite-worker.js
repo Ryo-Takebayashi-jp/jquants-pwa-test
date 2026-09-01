@@ -43,7 +43,7 @@ async function initSqlite(){
        if(!probe.ok) throw new Error(`SQLite module probe HTTP ${probe.status}: ${await probe.text()}`);
        const ct=probe.headers.get("content-type")||"";
        if(!/javascript|ecmascript|module/i.test(ct)) throw new Error(`SQLite module Content-Type invalid: ${ct||"(none)"}`);
-       mod=await import(`/sqlite/index.mjs?v=v7e-alpha45-${attempt}`);
+       mod=await import(`/sqlite/index.mjs?v=v7e-alpha46-${attempt}`);
      }catch(e){
        lastErr=e; status("import-retry",`attempt ${attempt}/3: ${e?.message||e}`);
        if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));
@@ -1549,14 +1549,34 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const rel60=(ret60!=null&&topixReturns.ret60!=null)?ret60-topixReturns.ret60:null;
        const rel120=(ret120!=null&&topixReturns.ret120!=null)?ret120-topixReturns.ret120:null;
        const volRatio=(Number.isFinite(last.v)&&vol20>0)?last.v/vol20:null;
+       const high52=closes.length>=252?Math.max(...highs.slice(-252)):null;
+       const low52=closes.length>=252?Math.min(...lows.slice(-252)):null;
+       const atr14=atrWilder(highs,lows,closes);
+       const atr14Pct=(atr14!=null&&last.c)?atr14/last.c*100:null;
+       const [new20H,new20L]=breakout(last.c,highs,lows,20);
+       const [new60H,new60L]=breakout(last.c,highs,lows,60);
+       const [new52H,new52L]=breakout(last.c,highs,lows,252);
+       const e12=emaSeries(closes,12),e26=emaSeries(closes,26);
+       const macs=e12.map((x,i)=>x-e26[i]),sigs=emaSeries(macs,9);
+       const macd=closes.length>=26?macs.at(-1):null;
+       const macdSignal=closes.length>=34?sigs.at(-1):null;
+       const macdHistogram=(macd!=null&&macdSignal!=null)?macd-macdSignal:null;
+       let macdState="";
+       if(macdSignal!=null&&macs.length>=2){
+         const pd=macs.at(-2)-sigs.at(-2),cd=macs.at(-1)-sigs.at(-1);
+         macdState=pd<=0&&cd>0?"GoldenCross":pd>=0&&cd<0?"DeadCross":cd>0?"AboveSignal":cd<0?"BelowSignal":"OnSignal";
+       }
+       const ichi=ichimoku(highs,lows,closes);
+       const maAlignment=alignment(ma5,ma25,ma75,ma200);
+       const trend=trendState(last.c,ma5,ma25,ma75,ma200,slope25,slope75,slope200);
        // Transparent PoC score: trend + momentum + volume. Not yet the desktop production screener.
        let score=0;
        if(last.c>ma25)score+=1;
        if(ma25>ma75)score+=1;
        if(ret20!=null)score+=Math.max(-2,Math.min(2,ret20/10));
        if(volRatio!=null)score+=Math.max(-1,Math.min(1,(volRatio-1)));
-       if(typeof ma200==="undefined"||typeof atr14==="undefined"||typeof ichi==="undefined"){
-         throw new Error(`advanced technical calculation incomplete for ${code}`);
+       if(!Number.isFinite(ma5)||!Number.isFinite(ma25)||!Number.isFinite(ma75)){
+         throw new Error(`core technical calculation invalid for ${code}`);
        }
        rows.push({code,date:last.date,close:last.c,ma5,ma25,ma75,ma200,slope5,slope25,slope75,slope200,
          distMa5:pct(last.c,ma5),distMa25,distMa75,distMa200:pct(last.c,ma200),atr14,atr14Pct,
