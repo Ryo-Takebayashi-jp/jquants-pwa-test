@@ -1,20 +1,10 @@
-# v7e-alpha21b — Simple UI
+# v7e-alpha22 — Production Auto Gap Operations
 
-## UI方針変更
-通常利用者が触る機能を前面に限定しました。
+本番UIを「日次更新 / 抜けチェック / 抜け自動補完」に整理。
 
-前面:
-1. 2019年後半Gap補完
-2. 2026年前半Gap補完
-3. DataLake最終監査
-4. 通常の日次更新
-
-開発者診断内:
-- Catalog詳細読取
-- Shard-native詳細更新
-- Gap範囲手動指定
-- バックアップ/復元
-- 移行/診断系
-
-## バージョン
-画面表示・JS・Worker・Service Workerの表記を v7e-alpha21b に統一。
+- 抜けチェック: 全年別Shardの内部日付を走査し、存在しない平日を候補化
+- 自動補完: 候補日だけJ-Quants V2へ照会
+- 祝日・休場日: API 0件として除外
+- 実取引日の欠損: canonical year shardへUPSERTし検証
+- 途中停止後も①→②再実行可能
+- 旧移行・Catalog詳細・個別Gap操作は開発者診断へ収納

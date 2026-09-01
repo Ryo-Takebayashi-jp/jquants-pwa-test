@@ -21,10 +21,10 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha21b</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha22</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha21b 起動確認</h2>
+<h2>v7e-alpha22 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -48,31 +48,26 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 
 <section class="card" id="simpleOpsCard">
 <h2>J-Quants DataLake</h2>
-<p><b>普段ここだけ使えばOKです。</b></p>
-
-<div class="result pass"><b>現在の作業：日足データの欠損を補完</b><br>
-① 2019年後半のGapを補完 → ② 2026年前半のGapを補完 → ③ 最後に監査、の順です。</div>
-
+<p><b>普段はここだけ使えばOKです。</b></p>
 <label>J-Quants V2 APIキー（セッションのみ）</label>
 <input id="simpleGapToken" type="password" autocomplete="off" placeholder="APIキー">
 
-<button id="simpleRepair2019Btn">① 2019年後半の欠損を補完</button>
-<div id="simpleRepair2019Result" class="result">未実行</div>
-
-<button id="simpleRepair2026Btn">② 2026年前半の欠損を補完</button>
-<div id="simpleRepair2026Result" class="result">未実行</div>
-
-<button id="simpleAuditBtn">③ 最後にDataLakeを監査</button>
-<div id="simpleAuditResult" class="result">未実行</div>
-
-<hr>
-<h3>通常の日次更新</h3>
+<h3>日次更新</h3>
 <label>更新日</label><input id="simpleDailyDate" type="date">
 <button id="simpleDailyBtn">今日の日足を更新</button>
 <div id="simpleDailyResult" class="result">未実行</div>
 
-<p class="desc">欠損補完が終わった後は、基本的に「今日の日足を更新」だけ使います。その他の移行・Catalog読取・バックアップ・診断機能は開発者向けへ収納しています。</p>
+<hr>
+<h3>データの抜け確認・自動補完</h3>
+<button id="autoGapCheckBtn">① 抜けチェック</button>
+<div id="autoGapCheckResult" class="result">未実行</div>
+<button id="autoGapRepairBtn" disabled>② 見つかった抜けを自動補完</button>
+<div id="autoGapRepairResult" class="result">①のチェック後に利用できます</div>
+<p class="desc">①は全ての年別Shardを確認します。②は候補日だけJ-Quantsへ照会し、実際の取引日だけ補完します。祝日・休場日は0件として除外します。</p>
 </section>
+
+<div id="advancedLegacyTools">
+
 
 <div class="desc">
 現在の本番DataLake導線です。Catalog + Shards方式で、必要な小型DBだけを使います。旧巨大DataLake操作は開発者診断へ移しました。
@@ -180,7 +175,7 @@ Legacy DataLakeは未使用・未変更。
 
 
 <section class="card" id="fastBackfillCard">
-<h2>高速バックフィル v7e-alpha21b</h2>
+<h2>高速バックフィル v7e-alpha22</h2>
 <div class="desc">
 書込みを1行ごとの db.exec から prepared statement 再利用へ変更しました。
 祝日ではなく「実際に株価データがある欠損営業日」を自動で探し、API取得＋SQLite書込みを1日分実測してから大量穴埋めを開始します。
@@ -295,7 +290,7 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </div>
 
 <section class="card" id="autoBackfillCard">
-<h2>自動連続バックフィル v7e-alpha21b</h2>
+<h2>自動連続バックフィル v7e-alpha22</h2>
 <p>穴を再検出しながら連続処理。日付単位Commitなので安全停止・再開できます。Safariは前面表示のままにしてください。</p>
 <label>1バッチ日数 <input id="continuousBatch" type="number" min="5" max="120" value="40"></label>
 <button id="continuousStartBtn">▶ 自動連続バックフィル開始</button>
@@ -353,14 +348,14 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>7. v7e-alpha21b総合判定</h2>
+<h2>7. v7e-alpha22総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 
 <section class="card">
-<h2>v7e-alpha21b 実運用同期エンジン前段テスト</h2>
+<h2>v7e-alpha22 実運用同期エンジン前段テスト</h2>
 <div class="desc">
 既存1.12GB DataLakeの実スキーマを検査し、日付単位Transaction → Commit → Checkpoint →
 Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM展開・db.export()は使いません。
@@ -375,7 +370,7 @@ Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM
 
 
 <section class="card">
-<h2>v7e-alpha21b J-Quants 実データ同期</h2>
+<h2>v7e-alpha22 J-Quants 実データ同期</h2>
 <div class="desc">
 J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付単位で直接Commitします。
 認証情報はこの画面のメモリ内だけで使用し、SQLite・localStorage・GitHubには保存しません。
@@ -394,7 +389,7 @@ J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付
 
 
 <section class="card">
-<h2>v7e-alpha21b 自動Catch-up Sync</h2>
+<h2>v7e-alpha22 自動Catch-up Sync</h2>
 <div class="desc">
 DataLakeの最終取得日と専用Checkpointを自動判定し、その翌日から指定日まで順番に同期します。
 土日はAPI呼出しを省略。祝日などAPIが0件の日も「確認済み」としてCheckpointを進めます。
@@ -416,13 +411,262 @@ iPhoneでは前景実行のため、このカードの同期中はSafariを閉�
 <h2>10. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7e-alpha21b
+<div id="historyResult" class="result">Version: v7e-alpha22
 Build date: 2026-09-01
 Schema version: catalog-shards-v1
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7e-alpha21b / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
+<footer>Version v7e-alpha22 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
+通常運用は上部カードだけを使用。旧PoCテストは「開発者診断」に隔離しています。</footer>
+</main>
+<script src="./app.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded",()=>{
+  const host=document.getElementById("legacyDiagnosticsHost");
+  const main=document.querySelector("main");
+  if(!host||!main)return;
+  const cards=[...main.querySelectorAll(":scope > section.card")];
+  for(const card of cards){
+    if(card.classList.contains("production-card")) continue;
+    const h=card.querySelector("h2")?.textContent||"";
+    if(h.includes("更新履歴")||h.includes("Build情報")) continue;
+    host.appendChild(card);
+  }
+});
+</script>
+</body>
+</html
+</div>
+<!-- advanced operational tools -->
+<section class="card" id="shardNativeDailyCard">
+<h2>本番 日次更新</h2>
+<p>J-Quants V2の日足を取得し、<b>bars_recent＋当年Shardへ同時保存</b>します。旧巨大DataLakeは使いません。</p>
+<label>J-Quants V2 APIキー（セッションのみ）</label>
+<input id="prodDailyToken" type="password" autocomplete="off" placeholder="APIキー">
+<label>更新日</label>
+<input id="prodDailyDate" type="date">
+<button id="prodDailyFetchBtn">① API取得だけ確認</button>
+<div id="prodDailyFetchResult" class="result">未実行</div>
+<button id="prodDailyWriteBtn">② Shardへ本番日次更新</button>
+<div id="prodDailyWriteResult" class="result">未実行</div>
+<p class="desc">保存先: jq_bars_recent_v1.sqlite（直近30取引日）＋ jq_bars_YYYY_v1.sqlite。両方を検証後Catalogを更新します。</p>
+</section>
+<section class="card" id="catalogReadCard">
+<h2>DataLake 読み取り / Catalog</h2>
+<p>日付範囲を渡すとCatalogが必要な年別Shardだけを選び、利用側からは1つのDataLakeとして読み取ります。</p>
+<button id="catalogAuditBtn">① Catalog収録範囲を監査</button>
+<div id="catalogAuditResult" class="result">未実行</div>
+<div style="display:flex;gap:10px;flex-wrap:wrap">
+ <div><label>開始日</label><input id="catalogReadFrom" type="date"></div>
+ <div><label>終了日</label><input id="catalogReadTo" type="date"></div>
+</div>
+<label>銘柄コード（空欄なら市場全体）</label>
+<input id="catalogReadCode" type="text" inputmode="numeric" placeholder="例: 72030">
+<button id="catalogReadBtn">② Catalog経由で読み取りテスト</button>
+<div id="catalogReadResult" class="result">未実行</div>
+<p class="desc">年をまたぐ場合も自動で複数Shardを解決します。年別Shardを優先し、bars_recentは年Shardが無い場合だけfallbackします。</p>
+</section>
+<section class="card" id="gapRepairCard">
+<h2>日足Gap 自動補完</h2>
+<p>Catalog監査で見つかった長期GapをJ-Quants V2から日ごとに取得し、該当年Shardへ直接UPSERTします。旧巨大DataLakeは使いません。</p>
+<label>J-Quants V2 APIキー（セッションのみ）</label><input id="gapToken" type="password" autocomplete="off" placeholder="APIキー">
+<div style="display:flex;gap:10px;flex-wrap:wrap"><div><label>開始日</label><input id="gapFrom" type="date" value="2019-08-31"></div><div><label>終了日</label><input id="gapTo" type="date" value="2020-01-05"></div></div>
+<button id="gapRepairBtn">① 指定Gapを安全補完</button><div id="gapRepairResult" class="result">未実行</div>
+<button id="gapRepair2026Btn">② 2025末→2026/6 Gapを補完</button><div id="gapRepair2026Result" class="result">未実行</div>
+<p class="desc">土日はAPIを呼ばずスキップ。平日の祝日・休場日はAPI 0件としてスキップ。1日ごとに取得→該当年ShardへCommit→日次行数＋quick_checkを検証します。再実行はUPSERTなので安全です。</p>
+</section>
+<section class="card" id="backupCard">
+<h2>正式バックアップ / 復元</h2>
+<p>
+Catalog＋年別Shardを<b>iPhoneのFilesなどブラウザ外へ保存</b>します。
+SAH Pool内だけのコピーではなく、Safariのサイトデータ消失にも備える正式バックアップです。
+</p>
+<div class="warnbox">
+長時間バックフィル実行中はバックアップしないでください。2020〜2025の補完がPASSしてから実行してください。
+</div>
+
+<button id="shardBackupInventoryBtn">① バックアップ対象を確認</button>
+<div id="shardBackupInventoryResult" class="result">未実行</div>
+
+<button id="shardBackupManifestBtn" disabled>② バックアップManifestを保存</button>
+<div id="shardBackupManifestResult" class="result">未実行</div>
+
+<button id="shardBackupAllBtn" disabled>③ 全DBを順番に外部保存</button>
+<div id="shardBackupAllResult" class="result">未実行</div>
+
+<div class="desc" style="margin-top:10px">
+Safariが複数ダウンロードを止める場合は、下の選択式で1ファイルずつ保存できます。
+</div>
+<select id="shardBackupSelect" style="width:100%;padding:10px;margin:8px 0"></select>
+<button id="shardBackupOneBtn" disabled>④ 選択DBを1ファイル保存</button>
+<div id="shardBackupOneResult" class="result">未実行</div>
+
+<hr>
+<h3>外部バックアップから復元</h3>
+<p>
+保存した <code>jq_catalog_v1.sqlite</code> / <code>jq_bars_YYYY_v1.sqlite</code> 等を複数選択できます。
+各ファイルはStreaming Import後に <code>quick_check</code> を実行します。
+</p>
+<input id="shardRestoreFiles" type="file" multiple accept=".sqlite,application/vnd.sqlite3,application/octet-stream">
+<button id="shardRestoreBtn">⑤ 選択したDBを復元</button>
+<div id="shardRestoreResult" class="result">未実行</div>
+
+<button id="shardRestoreAuditBtn">⑥ 復元後の全Shard監査</button>
+<div id="shardRestoreAuditResult" class="result">未実行</div>
+
+<details style="margin-top:14px">
+<summary>旧・同一ブラウザ内スナップショット</summary>
+<p>Legacy巨大DataLake向けの旧機能です。外部バックアップの代わりにはなりません。</p>
+<button id="backupEstimateBtn">旧① バックアップ可能容量を確認</button><div id="backupEstimateResult" class="result">未実行</div>
+<button id="backupCreateBtn">旧② ローカル完全スナップショット作成</button><div id="backupCreateResult" class="result">未実行</div>
+</details>
+</section>
+
+
+<div id="legacyDiagnosticsHost"></div>
+</details>
+
+
+<div class="notice">
+旧sql.jsのようにDB全体をRAMへ読み込みません。レスキューSQLiteは<b>ストリームでOPFSへコピー</b>し、
+SQLite-WASMはWorkerからOPFS上のDBを直接開きます。
+</div>
+<div class="warnbox">
+Import先はCloudflare Pages側OPFSの <b>jq_market_v7c.sqlite</b> です。
+GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更しません。
+</div>
+
+<section class="card" id="autoBackfillCard">
+<h2>自動連続バックフィル v7e-alpha22</h2>
+<p>穴を再検出しながら連続処理。日付単位Commitなので安全停止・再開できます。Safariは前面表示のままにしてください。</p>
+<label>1バッチ日数 <input id="continuousBatch" type="number" min="5" max="120" value="40"></label>
+<button id="continuousStartBtn">▶ 自動連続バックフィル開始</button>
+<button id="continuousStopBtn" class="secondary">■ 安全停止</button>
+<div id="continuousResult" class="result">未実行</div>
+</section>
+
+<section class="card">
+<h2>1. v7c前提チェック</h2>
+<div class="desc">Cloudflare配信条件とOPFS容量見積りを確認します。</div>
+<button id="envBtn">前提を確認</button>
+<div id="envResult" class="result">未実行</div>
+</section>
+
+<section class="card">
+<h2>2. レスキューSQLiteをストリーミングImport（Direct Open前に必須）</h2>
+<div class="desc">Filesから1.12GBのレスキューSQLiteを選択。4MB前後のチャンク単位でOPFSへコピーし、全体をRAMには載せません。</div>
+<input id="fileInput" type="file" accept=".sqlite,application/vnd.sqlite3,application/octet-stream">
+<button id="importBtn" style="margin-top:10px">OPFSへImport開始</button>
+<div class="meter"><div id="importMeter"></div></div>
+<div id="importResult" class="result">未実行</div>
+</section>
+
+<section class="card">
+<h2>3. SQLite-WASM同一オリジン配信チェック</h2>
+<div class="desc">Cloudflare Pages Function経由で index.mjs / sqlite3.wasm を pages.dev 同一オリジンから取得できるか確認します。</div>
+<button id="proxyBtn" class="secondary">SQLite assetsを確認</button>
+<div id="proxyResult" class="result">未実行</div>
+</section>
+
+<section class="card">
+<h2>4. SQLite-WASM初期化テスト（opfs-sahpool）</h2>
+<div class="desc">DBをまだ開かず、SQLite 3.53の新しい opfs-sahpool VFSだけを有効化して初期化します。opfs-sahpoolは意図的に無効化します。</div>
+<button id="initBtn" class="secondary">SQLite-WASM Initだけ実行</button>
+<div id="initResult" class="result">未実行</div>
+</section>
+
+<section class="card">
+<h2>5. SAH Pool基本動作テスト（小型DB）</h2>
+<div class="desc">巨大DBの前に、小型SQLiteを作成→INSERT→Worker終了→別Workerで再Open→SELECTし、永続化を確認します。</div>
+<button id="smokeBtn">小型DB 永続化テスト</button>
+<div id="smokeResult" class="result">未実行</div>
+
+<h2>6. 公式SQLite-WASMで直接Open（opfs-sahpool）</h2>
+<div class="desc">Worker内で公式 @sqlite.org/sqlite-wasm を起動し、SQLite 3.53の opfs-sahpool VFSへ1.12GB DBをストリーミングImportし、read-onlyで直接開きます。</div>
+<button id="openBtn">SQLite-WASM Direct Open</button>
+<div id="openResult" class="result">未実行</div>
+</section>
+
+<section class="card">
+<h2>7. 整合性チェック（任意・重め）</h2>
+<div class="desc">PRAGMA quick_checkを実行します。1GB超DBを走査するため時間がかかる可能性があります。</div>
+<button id="quickBtn" class="secondary">quick_checkを実行</button>
+<div id="quickResult" class="result">未実行</div>
+</section>
+
+<section class="card">
+<h2>7. v7e-alpha22総合判定</h2>
+<button id="summaryBtn" class="secondary">総合判定</button>
+<div id="summaryResult" class="result">未判定</div>
+</section>
+
+
+<section class="card">
+<h2>v7e-alpha22 実運用同期エンジン前段テスト</h2>
+<div class="desc">
+既存1.12GB DataLakeの実スキーマを検査し、日付単位Transaction → Commit → Checkpoint →
+Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM展開・db.export()は使いません。
+</div>
+<button id="schemaBtn">既存DataLakeスキーマを検査</button>
+<div id="schemaResult" class="result">未実行</div><br>
+<button id="batchBtn">日付単位Commitテスト</button>
+<div id="batchResult" class="result">未実行</div><br>
+<button id="batchResumeBtn">Worker再起動 → 日次Resumeテスト</button>
+<div id="batchResumeResult" class="result">未実行</div>
+</section>
+
+
+<section class="card">
+<h2>v7e-alpha22 J-Quants 実データ同期</h2>
+<div class="desc">
+J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付単位で直接Commitします。
+認証情報はこの画面のメモリ内だけで使用し、SQLite・localStorage・GitHubには保存しません。
+</div>
+<label>J-Quants V2 APIキー（セッションのみ）</label>
+<input id="jqToken" type="password" autocomplete="off" placeholder="ここに貼り付け">
+<label>取得日（YYYY-MM-DD）</label>
+<input id="jqDate" type="date" value="2026-08-28">
+<button id="jqFetchBtn">① API取得だけテスト（DB書込なし）</button>
+<div id="jqFetchResult" class="result">未実行</div><br>
+<button id="jqWriteBtn">② 1日分をDataLakeへCommit</button>
+<div id="jqWriteResult" class="result">未実行</div><br>
+<button id="jqFiveBtn">③ 最大5営業日を順次同期</button>
+<div id="jqFiveResult" class="result">未実行</div>
+</section>
+
+
+<section class="card">
+<h2>v7e-alpha22 自動Catch-up Sync</h2>
+<div class="desc">
+DataLakeの最終取得日と専用Checkpointを自動判定し、その翌日から指定日まで順番に同期します。
+土日はAPI呼出しを省略。祝日などAPIが0件の日も「確認済み」としてCheckpointを進めます。
+iPhoneでは前景実行のため、このカードの同期中はSafariを閉じないでください。
+</div>
+<button id="autoStateBtn">① 現在の同期状態を自動判定</button>
+<div id="autoStateResult" class="result">未実行</div><br>
+<label>追いつく日（通常は今日）</label>
+<input id="autoTargetDate" type="date">
+<label>1回の最大処理日数</label>
+<input id="autoMaxDays" type="number" min="1" max="60" value="20">
+<button id="autoSyncBtn">② 未取得日だけ自動Catch-up</button>
+<div id="autoSyncResult" class="result">未実行</div><br>
+<button id="recentRepairBtn">③ 直近5平日を冪等再検証</button>
+<div id="recentRepairResult" class="result">未実行</div>
+</section>
+
+<section class="card">
+<h2>10. 更新履歴 / Build情報</h2>
+<div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
+<button id="historyBtn" class="secondary">更新履歴を表示</button>
+<div id="historyResult" class="result">Version: v7e-alpha22
+Build date: 2026-09-01
+Schema version: catalog-shards-v1
+Migration version: history-4</div>
+</section>
+
+<footer>Version v7e-alpha22 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
 通常運用は上部カードだけを使用。旧PoCテストは「開発者診断」に隔離しています。</footer>
 </main>
 <script src="./app.js"></script>

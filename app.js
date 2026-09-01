@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha21b");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha22");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1129,7 +1129,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha21b",
+   appVersion:"v7e-alpha22",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1558,4 +1558,78 @@ Legacy DataLake: 未使用
 処理時間: ${(wr.elapsedMs/1000).toFixed(1)}秒`);
  }catch(e){box("simpleDailyResult","fail","FAIL\n"+(e.message||e))}
  finally{$("simpleDailyBtn").disabled=false}
+};
+
+let productionGapCandidates=[];
+if($("autoGapCheckBtn")) $("autoGapCheckBtn").onclick=async()=>{
+ $("autoGapRepairBtn").disabled=true; productionGapCandidates=[];
+ box("autoGapCheckResult","run","全ての年別Shardを確認中…");
+ try{
+   const r=await workerCall("scan-missing-weekdays",600000);
+   productionGapCandidates=r.missing||[];
+   $("autoGapRepairBtn").disabled=productionGapCandidates.length===0;
+   if(!productionGapCandidates.length){
+     box("autoGapCheckResult","pass",`PASS
+抜け候補: 0日
+確認年: ${r.years.length}
+処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒
+
+判定: 補完対象なし`);
+     box("autoGapRepairResult","pass","補完不要です。");
+   }else{
+     const byYear={}; for(const d of productionGapCandidates){const y=d.slice(0,4);byYear[y]=(byYear[y]||0)+1}
+     box("autoGapCheckResult","warn",`要確認
+抜け候補: ${productionGapCandidates.length}日
+${Object.entries(byYear).map(([y,n])=>`${y}: ${n}日`).join("\n")}
+
+※この段階では祝日・休場日も候補に含みます。
+②を押すとJ-Quantsへ候補日だけ照会し、本当の欠損だけ自動補完します。`);
+     box("autoGapRepairResult","run",`補完待ち: ${productionGapCandidates.length}候補日`);
+   }
+ }catch(e){box("autoGapCheckResult","fail","FAIL\n"+(e.message||e))}
+};
+if($("autoGapRepairBtn")) $("autoGapRepairBtn").onclick=async()=>{
+ const token=copyTokenToAdvanced(),list=[...productionGapCandidates];
+ if(!list.length){box("autoGapRepairResult","pass","補完対象なし");return}
+ $("autoGapRepairBtn").disabled=true;
+ let checked=0,marketClosed=0,repairedDays=0,saved=0,t0=performance.now(),last="-";
+ try{
+   for(const iso of list){
+     last=iso; checked++;
+     box("autoGapRepairResult","run",`自動補完中…
+候補: ${list.length}日
+現在: ${iso}
+API確認: ${checked}/${list.length}
+休場日: ${marketClosed}
+補完した取引日: ${repairedDays}
+保存行数: ${saved.toLocaleString()}
+経過: ${((performance.now()-t0)/1000).toFixed(1)}秒`);
+     const x=await jqFetchDaily(iso,token);
+     if(!x.rows.length){marketClosed++;continue}
+     const wr=await workerCall("gap-repair-date-write",600000,null,null,{date:iso,rows:x.rows});
+     repairedDays++; saved+=Number(wr.rows||0);
+   }
+   const verify=await workerCall("scan-missing-weekdays",600000);
+   productionGapCandidates=verify.missing||[];
+   box("autoGapRepairResult","pass",`PASS
+API確認: ${checked}日
+休場日等: ${marketClosed}日
+補完した取引日: ${repairedDays}日
+保存行数: ${saved.toLocaleString()}
+処理時間: ${((performance.now()-t0)/1000).toFixed(1)}秒
+
+再スキャン候補: ${productionGapCandidates.length}日
+※残りは祝日・休場日を含むため、取引日欠損は今回のAPI照会で補完済みです。
+
+判定: 抜け自動補完 PASS`);
+ }catch(e){
+   box("autoGapRepairResult","fail",`FAIL
+停止日: ${last}
+API確認: ${checked}/${list.length}
+補完済み取引日: ${repairedDays}
+保存行数: ${saved.toLocaleString()}
+${e.message||e}
+
+同じ①→②を再実行できます（UPSERT）。`);
+ }finally{$("autoGapRepairBtn").disabled=false}
 };

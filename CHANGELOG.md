@@ -1,5 +1,14 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha22 — CURRENT (2026-09-01)
+- 本番DataLake UIを「日次更新」「抜けチェック」「抜け自動補完」に整理。
+- 全年別Shard内部のmissing weekday候補を自動検出。
+- 候補日のみJ-Quants V2へ照会し、実取引日の欠損だけ年別Shardへ自動補完。
+- 祝日・休場日は0件として除外。
+- 旧移行・詳細Catalog・個別Gap操作を開発者診断へ収納。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha21b — CURRENT (2026-09-01)
 - 通常利用UIを大幅簡素化。「今やること」だけを前面表示。
 - 2019 Gap補完、2026 Gap補完、最終監査、通常日次更新を4操作に集約。

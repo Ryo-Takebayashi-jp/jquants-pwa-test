@@ -772,6 +772,40 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}
    finally{try{if(cdb)cdb.close()}catch(_){}try{if(db)db.close()}catch(_){}}
  }
+
+ if(cmd==="scan-missing-weekdays"){
+   let cdb=null,stage="01-catalog";
+   try{
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const years=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end
+       FROM shard_catalog WHERE dataset='bars_daily' AND state='ready'
+       AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key`);
+     cdb.close();cdb=null;
+     const missing=[],stats=[];
+     stage="02-scan";
+     for(const s of years){
+       let db=null;
+       try{
+         const name=String(s.logical_name||""); db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
+         const dates=new Set(execRows(db,"SELECT DISTINCT date FROM bars_daily ORDER BY date").map(r=>String(r.date)));
+         const mn=String(s.range_start||""),mx=String(s.range_end||"");
+         let candidate=0;
+         if(mn&&mx){
+           for(let d=new Date(mn+"T12:00:00Z"),e=new Date(mx+"T12:00:00Z");d<=e;d.setUTCDate(d.getUTCDate()+1)){
+             const dow=d.getUTCDay(); if(dow===0||dow===6)continue;
+             const iso=d.toISOString().slice(0,10);
+             if(!dates.has(iso)){missing.push(iso);candidate++}
+           }
+         }
+         stats.push({shardKey:String(s.shard_key),rangeStart:mn,rangeEnd:mx,tradingDates:dates.size,weekdayCandidates:candidate});
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+     self.postMessage({ok:true,type:"result",stage:"PASS",years:stats,missing,
+       candidateCount:missing.length,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}
+   finally{try{if(cdb)cdb.close()}catch(_){}}
+ }
  if(cmd==="catalog-coverage-audit"){
    let cdb=null,stage="01-catalog-open";
    try{
