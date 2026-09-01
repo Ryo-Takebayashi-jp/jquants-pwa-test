@@ -19,9 +19,19 @@
       "summary": "QVR exactness: PC crowding penalty + margin-long 1W supply join + QVR component diagnostics"
     },
     {
-      "version": "v7e-alpha64",
+      "version": "v7e-alpha65",
       "date": "2026-09-02",
       "summary": "QVR OPM propagation fix: carry ProfitType from normalized financials into Screening base; add raw ProfitType/OPM audit."
+    },
+    {
+      "version": "v7e-alpha65",
+      "date": "2026-09-02",
+      "title": "QVR Quality / Value residual audit",
+      "notes": [
+        "Quality/Value residual summary",
+        "raw financial and sector peer-rank PC/Web audit",
+        "selection formula unchanged"
+      ]
     }
   ]
 }

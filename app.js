@@ -2272,6 +2272,31 @@ function qvrMaterialAudit(d){
  return {rows,summary:Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join(' / ')||'原材料差なし',text};
 }
 
+
+function qvrResidualSummary(d){
+ const fmt=v=>v==null||v===''?'-':(Number.isFinite(Number(v))?Number(v).toFixed(4).replace(/\.0000$/,''):String(v));
+ const delta=(a,b)=>{const x=Number(a),y=Number(b);return Number.isFinite(x)&&Number.isFinite(y)?x-y:null};
+ const rows=[];
+ const codes=[...new Set([...d.onlyPc,...d.onlyWeb,...[...d.pm.keys()].filter(c=>d.wm.has(c))])];
+ for(const c of codes){const p=d.pm.get(c),w=d.wm.get(c);if(!p||!w)continue;
+   const qd=delta(p.QVRQualityScore,w.QVRQualityScore),vd=delta(p.QVRValueScore,w.QVRValueScore);
+   if((qd==null||Math.abs(qd)<1e-6)&&(vd==null||Math.abs(vd)<1e-6))continue;
+   rows.push({c,p,w,qd,vd,edge:d.onlyPc.includes(c)||d.onlyWeb.includes(c)});
+ }
+ rows.sort((a,b)=>(b.edge-a.edge)||(Math.abs(b.qd||0)+Math.abs(b.vd||0)-Math.abs(a.qd||0)-Math.abs(a.vd||0)));
+ return rows.slice(0,14).map(x=>{
+   const p=x.p,w=x.w;
+   return `${x.c} ${p.CompanyName||p.Name||w.CompanyName||''}
+`+
+    `  Quality PC/Web=${fmt(p.QVRQualityScore)}/${fmt(w.QVRQualityScore)} Δ=${fmt(x.qd)}
+`+
+    `  OPMraw=${fmt(p.CurrentOperatingMarginPct)}/${fmt(w.CurrentOperatingMarginPct)} | ProfitType=${fmt(p.ProfitType)}/${fmt(w.ProfitType)} | ROE=${fmt(p.ROE)}/${fmt(w.ROE)} | MarginΔ=${fmt(p.OperatingMarginChangePt)}/${fmt(w.OperatingMarginChangePt)} | CFO=${fmt(p.LatestAvailableCFO)}/${fmt(w.LatestAvailableCFO)} | FCF=${fmt(p.LatestAvailableFCF)}/${fmt(w.LatestAvailableFCF)} | Equity=${fmt(p.EquityRatioPct)}/${fmt(w.EquityRatioPct)}
+`+
+    `  Value PC/Web=${fmt(p.QVRValueScore)}/${fmt(w.QVRValueScore)} Δ=${fmt(x.vd)}
+`+
+    `  PER=${fmt(p.ForecastPER)}/${fmt(w.ForecastPER)} rank=${fmt(p.SectorForecastPERValueScore)}/${fmt(w.SectorForecastPERValueScore)} | PBR=${fmt(p.PBR)}/${fmt(w.PBR)} rank=${fmt(p.SectorPBRValueScore)}/${fmt(w.SectorPBRValueScore)} | DivY=${fmt(p.ForecastDividendYieldPct)}/${fmt(w.ForecastDividendYieldPct)} rank=${fmt(p.SectorDividendYieldValueScore)}/${fmt(w.SectorDividendYieldValueScore)} | Sector33=${fmt(p.Sector33)}/${fmt(w.Sector33)} | FProfitGrowth=${fmt(p.ForecastPrimaryProfitGrowthPct)}/${fmt(w.ForecastPrimaryProfitGrowthPct)}`;
+ }).join('\n')||'Quality / Value 残差なし';
+}
 function qvrExactnessDiagnostics(d){
  const fields=[
   "ROE","CurrentOperatingMarginPct","OperatingMarginChangePt","LatestAvailableCFO","LatestAvailableFCF","EquityRatioPct",
@@ -2344,6 +2369,9 @@ ${qx.text||"差なし"}
 ${qvrMaterialAudit(d).summary}
 
 ${qvrMaterialAudit(d).text||"原材料差なし"}
+
+【QVR Quality / Value 残差サマリ】
+${qvrResidualSummary(d)}
 
 【差分銘柄 rank PC/Web】
 ${d.detail.slice(0,40).join("\n")||"なし"}${diff.length?"\n\nPrimary差分:\n"+diff.slice(0,12).join("\n"):""}`)
