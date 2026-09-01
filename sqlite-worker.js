@@ -43,7 +43,7 @@ async function initSqlite(){
        if(!probe.ok) throw new Error(`SQLite module probe HTTP ${probe.status}: ${await probe.text()}`);
        const ct=probe.headers.get("content-type")||"";
        if(!/javascript|ecmascript|module/i.test(ct)) throw new Error(`SQLite module Content-Type invalid: ${ct||"(none)"}`);
-       mod=await import(`/sqlite/index.mjs?v=v7e-alpha47-${attempt}`);
+       mod=await import(`/sqlite/index.mjs?v=v7e-alpha48-${attempt}`);
      }catch(e){
        lastErr=e; status("import-retry",`attempt ${attempt}/3: ${e?.message||e}`);
        if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));
@@ -1549,8 +1549,10 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const rel60=(ret60!=null&&topixReturns.ret60!=null)?ret60-topixReturns.ret60:null;
        const rel120=(ret120!=null&&topixReturns.ret120!=null)?ret120-topixReturns.ret120:null;
        const volRatio=(Number.isFinite(last.v)&&vol20>0)?last.v/vol20:null;
-       const high52=highs.length>=252?Math.max(...highs.slice(-252)):null;
-       const low52=lows.length>=252?Math.min(...lows.slice(-252)):null;
+       // PC technical.py: 52-week reference levels intentionally use adjusted CLOSE,
+       // unlike 20D/60D high-low fields which use intraday High/Low.
+       const high52=closes.length>=252?Math.max(...closes.slice(-252)):null;
+       const low52=closes.length>=252?Math.min(...closes.slice(-252)):null;
        const atr14=atrWilder(highs,lows,closes);
        const atr14Pct=(atr14!=null&&last.c)?atr14/last.c*100:null;
        const [new20H,new20L]=breakout(last.c,highs,lows,20);

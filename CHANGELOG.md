@@ -1,10 +1,9 @@
 # CHANGELOG
 
-## v7e-alpha47 — 2026-09-01
-- JQP Technical Parityで残っていた52週系4項目を修正。
-- 原因: Web版が52週高値/安値を終値(Close)の最大・最小で計算していた。
-- PC版は過去252取引日の調整後High/Lowを使用。
-- High52Week = max(High, 252 sessions)
-- Low52Week = min(Low, 252 sessions)
-- DistanceFrom52WeekHighPct / LowPct も修正後のHigh52Week/Low52Weekを基準に再計算。
-- alpha46で50/54一致していた他50項目は変更なし。
+## v7e-alpha48 — 2026-09-01
+- 52週系4項目のPC定義をソースコードから再確認して修正。
+- PC `technical.py` の実装は High52Week / Low52Week に High/Low ではなく、
+  過去252取引日の「調整後Close」の最大値・最小値を使用している。
+- Web版も完全に同じ定義へ変更。
+- 20D/60D高安は従来どおりHigh/Lowを使用し、52週だけCloseを使うPC仕様を再現。
+- 表示上の52週定義も「過去252取引日のClose（PC版準拠）」へ訂正。
