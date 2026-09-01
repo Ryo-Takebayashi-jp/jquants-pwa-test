@@ -1,6 +1,6 @@
 # CHANGELOG
-## v7e-alpha65 — 2026-09-02
-- alpha64の選抜ロジックは変更せず固定。
-- 残差銘柄をFinancial Summary raw DBまで自動追跡する「残差銘柄 財務JOIN監査」を追加。
-- raw件数・最新開示・主要raw項目・PC/Web正規化値を一か所に集約。
-- ①raw欠落 / ②JOIN脱落 / ③正規化・最新決算選択 / ④スコア・Top20境界 の4段階で自動判定。
+## v7e-alpha65b — 2026-09-02
+- alpha65の「残差銘柄 財務JOIN監査」が未定義の callSqliteWorker を呼んでいた不具合を修正。
+- 既存の正式な workerCall() 経路へ統一。
+- codes は workerCall の payload 契約で渡し、Worker側も payload.codes を優先して受信。
+- 選抜・スコア・財務計算ロジックは変更なし。97.8%の結果自体には触れていない。

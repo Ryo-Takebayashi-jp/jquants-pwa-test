@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha65");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha65b");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha65").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha65b").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2301,7 +2301,7 @@ async function residualFinancialJoinAudit(pcRows,webRows){
  if(!focus.length)return lines.concat("差分なし").join("\n");
  let rawRows=[];
  try{
-   const res=await callSqliteWorker("fins-summary-code-audit",{codes:focus});
+   const res=await workerCall("fins-summary-code-audit",180000,null,null,{codes:focus});
    rawRows=Array.isArray(res?.rows)?res.rows:Array.isArray(res)?res:[];
  }catch(e){lines.push(`raw監査 ERROR: ${e?.message||e}`);return lines.join("\n")}
  const byCode=new Map();

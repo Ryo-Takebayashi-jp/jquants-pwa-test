@@ -192,7 +192,7 @@ self.onmessage=async e=>{
 const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
  
 if(cmd==="fins-summary-code-audit"){
- const codes=(msg.codes||[]).map(x=>String(x||"").trim()).filter(Boolean),rows=[];
+ const codes=((msg.payload&&msg.payload.codes)||msg.codes||[]).map(x=>String(x||"").trim()).filter(Boolean),rows=[];
  const db=await openDb("/jq_fins_summary_v1.sqlite");
  try{
    for(const c0 of codes){
