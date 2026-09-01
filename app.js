@@ -756,3 +756,26 @@ message: ${x.message||String(e)}
 stack: ${x.stack||"-"}`);
  }
 };
+
+if($("runtimeProbeBtn")) $("runtimeProbeBtn").onclick=async()=>{
+ box("runtimeProbeResult","run","1回目のWorkerメッセージ…");
+ try{
+   const a=await workerCall("runtime-probe",60000,s=>box("runtimeProbeResult","run",`1回目: ${s.stage||"-"}\n${s.detail||""}`));
+   const t0=performance.now();
+   box("runtimeProbeResult","run","2回目のWorkerメッセージ…");
+   const b=await workerCall("runtime-probe",60000,s=>box("runtimeProbeResult","run",`2回目: ${s.stage||"-"}\n${s.detail||""}`));
+   const ms=Math.round(performance.now()-t0);
+   box("runtimeProbeResult","pass",`PASS
+runtime #1: ${a.runtimeId}
+runtime #2: ${b.runtimeId}
+2回目往復: ${(ms/1000).toFixed(3)}秒
+pool files: ${JSON.stringify(b.poolFiles)}
+判定: 同一WorkerのSQLite/SAH Pool runtimeを再利用`);
+ }catch(e){
+   const x=e&&typeof e==="object"?e:{message:String(e)};
+   box("runtimeProbeResult","fail",`FAIL
+stage: ${x.stage||"unknown"}
+message: ${x.message||String(e)}
+stack: ${x.stack||"-"}`);
+ }
+};

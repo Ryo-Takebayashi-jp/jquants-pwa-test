@@ -1,10 +1,12 @@
-# J-Quants Local-first PWA v7e-alpha5
+# J-Quants Local-first PWA v7e-alpha6
 
-## 今回のテスト
-まず新しい「⓪ 同一Worker内 create→close→reOpen」だけ押してください。
+## テスト順
+1. ⓪A Worker常駐Runtimeを2回確認
+2. PASSなら ① Catalog + bars_recent を作成
+3. PASSなら ② Catalog経由で bars_recent を再Open
 
-- ⓪ PASS: reopen自体は可能。別ボタン/別Workerメッセージを跨ぐSAH Pool状態管理が主因候補。
-- ⓪ が 04-reopen で停止: SAH Poolのclose→reopen lifecycle自体がiPhoneで不安定。
-- ⓪ がそれ以前で失敗: 表示stageを基にさらに下層を修正。
+⓪Bはalpha5でPASS済みなので省略可。
 
-既存1.12GB DataLakeには触れません。
+今回、既存コードが既にsqlite3/poolを変数キャッシュしていたことも再確認し、
+初期化競合を防ぐsingleton Promiseへ強化しています。
+既存1.12GB DataLakeには新Catalog診断から触りません。

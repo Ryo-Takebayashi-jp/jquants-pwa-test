@@ -29,16 +29,34 @@ function resolveExistingMarketDb(p,requested){
   throw new Error(`Market DataLake not found/openable. requested=${requested}; pool files=${JSON.stringify(files)}; tried=${errors.join(" | ")}`);
 }
 let sqlite3=null,pool=null;
+let _sqliteInitPromise=null;
 async function initSqlite(){
- if(sqlite3&&pool)return {sqlite3,pool};
- status("import-module","/sqlite/index.mjs");
- const mod=await import("/sqlite/index.mjs");
- status("initialize-sqlite","SQLite 3.53 + opfs-sahpool");
- sqlite3=await mod.default({locateFile:p=>new URL(`/sqlite/${p}`,self.location.origin).href,print:(...a)=>status("sqlite-print",a.join(" ")),printErr:(...a)=>status("sqlite-stderr",a.join(" "))});
- if(typeof sqlite3.installOpfsSAHPoolVfs!=="function") throw new Error("installOpfsSAHPoolVfs() not exposed by this build");
- status("install-sahpool","installOpfsSAHPoolVfs()");
- pool=await sqlite3.installOpfsSAHPoolVfs({name:"jq-sahpool",directory:".jq-sahpool-v7c-r5",initialCapacity:6});
- return {sqlite3,pool};
+ if(sqlite3&&pool)return {sqlite3,pool,runtimeId:"worker-persistent-v1"};
+ if(_sqliteInitPromise)return _sqliteInitPromise;
+ _sqliteInitPromise=(async()=>{
+   status("import-module","/sqlite/index.mjs");
+   const mod=await import("/sqlite/index.mjs");
+   status("initialize-sqlite","SQLite 3.53 + opfs-sahpool (Worker常駐)");
+   sqlite3=await mod.default({
+     locateFile:p=>new URL(`/sqlite/${p}`,self.location.origin).href,
+     print:(...a)=>status("sqlite-print",a.join(" ")),
+     printErr:(...a)=>status("sqlite-stderr",a.join(" "))
+   });
+   if(typeof sqlite3.installOpfsSAHPoolVfs!=="function")
+     throw new Error("installOpfsSAHPoolVfs() not exposed by this build");
+   status("install-sahpool","installOpfsSAHPoolVfs() once per Worker");
+   pool=await sqlite3.installOpfsSAHPoolVfs({
+     name:"jq-sahpool",
+     directory:".jq-sahpool-v7c-r5",
+     initialCapacity:6
+   });
+   return {sqlite3,pool,runtimeId:"worker-persistent-v1"};
+ })().catch(err=>{
+   _sqliteInitPromise=null;
+   sqlite3=null; pool=null;
+   throw err;
+ });
+ return _sqliteInitPromise;
 }
 async function importFile(file,name){
  const {pool}=await initSqlite();
@@ -155,6 +173,16 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
 
 
+
+ if(cmd==="runtime-probe"){
+   self.postMessage({
+     ok:true,type:"result",
+     runtimeId:x.runtimeId||"worker-persistent-v1",
+     poolFiles:poolFileNamesSafe(p),
+     elapsedMs:Math.round(performance.now()-t0)
+   });
+   return;
+ }
  if(cmd==="shard-lifecycle"){
    const testName="/jq_lifecycle_probe_v1.sqlite";
    let tdb=null,stage="start";

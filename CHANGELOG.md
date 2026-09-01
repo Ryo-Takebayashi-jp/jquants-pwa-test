@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha6 — CURRENT (2026-09-01)
+- alpha5で同一コマンド内 create→close→reOpen が0.40秒でPASS。
+- 既存コードはsqlite3/pool変数をキャッシュしていたが、初期化処理をsingleton Promise化してWorker寿命中の初期化を明示的に1回へ固定。
+- 複数Workerメッセージから同じSQLite/SAH Pool runtimeを再利用するruntime-probeを追加。
+- 既存1.12GB DataLakeは新Catalog診断からOpen/変更/削除/移行しない。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha5 — CURRENT (2026-09-01)
 - `r`→`c`変更でも別コマンド再Openが停止したため、モード原因仮説を後退。
 - 同一Workerコマンド内で create → write → close → reopen → read → close を行う lifecycle probe を追加。
