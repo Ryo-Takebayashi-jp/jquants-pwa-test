@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha37");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha38");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -222,7 +222,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha37").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha38").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1276,7 +1276,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha37",
+   appVersion:"v7e-alpha38",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1899,6 +1899,39 @@ if($("supplyDemandAllBtn")) $("supplyDemandAllBtn").onclick=async()=>{
    const ok=results.filter(x=>x[1].ok).length;
    box("supplyDemandAllResult",ok===results.length?"pass":"warn",`需給5種: ${ok}/${results.length} 成功\n`+results.map(x=>`${x[0]}: ${x[1].ok?"OK":"NG"}`).join("\n"));
  }finally{btn.disabled=false}
+};
+
+
+let latestFinancialNormalized=null;
+if($("financialNormalizeBtn")) $("financialNormalizeBtn").onclick=async()=>{
+ const btn=$("financialNormalizeBtn");btn.disabled=true;box("financialNormalizeResult","run","財務raw_jsonを正規化中…");
+ try{
+   const r=await workerCall("financial-normalize-latest",180000);
+   latestFinancialNormalized=r.rows;
+   const withForecast=r.rows.filter(x=>x.forecastSales!=null||x.forecastOP!=null||x.forecastNP!=null||x.forecastEPS!=null).length;
+   box("financialNormalizeResult","pass",`PASS\n正規化銘柄: ${r.count}\n会社予想あり: ${withForecast}\n対象列: Sales / OP / OdP / NP / EPS / BPS / Eq / TA / CashEq / CFO / CFI / CFF + Forecast`);
+ }catch(e){box("financialNormalizeResult","fail","FAIL\n"+(e?.message||e))}
+ finally{btn.disabled=false}
+};
+
+if($("portfolioIntegratedBtn")) $("portfolioIntegratedBtn").onclick=async()=>{
+ const btn=$("portfolioIntegratedBtn"),file=$("portfolioIntegratedFile")?.files?.[0];
+ if(!file){box("portfolioIntegratedResult","warn","PC版 portfolio.csv を選択してください");return}
+ btn.disabled=true;box("portfolioIntegratedResult","run","Portfolio統合スナップショット生成中…");
+ try{
+   const txt=await file.text(), parsed=parseCsv(txt);
+   const stocks=parsed.rows.map(r=>({code:r.Code,name:r.Name,account:r.Account,shares:r.Shares,avgCost:r.AvgCost}));
+   const asOf=$("screeningAsOf")?.value||new Date().toISOString().slice(0,10);
+   const tech=await workerCall("technical-screening-poc",300000,null,null,{asOf,lookbackDays:320,topN:5000});
+   if(!latestFinancialNormalized){
+     const fr=await workerCall("financial-normalize-latest",180000); latestFinancialNormalized=fr.rows;
+   }
+   const pr=await workerCall("portfolio-integrated-snapshot",180000,null,null,{stocks,techRows:tech.top,finRows:latestFinancialNormalized});
+   const okTech=pr.rows.filter(x=>x.close!=null).length,okFin=pr.rows.filter(x=>x.discDate).length;
+   const lines=pr.rows.map(x=>`${x.code} ${x.name||x.companyName||""} | ${x.account} | Close ${x.close??"-"} | RSI ${x.rsi14!=null?x.rsi14.toFixed(2):"-"} | TOPIX20D ${x.relativeToTOPIX20D!=null?x.relativeToTOPIX20D.toFixed(2):"-"} | EPS ${x.eps??"-"} | F.EPS ${x.forecastEPS??"-"}`);
+   box("portfolioIntegratedResult",(okTech===pr.count)?"pass":"warn",`統合スナップショット\n銘柄: ${pr.count}\nテクニカル接続: ${okTech}/${pr.count}\n財務接続: ${okFin}/${pr.count}\n\n`+lines.join("\n"));
+ }catch(e){box("portfolioIntegratedResult","fail","FAIL\n"+(e?.message||e))}
+ finally{btn.disabled=false}
 };
 
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();

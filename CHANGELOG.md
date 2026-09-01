@@ -1,10 +1,10 @@
 # CHANGELOG
 
-## v7e-alpha37 — 2026-09-01
-- TOPIX ShardをScreening計算エンジンへ接続。
-- TOPIXReturn 5D / 20D / 60D / 120D をWeb側で計算。
-- RelativeToTOPIX 5D / 20D / 60D / 120D = 個別株Return - TOPIXReturn を追加。
-- PC/Web Parityに上記12項目（個別Returnを含む）を追加。
-- alpha31でPASS済みの日足テクニカルParityを維持。
-- README群を整理。通常READMEは `docs/README.md`、過去alpha READMEは `docs/history/` へ移動。
-- 今後ルート直下には個別alpha READMEを増やさず、CHANGELOG/release_historyを正式履歴とする。
+## v7e-alpha38 — 2026-09-01
+- 財務raw_json正規化エンジンを追加。Sales/OP/OdP/NP/EPS/BPS/Eq/TA/CashEq/CFO/CFI/CFFと会社予想列を共通化。
+- 最新開示を銘柄単位に集約するfinancial-normalize-latestを追加。
+- Portfolio統合スナップショットを追加。
+- PC版portfolio.csvを入力し、Master + 株価 + テクニカル + TOPIX相対強度 + 財務を1銘柄1行へ統合。
+- JQP Web化の共通エンジンとしてScreening/Portfolio双方から再利用する設計へ移行。
+- alpha37 TOPIX Parityおよび既存テクニカルParityを維持。
+- READMEはdocs/配下運用を継続。

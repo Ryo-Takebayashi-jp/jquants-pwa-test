@@ -1208,6 +1208,87 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){try{if(db)db.close()}catch(_){} throw err}
  }
 
+
+ if(cmd==="financial-normalize-latest"){
+   let db=null;
+   try{
+     db=new p.OpfsSAHPoolDb("/jq_fins_summary_v1.sqlite","r");
+     const rs=execRows(db,"SELECT raw_json FROM fins_summary");
+     const byCode=new Map();
+     const num=(o,...ks)=>{for(const k of ks){const v=o?.[k];if(v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)))return Number(v)}return null};
+     const str=(o,...ks)=>{for(const k of ks){const v=o?.[k];if(v!==null&&v!==undefined&&String(v).trim())return String(v).trim()}return null};
+     for(const rr of rs){
+       let o={}; try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}
+       let code=str(o,"Code","code"); if(!code)continue;
+       if(code.length===5&&code.endsWith("0"))code=code.slice(0,4);
+       const disc=str(o,"DiscDate","DisclosedDate","Date","date")||"";
+       const tm=str(o,"DiscTime","DisclosedTime")||"";
+       const stamp=disc+" "+tm;
+       const prev=byCode.get(code);
+       if(prev && prev._stamp>stamp)continue;
+       const sales=num(o,"Sales","NetSales");
+       const op=num(o,"OP","OperatingProfit");
+       const odp=num(o,"OdP","OrdinaryProfit");
+       const np=num(o,"NP","Profit","NetIncome");
+       const eps=num(o,"EPS","EarningsPerShare");
+       const bps=num(o,"BPS","BookValuePerShare");
+       const eq=num(o,"Eq","Equity");
+       const ta=num(o,"TA","TotalAssets");
+       const cash=num(o,"CashEq","CashAndEquivalents");
+       const cfo=num(o,"CFO","CashFlowsFromOperatingActivities");
+       const cfi=num(o,"CFI","CashFlowsFromInvestingActivities");
+       const cff=num(o,"CFF","CashFlowsFromFinancingActivities");
+       const fsales=num(o,"FSales","ForecastSales","ForecastNetSales");
+       const fop=num(o,"FOP","ForecastOP","ForecastOperatingProfit");
+       const fodp=num(o,"FOdP","ForecastOdP","ForecastOrdinaryProfit");
+       const fnp=num(o,"FNP","ForecastNP","ForecastProfit","ForecastNetIncome");
+       const feps=num(o,"FEPS","ForecastEPS","ForecastEarningsPerShare");
+       byCode.set(code,{code,discDate:disc,discTime:tm,docType:str(o,"DocType","TypeOfDocument"),
+         curPerType:str(o,"CurPerType","CurrentPeriodType"),curFYEnd:str(o,"CurFYEn","CurrentFiscalYearEndDate"),
+         sales,op,odp,np,eps,bps,equity:eq,totalAssets:ta,cashEq:cash,cfo,cfi,cff,
+         forecastSales:fsales,forecastOP:fop,forecastOdP:fodp,forecastNP:fnp,forecastEPS:feps,_stamp:stamp});
+     }
+     db.close();db=null;
+     const rows=[...byCode.values()].map(({_stamp,...x})=>x).sort((x,y)=>x.code.localeCompare(y.code));
+     self.postMessage({ok:true,type:"result",rows,count:rows.length});
+     return;
+   }catch(err){try{if(db)db.close()}catch(_){} throw err}
+ }
+
+ if(cmd==="portfolio-integrated-snapshot"){
+   const payload=d.payload||{}, stocks=payload.stocks||[], techRows=payload.techRows||[], finRows=payload.finRows||[];
+   const tmap=new Map(techRows.map(x=>[String(x.code),x]));
+   const fmap=new Map(finRows.map(x=>[String(x.code),x]));
+   let mdb=null; const names=new Map();
+   try{
+     mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");
+     const rs=execRows(mdb,"SELECT code,company_name,market,sector17,sector33,margin_category FROM equities_master");
+     for(const r of rs){
+       let c=String(r.code||""); if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);
+       names.set(c,r);
+     }
+     mdb.close();mdb=null;
+   }catch(_){try{if(mdb)mdb.close()}catch(__){}}
+   const rows=stocks.map(st=>{
+     let code=String(st.code??st.Code??"").trim(); if(code.length===5&&code.endsWith("0"))code=code.slice(0,4);
+     const t=tmap.get(code)||{},f=fmap.get(code)||{},m=names.get(code)||{};
+     const shares=Number(st.shares??st.Shares??0)||0,avgCost=Number(st.avgCost??st.AvgCost??0)||0;
+     const close=Number.isFinite(Number(t.close))?Number(t.close):null;
+     const marketValue=close!=null?close*shares:null;
+     const cost=avgCost*shares;
+     const unrealized=marketValue!=null?marketValue-cost:null;
+     const unrealizedPct=cost?unrealized/cost*100:null;
+     return {code,name:st.name??st.Name??m.company_name??"",account:st.account??st.Account??"",
+       shares,avgCost,close,marketValue,unrealized,unrealizedPct,
+       ma25:t.ma25??null,ma75:t.ma75??null,rsi14:t.rsi14??null,return20D:t.ret20??null,relativeToTOPIX20D:t.rel20??null,
+       companyName:m.company_name??null,market:m.market??null,sector17:m.sector17??null,sector33:m.sector33??null,marginCategory:m.margin_category??null,
+       discDate:f.discDate??null,sales:f.sales??null,op:f.op??null,np:f.np??null,eps:f.eps??null,
+       forecastSales:f.forecastSales??null,forecastOP:f.forecastOP??null,forecastNP:f.forecastNP??null,forecastEPS:f.forecastEPS??null};
+   });
+   self.postMessage({ok:true,type:"result",rows,count:rows.length});
+   return;
+ }
+
  if(cmd==="technical-screening-poc"){
    const payload=e.data.payload||{};
    const asOf=String(payload.asOf||"");
