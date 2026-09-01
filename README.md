@@ -1,12 +1,10 @@
-# J-Quants Local-first PWA v7e-alpha6
+# J-Quants Local-first PWA v7e-alpha7
 
-## テスト順
-1. ⓪A Worker常駐Runtimeを2回確認
-2. PASSなら ① Catalog + bars_recent を作成
-3. PASSなら ② Catalog経由で bars_recent を再Open
+## 今回は⓪Pだけテスト
+「⓪P SQLite未使用・Worker PINGを2回」を押してください。
 
-⓪Bはalpha5でPASS済みなので省略可。
+- 2回ともPASS → Worker通信は正常。SQLite/SAH Pool初期化後のWorker状態が原因候補。
+- 2回目で停止 → SQLiteと無関係にWorkerの複数メッセージ処理側が原因。
+- 1回目から停止 → Worker通信/workerCall実装を最優先で修正。
 
-今回、既存コードが既にsqlite3/poolを変数キャッシュしていたことも再確認し、
-初期化競合を防ぐsingleton Promiseへ強化しています。
-既存1.12GB DataLakeには新Catalog診断から触りません。
+このテストはSQLiteもSAH Poolも初期化せず、既存DataLakeにも触れません。

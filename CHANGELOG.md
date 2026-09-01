@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha7 — CURRENT (2026-09-01)
+- alpha6の⓪Aが2回目Workerメッセージで停止したため、SQLite/SAH Poolを完全に通らない raw PING/PONG を追加。
+- 同一Workerへraw PINGを2回連続送信し、Worker通信そのものとSQLite初期化後状態を分離。
+- raw-pingは `initSqlite()` より前に処理される。
+- 既存1.12GB DataLakeには触れない。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha6 — CURRENT (2026-09-01)
 - alpha5で同一コマンド内 create→close→reOpen が0.40秒でPASS。
 - 既存コードはsqlite3/pool変数をキャッシュしていたが、初期化処理をsingleton Promise化してWorker寿命中の初期化を明示的に1回へ固定。

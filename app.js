@@ -779,3 +779,28 @@ message: ${x.message||String(e)}
 stack: ${x.stack||"-"}`);
  }
 };
+
+if($("rawPingBtn")) $("rawPingBtn").onclick=async()=>{
+ box("rawPingResult","run","PING #1…（SQLite/SAH Pool未使用）");
+ try{
+   const t1=performance.now();
+   const a=await workerCall("raw-ping",10000,null,{seq:1});
+   const ms1=Math.round(performance.now()-t1);
+   box("rawPingResult","run",`PING #1 PASS ${(ms1/1000).toFixed(3)}秒\nPING #2…`);
+   const t2=performance.now();
+   const b=await workerCall("raw-ping",10000,null,{seq:2});
+   const ms2=Math.round(performance.now()-t2);
+   box("rawPingResult","pass",`PASS
+PING #1: ${a.pong?"PONG":"?"} / ${(ms1/1000).toFixed(3)}秒
+PING #2: ${b.pong?"PONG":"?"} / ${(ms2/1000).toFixed(3)}秒
+SQLite: 未初期化
+SAH Pool: 未初期化
+判定: Workerの2メッセージ往復そのものは正常`);
+ }catch(e){
+   const x=e&&typeof e==="object"?e:{message:String(e)};
+   box("rawPingResult","fail",`FAIL
+message: ${x.message||String(e)}
+stack: ${x.stack||"-"}
+SQLite/SAH Poolは未使用`);
+ }
+};

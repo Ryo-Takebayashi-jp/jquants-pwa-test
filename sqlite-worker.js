@@ -170,6 +170,10 @@ self.onmessage=async e=>{
  const originalPostMessage=self.postMessage.bind(self);
  self.postMessage=(msg,...rest)=>originalPostMessage({...msg,requestId},...rest);
 const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
+ if(cmd==="raw-ping"){
+   self.postMessage({ok:true,type:"result",pong:true,seq:d.seq||0,elapsedMs:Math.round(performance.now()-t0)});
+   return;
+ }
  const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
 
 
