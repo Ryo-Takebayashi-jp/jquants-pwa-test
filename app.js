@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha48");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha49");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha48").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha49").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1297,7 +1297,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha48",
+   appVersion:"v7e-alpha49",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -2005,7 +2005,7 @@ if($("portfolioIntegratedBtn")) $("portfolioIntegratedBtn").onclick=async()=>{
  btn.disabled=true;box("portfolioIntegratedResult","run","Portfolio統合スナップショット生成中…");
  try{
    const txt=await file.text(), parsed=parseCsv(txt);
-   const stocks=parsed.rows.map(r=>({code:r.Code,name:r.Name,account:r.Account,shares:r.Shares,avgCost:r.AvgCost}));
+   const stocks=parsed.rows.map(r=>({code:r.Code,name:r.Name,account:r.Account,shares:r.Shares,avgCost:r.AvgCost,amount:r.Amount,strategy:r.Strategy}));
    const asOf=$("screeningAsOf")?.value||new Date().toISOString().slice(0,10);
    const tech=await workerCall("technical-screening-poc",300000,null,null,{asOf,lookback:320,topN:200,returnAll:true});
    if(!latestFinancialNormalized){
@@ -2022,6 +2022,46 @@ if($("portfolioIntegratedBtn")) $("portfolioIntegratedBtn").onclick=async()=>{
    if($("portfolioExportBtn"))$("portfolioExportBtn").disabled=false;
    if($("portfolioJqpExportBtn"))$("portfolioJqpExportBtn").disabled=false;
  }catch(e){box("portfolioIntegratedResult","fail","FAIL\n"+(e?.message||e))}
+ finally{btn.disabled=false}
+};
+
+if($("portfolioJqpParityBtn")) $("portfolioJqpParityBtn").onclick=async()=>{
+ const btn=$("portfolioJqpParityBtn"),pf=$("portfolioParityPortfolioFile")?.files?.[0],tf=$("portfolioParityTechnicalFile")?.files?.[0];
+ if(!pf||!tf){box("portfolioJqpParityResult","warn","portfolio.csv と technical_snapshot.csv の2ファイルを選択してください");return}
+ btn.disabled=true;box("portfolioJqpParityResult","run","Portfolio/JQP統合経路をPC版と照合中…");
+ try{
+   const p=parseCsv(await pf.text()),t=parseCsv(await tf.text()),norm=v=>{let x=String(v??"").trim();if(x.length===5&&x.endsWith("0"))x=x.slice(0,4);return x};
+   const pmap=new Map(p.rows.map(r=>[`${norm(r.Code)}|${String(r.Account||"")}`,r]));
+   const tmap=new Map(t.rows.map(r=>[norm(r.NormalizedCode||r.Code),r]));
+   const web=window.__latestPortfolioIntegrated||[];
+   if(!web.length)throw new Error("先に⑨「Portfolio統合を実行」をPASSさせてください");
+   const num=(x)=>{const n=Number(x);return Number.isFinite(n)?n:null},eqNum=(x,y,tol=.01)=>x==null&&y==null||x!=null&&y!=null&&Math.abs(x-y)<=tol;
+   let pOk=0,tOk=0,missing=0; const bad=[];
+   const techPairs=[
+    ["Close","close"],["MA5","ma5"],["MA25","ma25"],["MA75","ma75"],["MA200","ma200"],["RSI14","rsi14"],
+    ["Return5D","return5D"],["Return20D","return20D"],["Return60D","return60D"],["Return120D","return120D"],
+    ["TOPIXReturn5D","topixReturn5D"],["TOPIXReturn20D","topixReturn20D"],["TOPIXReturn60D","topixReturn60D"],["TOPIXReturn120D","topixReturn120D"],
+    ["RelativeToTOPIX5D","relativeToTOPIX5D"],["RelativeToTOPIX20D","relativeToTOPIX20D"],["RelativeToTOPIX60D","relativeToTOPIX60D"],["RelativeToTOPIX120D","relativeToTOPIX120D"],
+    ["High20D","high20D"],["Low20D","low20D"],["High60D","high60D"],["Low60D","low60D"],["High52Week","high52Week"],["Low52Week","low52Week"],
+    ["ATR14","atr14"],["ATR14Pct","atr14Pct"],["MACD","macd"],["MACDSignal","macdSignal"],["MACDHistogram","macdHistogram"],
+    ["IchimokuTenkan","ichimokuTenkan"],["IchimokuKijun","ichimokuKijun"],["IchimokuSenkouA","ichimokuSenkouA"],["IchimokuSenkouB","ichimokuSenkouB"]
+   ];
+   for(const x of web){
+     const pr=pmap.get(`${norm(x.code)}|${String(x.account||"")}`),tr=tmap.get(norm(x.code));
+     if(!pr||!tr){missing++;continue}
+     const pok=String(pr.Name||"")===String(x.name||"")&&Number(pr.Shares||0)===Number(x.shares||0)&&eqNum(num(pr.AvgCost),num(x.avgCost),.0001)&&String(pr.Strategy||"")===String(x.strategy||"");
+     if(pok)pOk++; else bad.push(`${x.code}: Portfolio入力差`);
+     let ok=true;
+     for(const [pc,wk] of techPairs){
+       if(Object.prototype.hasOwnProperty.call(tr,pc)&&String(tr[pc]??"")!==""){
+         if(!eqNum(num(tr[pc]),num(x[wk]),.02)){ok=false;break}
+       }
+     }
+     if(ok)tOk++; else bad.push(`${x.code}: JQPテクニカル統合差`);
+   }
+   const pass=pOk===web.length&&tOk===web.length&&missing===0;
+   box("portfolioJqpParityResult",pass?"pass":"warn",`Portfolio/JQP 統合Parity\n銘柄: ${web.length}\nPortfolio入力一致: ${pOk}/${web.length}\nJQPテクニカル統合一致: ${tOk}/${web.length}\nPC側欠損: ${missing}\n\n${bad.length?bad.slice(0,20).join("\n"):"不一致項目なし"}`);
+ }catch(e){box("portfolioJqpParityResult","fail","FAIL\n"+(e?.message||e))}
  finally{btn.disabled=false}
 };
 

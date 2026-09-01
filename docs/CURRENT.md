@@ -1,8 +1,11 @@
-# v7e-alpha48
+# v7e-alpha49
 
-実機テスト:
-1. `technical_snapshot.csv` を選択
-2. 「テクニカル全項目Parityを実行」
+推奨実機テスト:
+1. ⑨で portfolio.csv を選択し「Portfolio統合を実行」
+2. ⑩で portfolio.csv と technical_snapshot.csv を選択
+3. 「Portfolio/JQP統合Parityを実行」
 
-PCソースを再確認した結果、52週高安は過去252取引日の調整後Close最大/最小が正式定義。
-期待値: 54/54一致、Web欠損0。
+狙い:
+- Portfolio入力一致 14/14
+- JQPテクニカル統合一致 14/14
+- PC側欠損 0

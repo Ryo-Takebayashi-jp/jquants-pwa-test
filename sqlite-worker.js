@@ -43,7 +43,7 @@ async function initSqlite(){
        if(!probe.ok) throw new Error(`SQLite module probe HTTP ${probe.status}: ${await probe.text()}`);
        const ct=probe.headers.get("content-type")||"";
        if(!/javascript|ecmascript|module/i.test(ct)) throw new Error(`SQLite module Content-Type invalid: ${ct||"(none)"}`);
-       mod=await import(`/sqlite/index.mjs?v=v7e-alpha48-${attempt}`);
+       mod=await import(`/sqlite/index.mjs?v=v7e-alpha49-${attempt}`);
      }catch(e){
        lastErr=e; status("import-retry",`attempt ${attempt}/3: ${e?.message||e}`);
        if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));
@@ -1384,16 +1384,24 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      const unrealized=marketValue!=null?marketValue-cost:null;
      const unrealizedPct=cost?unrealized/cost*100:null;
      return {code,name:st.name??st.Name??m.company_name??"",account:st.account??st.Account??"",
-       shares,avgCost,close,marketValue,unrealized,unrealizedPct,
+       shares,avgCost,amount:Number(st.amount??st.Amount??0)||cost,strategy:st.strategy??st.Strategy??"",close,marketValue,unrealized,unrealizedPct,
+       date:t.date??null,technicalHistoryDays:t.historyDays??null,technicalPriceBasis:"AdjFactorLatestBasis",
        ma5:t.ma5??null,ma25:t.ma25??null,ma75:t.ma75??null,ma200:t.ma200??null,rsi14:t.rsi14??null,
+       return5D:t.ret5??null,return20D:t.ret20??null,return60D:t.ret60??null,return120D:t.ret120??null,
+       topixReturn5D:t.topixRet5??null,topixReturn20D:t.topixRet20??null,topixReturn60D:t.topixRet60??null,topixReturn120D:t.topixRet120??null,
+       relativeToTOPIX5D:t.rel5??null,relativeToTOPIX20D:t.rel20??null,relativeToTOPIX60D:t.rel60??null,relativeToTOPIX120D:t.rel120??null,
+       high20D:t.high20??null,low20D:t.low20??null,high60D:t.high60??null,low60D:t.low60??null,
+       high52Week:t.high52??null,low52Week:t.low52??null,
+       distanceFrom52WeekHighPct:(t.high52!=null&&close!=null&&t.high52)?(close/t.high52-1)*100:null,
+       distanceFrom52WeekLowPct:(t.low52!=null&&close!=null&&t.low52)?(close/t.low52-1)*100:null,
        ma5Slope5DPct:t.slope5??null,ma25Slope5DPct:t.slope25??null,ma75Slope20DPct:t.slope75??null,ma200Slope20DPct:t.slope200??null,
        deviationFromMA5Pct:t.distMa5??null,deviationFromMA25Pct:t.distMa25??null,deviationFromMA75Pct:t.distMa75??null,deviationFromMA200Pct:t.distMa200??null,
-       atr14:t.atr14??null,atr14Pct:t.atr14Pct??null,high52Week:t.high52??null,low52Week:t.low52??null,
+       atr14:t.atr14??null,atr14Pct:t.atr14Pct??null,
        macd:t.macd??null,macdSignal:t.macdSignal??null,macdHistogram:t.macdHistogram??null,macdState:t.macdState??"",
        ichimokuTenkan:t.ichimokuTenkan??null,ichimokuKijun:t.ichimokuKijun??null,ichimokuSenkouA:t.ichimokuSenkouA??null,ichimokuSenkouB:t.ichimokuSenkouB??null,
        ichimokuAboveCloud:t.ichimokuAboveCloud??"",ichimokuCloudDirection:t.ichimokuCloudDirection??"",
        aboveMA5:t.aboveMA5??"",aboveMA25:t.aboveMA25??"",aboveMA75:t.aboveMA75??"",aboveMA200:t.aboveMA200??"",maAlignment:t.maAlignment??"",trendState:t.trendState??"",
-       return20D:t.ret20??null,relativeToTOPIX20D:t.rel20??null,
+
        companyName:m.company_name??null,market:m.market??null,sector17:m.sector17??null,sector33:m.sector33??null,marginCategory:m.margin_category??null,
        discDate:f.discDate??null,sales:f.sales??null,op:f.op??null,np:f.np??null,eps:f.eps??null,
        forecastSales:f.forecastSales??null,forecastOP:f.forecastOP??null,forecastNP:f.forecastNP??null,forecastEPS:f.forecastEPS??null,
