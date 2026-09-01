@@ -1656,6 +1656,9 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        if(!Number.isFinite(ma5)||!Number.isFinite(ma25)||!Number.isFinite(ma75)){
          throw new Error(`core technical calculation invalid for ${code}`);
        }
+       if(!Array.isArray(a)||!a.length){
+         throw new Error(`technical history series missing for ${code}`);
+       }
        rows.push({code,date:last.date,close:last.c,ma5,ma25,ma75,ma200,slope5,slope25,slope75,slope200,
          distMa5:pct(last.c,ma5),distMa25,distMa75,distMa200:pct(last.c,ma200),atr14,atr14Pct,
          high20,low20,high60,low60,high52,low52,distHigh20:pct(last.c,high20),distLow20:pct(last.c,low20),
@@ -1669,7 +1672,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          maAlignment,trendState:trend,ret5,ret20,ret60,ret120,topixRet5:topixReturns.ret5,topixRet20:topixReturns.ret20,
          topixRet60:topixReturns.ret60,topixRet120:topixReturns.ret120,rel5,rel20,rel60,rel120,
          volume:last.v,vol20,volRatio,volumeRatio5To20,averageTradingValue20D,positionVs60DHighPct,
-         macdHistogramChange5D,historyDays:arr.length,score});
+         macdHistogramChange5D,historyDays:a.length,score});
      }
      rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);
      self.postMessage({ok:true,type:"result",stage:"PASS",requestedAsOf:asOf,asOf:actualAsOf,

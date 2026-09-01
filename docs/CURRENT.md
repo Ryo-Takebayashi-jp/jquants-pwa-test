@@ -1,13 +1,8 @@
-# v7e-alpha56
+# v7e-alpha57
 
-今回の実機確認はページ上部のScreening開発フローだけ。
+今回の実機確認:
+- ①財務履歴は再実行不要
+- ②財務正規化もalpha56でPASS済みなら再実行不要
+- ③「Screening母集団を構築」から再開
 
-① 財務履歴補完
-- alpha55でPASS済みなら再実行不要。
-
-② 財務データ正規化
-③ Screening母集団を構築
-④ 5戦略でTop20を選抜
-⑤ screening_candidates.csvで選抜Parity
-
-今回は特に③がalpha55の修正確認ポイント。
+③がPASSしたら、そのまま④5戦略選抜 → ⑤PC/Web Parityへ進む。

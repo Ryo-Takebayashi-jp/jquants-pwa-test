@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha56",
+  "current_release": "v7e-alpha57",
   "history": [
     {
-      "release": "v7e-alpha56",
+      "release": "v7e-alpha57",
       "date": "2026-09-01",
-      "note": "Fix Screening calc runtime reference/turnover series and reorganize active Screening workflow into a strict sequential UI."
+      "note": "Fix Screening calc crash at real-machine line 1672: historyDays used arr.length instead of current series a.length."
     }
   ]
 }
