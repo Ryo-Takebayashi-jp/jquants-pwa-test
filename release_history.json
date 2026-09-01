@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha42",
+  "current_release": "v7e-alpha43",
   "history": [
     {
-      "release": "v7e-alpha42",
+      "release": "v7e-alpha43",
       "date": "2026-09-01",
-      "note": "Fix portfolio technical join: use full technical universe and normalize 5-char J-Quants codes."
+      "note": "Join supply-demand datasets into portfolio integration and add initial Web JQP JSON export."
     }
   ]
 }

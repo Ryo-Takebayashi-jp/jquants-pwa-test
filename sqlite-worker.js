@@ -43,7 +43,7 @@ async function initSqlite(){
        if(!probe.ok) throw new Error(`SQLite module probe HTTP ${probe.status}: ${await probe.text()}`);
        const ct=probe.headers.get("content-type")||"";
        if(!/javascript|ecmascript|module/i.test(ct)) throw new Error(`SQLite module Content-Type invalid: ${ct||"(none)"}`);
-       mod=await import(`/sqlite/index.mjs?v=v7e-alpha42-${attempt}`);
+       mod=await import(`/sqlite/index.mjs?v=v7e-alpha43-${attempt}`);
      }catch(e){
        lastErr=e; status("import-retry",`attempt ${attempt}/3: ${e?.message||e}`);
        if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));
@@ -1295,11 +1295,66 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
   result[key]={rows:rs.length,codeSnapshots:byCode.size,marketSnapshots:market.length};db.close();db=null}catch(e){try{if(db)db.close()}catch(_){}result[key]={rows:0,error:String(e?.message||e)}}}
  self.postMessage({ok:true,type:"result",result});return;
  }
+
+ if(cmd==="supply-demand-portfolio-snapshot"){
+   const normCode=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const defs=[
+     ["/jq_margin_interest_v1.sqlite","margin_interest","marginInterest"],
+     ["/jq_margin_alert_v1.sqlite","margin_alert","marginAlert"],
+     ["/jq_short_ratio_v1.sqlite","short_ratio","shortRatio"],
+     ["/jq_short_sale_report_v1.sqlite","short_sale_report","shortSaleReport"],
+     ["/jq_investor_types_v1.sqlite","investor_types","investorTypes"]
+   ];
+   const result={};
+   const pickNum=(o,keys)=>{for(const k of keys){const v=o?.[k];if(v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)))return Number(v)}return null};
+   const pickStr=(o,keys)=>{for(const k of keys){const v=o?.[k];if(v!==null&&v!==undefined&&String(v).trim())return String(v).trim()}return null};
+   for(const [dbName,table,key] of defs){
+     let db=null;
+     try{
+       db=new p.OpfsSAHPoolDb(dbName,"r");
+       const rs=execRows(db,`SELECT data_date,raw_json FROM ${table} ORDER BY data_date DESC LIMIT 20000`);
+       const byCode=new Map(); const market=[];
+       for(const rr of rs){
+         let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}
+         const code=normCode(o.Code??o.code??o.IssueCode??"");
+         const date=String(rr.data_date??o.Date??o.date??o.DiscDate??o.CalculationDate??"").slice(0,10);
+         const rec={date,
+           longMargin:pickNum(o,["LongMarginTradeVolume","LongMarginOutstanding","BuyBalance","LongMarginTradeBalance","LongMargin"]),
+           shortMargin:pickNum(o,["ShortMarginTradeVolume","ShortMarginOutstanding","SellBalance","ShortMarginTradeBalance","ShortMargin"]),
+           longNeg:pickNum(o,["LongNegotiableMarginTradeVolume","LongNegotiableBalance"]),
+           shortNeg:pickNum(o,["ShortNegotiableMarginTradeVolume","ShortNegotiableBalance"]),
+           shortRatio:pickNum(o,["ShortRatio","ShortSellingRatio","Ratio"]),
+           shortVolume:pickNum(o,["ShortSellingVolume","ShortVolume","ShortSaleVolume"]),
+           shortValue:pickNum(o,["ShortSellingValue","ShortValue","ShortSaleValue"]),
+           category:pickStr(o,["Category","Section","InvestorType","Type"]),
+           value:pickNum(o,["Value","TradingValue","NetTradingValue","Amount"]),
+           raw:o
+         };
+         if(code){
+           if(!byCode.has(code))byCode.set(code,rec);
+         }else if(market.length<200){
+           market.push(rec);
+         }
+       }
+       result[key]={byCode:[...byCode.entries()].map(([code,v])=>({code,...v})),market};
+       db.close();db=null;
+     }catch(e){
+       try{if(db)db.close()}catch(_){}
+       result[key]={byCode:[],market:[],error:String(e?.message||e)};
+     }
+   }
+   self.postMessage({ok:true,type:"result",result});return;
+ }
+
  if(cmd==="portfolio-integrated-snapshot"){
-   const payload=d.payload||{}, stocks=payload.stocks||[], techRows=payload.techRows||[], finRows=payload.finRows||[];
+   const payload=d.payload||{}, stocks=payload.stocks||[], techRows=payload.techRows||[], finRows=payload.finRows||[], supply=payload.supply||{};
    const normCode=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
    const tmap=new Map(techRows.map(x=>[normCode(x.code),x]));
    const fmap=new Map(finRows.map(x=>[normCode(x.code),x]));
+   const smap={};
+   for(const [k,v] of Object.entries(supply)){
+     smap[k]=new Map((v?.byCode||[]).map(x=>[normCode(x.code),x]));
+   }
    let mdb=null; const names=new Map();
    try{
      mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");
@@ -1324,7 +1379,16 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        ma25:t.ma25??null,ma75:t.ma75??null,rsi14:t.rsi14??null,return20D:t.ret20??null,relativeToTOPIX20D:t.rel20??null,
        companyName:m.company_name??null,market:m.market??null,sector17:m.sector17??null,sector33:m.sector33??null,marginCategory:m.margin_category??null,
        discDate:f.discDate??null,sales:f.sales??null,op:f.op??null,np:f.np??null,eps:f.eps??null,
-       forecastSales:f.forecastSales??null,forecastOP:f.forecastOP??null,forecastNP:f.forecastNP??null,forecastEPS:f.forecastEPS??null};
+       forecastSales:f.forecastSales??null,forecastOP:f.forecastOP??null,forecastNP:f.forecastNP??null,forecastEPS:f.forecastEPS??null,
+       marginInterestDate:smap.marginInterest?.get(code)?.date??null,
+       marginLong:smap.marginInterest?.get(code)?.longMargin??null,
+       marginShort:smap.marginInterest?.get(code)?.shortMargin??null,
+       marginRatio:(()=>{const x=smap.marginInterest?.get(code),L=x?.longMargin,S=x?.shortMargin;return (Number.isFinite(L)&&Number.isFinite(S)&&S!==0)?L/S:null})(),
+       marginAlertDate:smap.marginAlert?.get(code)?.date??null,
+       shortReportDate:smap.shortSaleReport?.get(code)?.date??null,
+       shortSaleValue:smap.shortSaleReport?.get(code)?.shortValue??null,
+       shortRatioDate:smap.shortRatio?.get(code)?.date??null,
+       shortRatio:smap.shortRatio?.get(code)?.shortRatio??null};
    });
    self.postMessage({ok:true,type:"result",rows,count:rows.length});
    return;
