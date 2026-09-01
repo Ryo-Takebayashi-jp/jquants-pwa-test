@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha43");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha44");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha43").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha44").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1297,7 +1297,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha43",
+   appVersion:"v7e-alpha44",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1985,6 +1985,19 @@ if($("financialParityBtn")) $("financialParityBtn").onclick=async()=>{
   const lines=specs.map(([l])=>`${l}: ${st[l].ok}/${st[l].n}一致 / maxΔ ${st[l].max.toFixed(4)}`);
   box("financialParityResult",specs.length&&perfect===compared?"pass":"warn",`財務Parity\nPC列検出: ${specs.length}\n比較銘柄: ${compared}\n全比較項目一致: ${perfect}\nWeb財務欠損: ${missing}\n\n${lines.join("\n")||"直接比較可能なPC財務列なし"}`);
  }catch(e){box("financialParityResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
+};
+if($("jqpTechnicalParityBtn")) $("jqpTechnicalParityBtn").onclick=async()=>{
+ const btn=$("jqpTechnicalParityBtn"),file=$("jqpTechnicalParityFile")?.files?.[0];if(!file){box("jqpTechnicalParityResult","warn","technical_snapshot.csv を選択してください");return}
+ btn.disabled=true;box("jqpTechnicalParityResult","run","PC/Webテクニカル全項目を比較中…");
+ try{const pc=parseCsv(await file.text()),asOf=pc.rows[0]?.Date||$("screeningAsOf")?.value, tr=await workerCall("technical-screening-poc",300000,null,null,{asOf,lookback:320,topN:200,returnAll:true});
+ const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c},tm=new Map((tr.all||[]).map(x=>[norm(x.code),x]));
+ const nums=[["TechnicalClose","close"],["MA5","ma5"],["MA25","ma25"],["MA75","ma75"],["MA200","ma200"],["MA5Slope5DPct","slope5"],["MA25Slope5DPct","slope25"],["MA75Slope20DPct","slope75"],["MA200Slope20DPct","slope200"],["DeviationFromMA5Pct","distMa5"],["DeviationFromMA25Pct","distMa25"],["DeviationFromMA75Pct","distMa75"],["DeviationFromMA200Pct","distMa200"],["ATR14","atr14"],["ATR14Pct","atr14Pct"],["High20D","high20"],["Low20D","low20"],["High60D","high60"],["Low60D","low60"],["High52Week","high52"],["Low52Week","low52"],["RSI14","rsi14"],["MACD","macd"],["MACDSignal","macdSignal"],["MACDHistogram","macdHistogram"],["IchimokuTenkan","ichimokuTenkan"],["IchimokuKijun","ichimokuKijun"],["IchimokuSenkouA","ichimokuSenkouA"],["IchimokuSenkouB","ichimokuSenkouB"],["IchimokuFutureSenkouA","ichimokuFutureSenkouA"],["IchimokuFutureSenkouB","ichimokuFutureSenkouB"],["IchimokuChikouReferenceClose","ichimokuChikouReferenceClose"],["DistanceFrom20DHighPct","distHigh20"],["DistanceFrom20DLowPct","distLow20"],["DistanceFrom60DHighPct","distHigh60"],["DistanceFrom60DLowPct","distLow60"],["DistanceFrom52WeekHighPct","distHigh52"],["DistanceFrom52WeekLowPct","distLow52"]];
+ const strs=[["MACDState","macdState"],["IchimokuChikouBullish","ichimokuChikouBullish"],["IchimokuAboveCloud","ichimokuAboveCloud"],["IchimokuCloudDirection","ichimokuCloudDirection"],["AboveMA5","aboveMA5"],["AboveMA25","aboveMA25"],["AboveMA75","aboveMA75"],["AboveMA200","aboveMA200"],["MAAlignment","maAlignment"],["TrendState","trendState"],["New20DHigh","new20H"],["New20DLow","new20L"],["New60DHigh","new60H"],["New60DLow","new60L"],["New52WeekHigh","new52H"],["New52WeekLow","new52L"]];
+ const stat={};for(const [p] of [...nums,...strs])stat[p]={ok:0,n:0,max:0};let compared=0,missing=0;
+ for(const r of pc.rows){const t=tm.get(norm(r.NormalizedCode));if(!t){missing++;continue}compared++;for(const [p,k] of nums){if(r[p]===""||t[k]==null)continue;const x=Number(r[p]),y=Number(t[k]);if(!Number.isFinite(x)||!Number.isFinite(y))continue;const d=Math.abs(x-y);stat[p].n++;stat[p].max=Math.max(stat[p].max,d);if(d<=.0011)stat[p].ok++}for(const [p,k] of strs){if(r[p]==="")continue;stat[p].n++;if(String(r[p])===String(t[k]??""))stat[p].ok++}}
+ const all=[...nums,...strs].map(([p])=>[p,stat[p]]).filter(([,x])=>x.n),bad=all.filter(([,x])=>x.ok!==x.n);
+ box("jqpTechnicalParityResult",bad.length===0&&missing===0?"pass":"warn",`JQP Technical Parity\n基準日: ${asOf}\n比較銘柄: ${compared}\nWeb欠損: ${missing}\n一致フィールド: ${all.length-bad.length}/${all.length}\n\n${bad.length?bad.map(([p,x])=>`${p}: ${x.ok}/${x.n} / maxΔ ${x.max.toFixed(4)}`).join("\n"):"不一致項目なし"}`);
+ }catch(e){box("jqpTechnicalParityResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
 };
 if($("portfolioIntegratedBtn")) $("portfolioIntegratedBtn").onclick=async()=>{
  const btn=$("portfolioIntegratedBtn"),file=$("portfolioIntegratedFile")?.files?.[0];

@@ -43,7 +43,7 @@ async function initSqlite(){
        if(!probe.ok) throw new Error(`SQLite module probe HTTP ${probe.status}: ${await probe.text()}`);
        const ct=probe.headers.get("content-type")||"";
        if(!/javascript|ecmascript|module/i.test(ct)) throw new Error(`SQLite module Content-Type invalid: ${ct||"(none)"}`);
-       mod=await import(`/sqlite/index.mjs?v=v7e-alpha43-${attempt}`);
+       mod=await import(`/sqlite/index.mjs?v=v7e-alpha44-${attempt}`);
      }catch(e){
        lastErr=e; status("import-retry",`attempt ${attempt}/3: ${e?.message||e}`);
        if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));
@@ -952,12 +952,21 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const a=a0.sort((x,y)=>x.date.localeCompare(y.date));
        if(a.length<75||a[a.length-1].date!==actualAsOf)continue;
        const closes=a.map(x=>x.c),vols=a.map(x=>x.v),highs=a.map(x=>x.h),lows=a.map(x=>x.l),last=a[a.length-1];
-       const ma5=avg(closes.slice(-5)),ma25=avg(closes.slice(-25)),ma75=avg(closes.slice(-75));
+       const ms5=rollingMA(closes,5),ms25=rollingMA(closes,25),ms75=rollingMA(closes,75),ms200=rollingMA(closes,200);
+       const ma5=ms5.at(-1),ma25=ms25.at(-1),ma75=ms75.at(-1),ma200=ms200.at(-1);
+       const slope5=slopePct(ms5,5),slope25=slopePct(ms25,5),slope75=slopePct(ms75,20),slope200=slopePct(ms200,20);
        const ret5=closes.length>=6?pct(last.c,closes[closes.length-6]):null;
        const ret20=closes.length>=21?pct(last.c,closes[closes.length-21]):null;
        const vol20vals=vols.slice(-20).filter(v=>Number.isFinite(v));
        const vol20=vol20vals.length?avg(vol20vals):null;
        const volRatio=(Number.isFinite(last.v)&&vol20>0)?last.v/vol20:null;
+       const high52=closes.length>=252?Math.max(...closes.slice(-252)):null,low52=closes.length>=252?Math.min(...closes.slice(-252)):null;
+       const atr14=atrWilder(highs,lows,closes),atr14Pct=(atr14!=null&&last.c)?atr14/last.c*100:null;
+       const [new20H,new20L]=breakout(last.c,highs,lows,20),[new60H,new60L]=breakout(last.c,highs,lows,60),[new52H,new52L]=breakout(last.c,highs,lows,252);
+       const e12=emaSeries(closes,12),e26=emaSeries(closes,26),macs=e12.map((x,i)=>x-e26[i]),sigs=emaSeries(macs,9);
+       const macd=closes.length>=26?macs.at(-1):null,macdSignal=closes.length>=34?sigs.at(-1):null,macdHistogram=(macd!=null&&macdSignal!=null)?macd-macdSignal:null;
+       let macdState="";if(macdSignal!=null&&macs.length>=2){const pd=macs.at(-2)-sigs.at(-2),cd=macs.at(-1)-sigs.at(-1);macdState=pd<=0&&cd>0?"GoldenCross":pd>=0&&cd<0?"DeadCross":cd>0?"AboveSignal":cd<0?"BelowSignal":"OnSignal"}
+       const ichi=ichimoku(highs,lows,closes),maAlignment=alignment(ma5,ma25,ma75,ma200),trend=trendState(last.c,ma5,ma25,ma75,ma200,slope25,slope75,slope200);
        const high20=Math.max(...highs.slice(-20)),low20=Math.min(...lows.slice(-20));
        const high60=Math.max(...highs.slice(-60)),low60=Math.min(...lows.slice(-60));
        const lowClose20=Math.min(...closes.slice(-20)),lowClose60=Math.min(...closes.slice(-60));
@@ -1376,7 +1385,15 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      const unrealizedPct=cost?unrealized/cost*100:null;
      return {code,name:st.name??st.Name??m.company_name??"",account:st.account??st.Account??"",
        shares,avgCost,close,marketValue,unrealized,unrealizedPct,
-       ma25:t.ma25??null,ma75:t.ma75??null,rsi14:t.rsi14??null,return20D:t.ret20??null,relativeToTOPIX20D:t.rel20??null,
+       ma5:t.ma5??null,ma25:t.ma25??null,ma75:t.ma75??null,ma200:t.ma200??null,rsi14:t.rsi14??null,
+       ma5Slope5DPct:t.slope5??null,ma25Slope5DPct:t.slope25??null,ma75Slope20DPct:t.slope75??null,ma200Slope20DPct:t.slope200??null,
+       deviationFromMA5Pct:t.distMa5??null,deviationFromMA25Pct:t.distMa25??null,deviationFromMA75Pct:t.distMa75??null,deviationFromMA200Pct:t.distMa200??null,
+       atr14:t.atr14??null,atr14Pct:t.atr14Pct??null,high52Week:t.high52??null,low52Week:t.low52??null,
+       macd:t.macd??null,macdSignal:t.macdSignal??null,macdHistogram:t.macdHistogram??null,macdState:t.macdState??"",
+       ichimokuTenkan:t.ichimokuTenkan??null,ichimokuKijun:t.ichimokuKijun??null,ichimokuSenkouA:t.ichimokuSenkouA??null,ichimokuSenkouB:t.ichimokuSenkouB??null,
+       ichimokuAboveCloud:t.ichimokuAboveCloud??"",ichimokuCloudDirection:t.ichimokuCloudDirection??"",
+       aboveMA5:t.aboveMA5??"",aboveMA25:t.aboveMA25??"",aboveMA75:t.aboveMA75??"",aboveMA200:t.aboveMA200??"",maAlignment:t.maAlignment??"",trendState:t.trendState??"",
+       return20D:t.ret20??null,relativeToTOPIX20D:t.rel20??null,
        companyName:m.company_name??null,market:m.market??null,sector17:m.sector17??null,sector33:m.sector33??null,marginCategory:m.margin_category??null,
        discDate:f.discDate??null,sales:f.sales??null,op:f.op??null,np:f.np??null,eps:f.eps??null,
        forecastSales:f.forecastSales??null,forecastOP:f.forecastOP??null,forecastNP:f.forecastNP??null,forecastEPS:f.forecastEPS??null,
@@ -1494,6 +1511,15 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        if(al===0)return 100;
        return 100-(100/(1+(ag/al)));
      }
+     const rollingMA=(xs,n)=>xs.map((_,i)=>i<n-1?null:avg(xs.slice(i-n+1,i+1)));
+     const slopePct=(series,n)=>{if(series.length<=n)return null;const c=series.at(-1),p=series.at(-1-n);return(c==null||p==null||p===0)?null:pct(c,p)};
+     const emaSeries=(xs,n)=>{if(!xs.length)return[];const al=2/(n+1),o=[xs[0]];for(let i=1;i<xs.length;i++)o.push(al*xs[i]+(1-al)*o.at(-1));return o};
+     const midpoint=(hs,ls,end,n)=>{if(end<0)end+=hs.length;const st=end-n+1;if(st<0||end>=hs.length)return null;return(Math.max(...hs.slice(st,end+1))+Math.min(...ls.slice(st,end+1)))/2};
+     const ichimoku=(hs,ls,cs)=>{const last=cs.length-1,ten=midpoint(hs,ls,last,9),kij=midpoint(hs,ls,last,26),fa=(ten!=null&&kij!=null)?(ten+kij)/2:null,fb=midpoint(hs,ls,last,52),src=last-26,ot=midpoint(hs,ls,src,9),ok=midpoint(hs,ls,src,26),sa=(ot!=null&&ok!=null)?(ot+ok)/2:null,sb=midpoint(hs,ls,src,52),cr=cs.length>=27?cs.at(-27):null;let ab="",cd="";if(sa!=null&&sb!=null){const top=Math.max(sa,sb),bot=Math.min(sa,sb);ab=cs.at(-1)>top?"1":cs.at(-1)<bot?"0":"Inside";cd=sa>sb?"Bullish":sa<sb?"Bearish":"Flat"}return{tenkan:ten,kijun:kij,spanA:sa,spanB:sb,futureA:fa,futureB:fb,chikouRef:cr,chikouBullish:cr==null?"":(cs.at(-1)>cr?"1":"0"),aboveCloud:ab,cloudDirection:cd}};
+     const atrWilder=(hs,ls,cs,n=14)=>{if(cs.length<n+1)return null;const tr=[];for(let i=1;i<cs.length;i++)tr.push(Math.max(hs[i]-ls[i],Math.abs(hs[i]-cs[i-1]),Math.abs(ls[i]-cs[i-1])));let at=avg(tr.slice(0,n));for(let i=n;i<tr.length;i++)at=((at*(n-1))+tr[i])/n;return at};
+     const breakout=(close,hs,ls,n)=>hs.length<=n?["",""]:[close>Math.max(...hs.slice(-1-n,-1))?"1":"0",close<Math.min(...ls.slice(-1-n,-1))?"1":"0"];
+     const alignment=(m5,m25,m75,m200)=>[m5,m25,m75,m200].some(x=>x==null)?"":m5>m25&&m25>m75&&m75>m200?"Bullish":m5<m25&&m25<m75&&m75<m200?"Bearish":"Mixed";
+     const trendState=(price,m5,m25,m75,m200,s25,s75,s200)=>{if([m5,m25,m75,m200].every(x=>x!=null)){if(price>m5&&m5>m25&&m25>m75&&m75>m200&&[s25,s75,s200].every(x=>(x||0)>0))return"PerfectOrderBull";if(price<m5&&m5<m25&&m25<m75&&m75<m200&&[s25,s75,s200].every(x=>(x||0)<0))return"PerfectOrderBear"}if(m25!=null&&m75!=null){if(price>m25&&m25>m75&&(s25||0)>0)return"ShortTermBull";if(price>m25&&m25<=m75&&(s25||0)>0)return"Recovery";if(price<m25&&m25<m75&&(s25||0)<0)return"ShortTermBear";if(price<m25&&m25>=m75&&(s25||0)<0)return"Deteriorating"}return"Consolidation"};
      const rows=[];
      for(const [code,a0] of byCode){
        const a=a0.sort((x,y)=>x.date.localeCompare(y.date));
@@ -1527,10 +1553,18 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        if(ma25>ma75)score+=1;
        if(ret20!=null)score+=Math.max(-2,Math.min(2,ret20/10));
        if(volRatio!=null)score+=Math.max(-1,Math.min(1,(volRatio-1)));
-       rows.push({code,date:last.date,close:last.c,ma5,ma25,ma75,distMa25,distMa75,
-         high20,low20,high60,low60,pos20,pos60,rsi14:rs,ret5,ret20,ret60,ret120,
-         topixRet5:topixReturns.ret5,topixRet20:topixReturns.ret20,topixRet60:topixReturns.ret60,topixRet120:topixReturns.ret120,
-         rel5,rel20,rel60,rel120,volume:last.v,vol20,volRatio,score});
+       rows.push({code,date:last.date,close:last.c,ma5,ma25,ma75,ma200,slope5,slope25,slope75,slope200,
+         distMa5:pct(last.c,ma5),distMa25,distMa75,distMa200:pct(last.c,ma200),atr14,atr14Pct,
+         high20,low20,high60,low60,high52,low52,distHigh20:pct(last.c,high20),distLow20:pct(last.c,low20),
+         distHigh60:pct(last.c,high60),distLow60:pct(last.c,low60),distHigh52:pct(last.c,high52),distLow52:pct(last.c,low52),
+         new20H,new20L,new60H,new60L,new52H,new52L,pos20,pos60,rsi14:rs,macd,macdSignal,macdHistogram,macdState,
+         ichimokuTenkan:ichi.tenkan,ichimokuKijun:ichi.kijun,ichimokuSenkouA:ichi.spanA,ichimokuSenkouB:ichi.spanB,
+         ichimokuFutureSenkouA:ichi.futureA,ichimokuFutureSenkouB:ichi.futureB,ichimokuChikouReferenceClose:ichi.chikouRef,
+         ichimokuChikouBullish:ichi.chikouBullish,ichimokuAboveCloud:ichi.aboveCloud,ichimokuCloudDirection:ichi.cloudDirection,
+         aboveMA5:ma5!=null?(last.c>ma5?"1":"0"):"",aboveMA25:ma25!=null?(last.c>ma25?"1":"0"):"",
+         aboveMA75:ma75!=null?(last.c>ma75?"1":"0"):"",aboveMA200:ma200!=null?(last.c>ma200?"1":"0"):"",
+         maAlignment,trendState:trend,ret5,ret20,ret60,ret120,topixRet5:topixReturns.ret5,topixRet20:topixReturns.ret20,
+         topixRet60:topixReturns.ret60,topixRet120:topixReturns.ret120,rel5,rel20,rel60,rel120,volume:last.v,vol20,volRatio,score});
      }
      rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);
      self.postMessage({ok:true,type:"result",stage:"PASS",requestedAsOf:asOf,asOf:actualAsOf,
