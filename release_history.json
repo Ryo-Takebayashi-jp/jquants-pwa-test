@@ -6,5 +6,12 @@
       "date": "2026-09-01",
       "note": "Promote 54/54 technical parity into portfolio/Web-JQP integration and add combined PC-Web parity audit."
     }
+  ],
+  "releases": [
+    {
+      "version": "v7e-alpha50",
+      "date": "2026-09-01",
+      "summary": "UI cleanup + unified Screening base universe"
+    }
   ]
 }

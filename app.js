@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha49");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha50");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha49").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha50").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1297,7 +1297,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha49",
+   appVersion:"v7e-alpha50",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -2082,6 +2082,26 @@ if($("portfolioExportBtn")) $("portfolioExportBtn").onclick=()=>{
  const rows=window.__latestPortfolioIntegrated||[];if(!rows.length)return;const headers=Object.keys(rows[0]),esc=v=>{const x=v==null?"":String(v);return /[",\n]/.test(x)?`"${x.replaceAll('"','""')}"`:x};
  const csv="\uFEFF"+headers.join(",")+"\n"+rows.map(r=>headers.map(k=>esc(r[k])).join(",")).join("\n"),blob=new Blob([csv],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),el=document.createElement("a");
  el.href=url;el.download=`web_portfolio_integrated_${new Date().toISOString().slice(0,10).replaceAll("-","")}.csv`;el.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+
+let latestScreeningBaseRows=[];
+if($("screeningBaseBtn")) $("screeningBaseBtn").onclick=async()=>{
+ const btn=$("screeningBaseBtn"),asOf=$("screeningBaseAsOf")?.value||$("screeningAsOf")?.value||todayIsoLocal();
+ btn.disabled=true; box("screeningBaseResult","run",`${asOf} Screening統合母集団を構築中…`);
+ try{
+   const tech=await workerCall("technical-screening-poc",600000,null,null,{asOf,lookback:320,topN:5000,returnAll:true});
+   if(!latestFinancialNormalized){const fr=await workerCall("financial-normalize-latest",180000);latestFinancialNormalized=fr.rows}
+   const r=await workerCall("screening-base-snapshot",240000,null,null,{asOf,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized});
+   latestScreeningBaseRows=r.rows||[];
+   const x=r.coverage||{};
+   box("screeningBaseResult",(x.technical===r.count&&x.master>0)?"pass":"warn",`Screening統合母集団\n基準日: ${asOf}\n銘柄: ${r.count}\nテクニカル: ${x.technical}/${r.count}\nMaster: ${x.master}/${r.count}\n財務: ${x.financial}/${r.count}\n会社予想: ${x.forecast}/${r.count}\n\n次段階: PC版5戦略スコア/Top20選抜`);
+   if($("screeningBaseExportBtn")) $("screeningBaseExportBtn").disabled=!latestScreeningBaseRows.length;
+ }catch(e){box("screeningBaseResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
+};
+if($("screeningBaseExportBtn")) $("screeningBaseExportBtn").onclick=()=>{
+ if(!latestScreeningBaseRows.length)return; const keys=[...new Set(latestScreeningBaseRows.flatMap(Object.keys))];
+ const esc=v=>'"'+String(v??'').replaceAll('"','""')+'"'; const csv=[keys.join(','),...latestScreeningBaseRows.map(r=>keys.map(k=>esc(r[k])).join(','))].join('\n');
+ downloadBlob(`web_screening_base_${($("screeningBaseAsOf")?.value||todayIsoLocal()).replaceAll('-','')}.csv`,new Blob([csv],{type:'text/csv;charset=utf-8'}));
 };
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();
 if($("technicalScreeningBtn")) $("technicalScreeningBtn").onclick=async()=>{

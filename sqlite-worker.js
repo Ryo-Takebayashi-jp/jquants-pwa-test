@@ -1355,6 +1355,23 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    self.postMessage({ok:true,type:"result",result});return;
  }
 
+ if(cmd==="screening-base-snapshot"){
+   const payload=d.payload||{}, techRows=payload.techRows||[], finRows=payload.finRows||[];
+   const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const fmap=new Map(finRows.map(x=>[norm(x.code),x]));
+   const mmap=new Map(); let mdb=null;
+   try{mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");for(const r of execRows(mdb,"SELECT code,company_name,market,sector17,sector33,margin_category FROM equities_master")){mmap.set(norm(r.code),r)}mdb.close();mdb=null}catch(e){try{if(mdb)mdb.close()}catch(_){}}
+   let master=0,financial=0,forecast=0;
+   const rows=techRows.map(t=>{const code=norm(t.code),m=mmap.get(code)||{},f=fmap.get(code)||{};if(m.company_name)master++;if(f.discDate)financial++;if(f.forecastEPS!=null||f.forecastSales!=null||f.forecastOP!=null)forecast++;return {
+     Date:payload.asOf||t.date||null,NormalizedCode:code,CompanyName:m.company_name||null,Market:m.market||null,Sector17:m.sector17||null,Sector33:m.sector33||null,MarginCategory:m.margin_category||null,
+     Close:t.close??null,MA5:t.ma5??null,MA25:t.ma25??null,MA75:t.ma75??null,MA200:t.ma200??null,RSI14:t.rsi14??null,Return5D:t.ret5??null,Return20D:t.ret20??null,Return60D:t.ret60??null,Return120D:t.ret120??null,
+     RelativeToTOPIX5D:t.rel5??null,RelativeToTOPIX20D:t.rel20??null,RelativeToTOPIX60D:t.rel60??null,RelativeToTOPIX120D:t.rel120??null,ATR14Pct:t.atr14Pct??null,High20D:t.high20??null,Low20D:t.low20??null,High60D:t.high60??null,Low60D:t.low60??null,High52Week:t.high52??null,Low52Week:t.low52??null,
+     MA25DeviationPct:t.distMa25??null,MA75DeviationPct:t.distMa75??null,MA25Slope5DPct:t.slope25??null,MA75Slope20DPct:t.slope75??null,MACDHistogram:t.macdHistogram??null,TrendState:t.trendState??null,
+     DiscDate:f.discDate??null,Sales:f.sales??null,OperatingProfit:f.op??null,OrdinaryProfit:f.odp??null,NetProfit:f.np??null,EPS:f.eps??null,BPS:f.bps??null,Equity:f.equity??null,TotalAssets:f.totalAssets??null,CFO:f.cfo??null,CFI:f.cfi??null,CFF:f.cff??null,ForecastSales:f.forecastSales??null,ForecastOperatingProfit:f.forecastOP??null,ForecastOrdinaryProfit:f.forecastOdP??null,ForecastNetProfit:f.forecastNP??null,ForecastEPS:f.forecastEPS??null
+   }});
+   self.postMessage({ok:true,type:"result",rows,count:rows.length,coverage:{technical:techRows.length,master,financial,forecast}});return;
+ }
+
  if(cmd==="portfolio-integrated-snapshot"){
    const payload=d.payload||{}, stocks=payload.stocks||[], techRows=payload.techRows||[], finRows=payload.finRows||[], supply=payload.supply||{};
    const normCode=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
