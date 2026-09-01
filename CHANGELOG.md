@@ -1,5 +1,25 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha11 — CURRENT (2026-09-01)
+- alpha9の5営業日移行がiPhone実機で22,215行 / 0.37秒 / quick_check=ok / source-destination完全一致でPASS。
+- 年別Shard移行を追加。
+- 既定2026年の `bars_daily` を `/jq_bars_2026_v1.sqlite` へ移行可能。
+- Legacy DataLakeはread-only。
+- source/destination行数、営業日数、MIN/MAX日付、PRAGMA quick_checkを全照合。
+- 全検証PASS後のみCatalogへ `bars_YYYY` を state=ready で登録。
+- 既存bars_recent移行・診断機能は維持。
+
+# J-Quants Project Changelog
+
+## Web/PWA v7e-alpha10 — CURRENT (2026-09-01)
+- UIを本番導線優先へ整理。
+- Catalog準備 / bars_recent確認 / Legacy→bars_recent少量移行を「Web版 DataLake」として前面配置。
+- Worker PING、Runtime probe、lifecycle probe、旧PoCテスト等は「開発者診断（通常は開かなくてOK）」へ格納。
+- 診断機能は削除せず、必要時に再利用可能。
+- alpha9の少量移行ロジック・検証条件は変更なし。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha9 — CURRENT (2026-09-01)
 - alpha8でWorker PING×2、常駐Runtime×2、close→reOpen、Catalog作成、Catalog経由Shard再OpenがiPhone実機PASS。
 - Legacy 1.12GB DataLakeから bars_recent へ最新1～10営業日だけをコピーする少量移行パイロットを追加（既定5日）。

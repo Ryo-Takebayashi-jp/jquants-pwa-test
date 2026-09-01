@@ -807,7 +807,7 @@ SQLite/SAH Poolは未使用`);
 
 if($("shardPilotBtn")) $("shardPilotBtn").onclick=async()=>{
  const days=Math.max(1,Math.min(10,Number($("shardPilotDays")?.value||5)));
- box("shardPilotResult","run",`最新${days}営業日だけ移行中…\nLegacy DataLakeはread-only`);
+ box("shardPilotResult","run",`最新${days}営業日をbars_recentへ移行中…\nLegacy DataLakeはread-only`);
  try{
    const r=await workerCall("shard-migrate-pilot",300000,s=>box("shardPilotResult","run",`進行中: ${s.stage||"-"}\n${s.detail||""}`),null,{days});
    box("shardPilotResult","pass",`PASS
@@ -825,4 +825,34 @@ stage: ${x.stage||"unknown"}
 message: ${x.message||String(e)}
 stack: ${x.stack||"-"}
 Legacy DataLake: read-only`);}
+};
+
+if($("yearShardBtn")) $("yearShardBtn").onclick=async()=>{
+ const year=Math.max(2000,Math.min(2100,Number($("yearShardYear")?.value||new Date().getFullYear())));
+ box("yearShardResult","run",`${year}年の日足を年別Shardへ移行中…\nLegacy DataLakeはread-only`);
+ try{
+   const r=await workerCall("shard-migrate-year",900000,
+     s=>box("yearShardResult","run",`進行中: ${s.stage||"-"}\n${s.detail||""}`),
+     null,{year});
+   box("yearShardResult","pass",`PASS
+Shard: ${r.shardName}
+対象年: ${r.year}
+期間: ${r.minDate} ～ ${r.maxDate}
+営業日数: ${Number(r.tradingDays).toLocaleString()}
+Source rows: ${Number(r.expectedRows).toLocaleString()}
+Write attempts: ${Number(r.writtenRows).toLocaleString()}
+Verified rows: ${Number(r.verifiedRows).toLocaleString()}
+quick_check: ${r.quickCheck}
+処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒
+Catalog登録: ${r.shardKey}
+Legacy DataLake: read-only / 未変更
+判定: 年別Shard移行 + 全照合 PASS`);
+ }catch(e){
+   const x=e&&typeof e==="object"?e:{message:String(e)};
+   box("yearShardResult","fail",`FAIL
+stage: ${x.stage||"unknown"}
+message: ${x.message||String(e)}
+stack: ${x.stack||"-"}
+Legacy DataLake: read-only`);
+ }
 };

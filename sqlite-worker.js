@@ -376,6 +376,171 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return;
    }finally{try{if(catDb)catDb.close()}catch(_){} try{if(dstDb)dstDb.close()}catch(_){} try{if(srcDb)srcDb.close()}catch(_){}}
  }
+
+ if(cmd==="shard-migrate-year"){
+   const catalogName="/jq_catalog_v1.sqlite";
+   const sourceName=name;
+   let srcDb=null,dstDb=null,catDb=null,stage="start";
+   const mark=(s,detail="")=>{stage=s;status(s,detail)};
+   try{
+     mark("01-source-open",`Legacy DataLake read-only: ${sourceName}`);
+     const resolved=resolveExistingMarketDb(p,sourceName);
+     srcDb=new p.OpfsSAHPoolDb(resolved.name,"r");
+
+     mark("02-resolve-year","Resolve latest calendar year");
+     const maxDate=String(scalar(srcDb,"SELECT MAX(date) FROM bars_daily")||"");
+     if(!maxDate) throw new Error("bars_daily max(date) is empty");
+     const latestYear=Number(maxDate.slice(0,4));
+     const requested=Number(d.payload?.year||latestYear);
+     const year=Math.max(2000,Math.min(2100,requested));
+     const from=`${year}-01-01`, to=`${year}-12-31`;
+     const shardKey=`bars_${year}`;
+     const shardName=`/jq_bars_${year}_v1.sqlite`;
+
+     mark("03-source-scan",`${year} source scan`);
+     const sourceStats=execRows(srcDb,`
+       SELECT COUNT(*) AS rows,
+              COUNT(DISTINCT date) AS trading_days,
+              MIN(date) AS min_date,
+              MAX(date) AS max_date
+       FROM bars_daily
+       WHERE date>=? AND date<=?`,[from,to])[0]||{};
+     const expected=Number(sourceStats.rows||0);
+     const tradingDays=Number(sourceStats.trading_days||0);
+     const minDate=String(sourceStats.min_date||"");
+     const maxYearDate=String(sourceStats.max_date||"");
+     if(expected<=0 || tradingDays<=0) throw new Error(`No bars_daily rows for ${year}`);
+
+     mark("04-destination-open",`${shardName} create/open`);
+     dstDb=new p.OpfsSAHPoolDb(shardName,"c");
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS bars_daily(
+       code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,
+       upper_limit REAL,lower_limit REAL,value REAL,
+       adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,
+       adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,
+       PRIMARY KEY(code,date)
+     ) WITHOUT ROWID`);
+     dstDb.exec(`CREATE INDEX IF NOT EXISTS idx_bars_year_date ON bars_daily(date)`);
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+
+     const srcCols=new Set(tableInfo(srcDb,"bars_daily").map(x=>x.name));
+     const cols=tableInfo(dstDb,"bars_daily").map(x=>x.name).filter(x=>srcCols.has(x));
+     if(!cols.includes("code")||!cols.includes("date"))
+       throw new Error("Schema mismatch: code/date missing");
+     const updates=cols.filter(x=>!["code","date"].includes(x))
+       .map(x=>`${qident(x)}=excluded.${qident(x)}`).join(",");
+     const sql=`INSERT INTO bars_daily(${cols.map(qident).join(",")})
+       VALUES(${cols.map(()=>"?").join(",")})
+       ON CONFLICT(code,date) DO UPDATE SET ${updates}`;
+     const stmt=dstDb.prepare(sql);
+
+     mark("05-copy",`${year}: ${expected.toLocaleString()} rows / ${tradingDays} days`);
+     let written=0;
+     try{
+       dstDb.exec("BEGIN");
+       srcDb.exec({
+         sql:`SELECT ${cols.map(qident).join(",")}
+              FROM bars_daily
+              WHERE date>=? AND date<=?
+              ORDER BY date,code`,
+         bind:[from,to],
+         rowMode:"array",
+         callback:r=>{
+           stmt.bind(r).stepReset();
+           written++;
+           if(written%50000===0) mark("05-copy",`${year}: ${written.toLocaleString()} / ${expected.toLocaleString()} rows`);
+         }
+       });
+       dstDb.exec("COMMIT");
+     }catch(err){
+       try{dstDb.exec("ROLLBACK")}catch(_){}
+       throw err;
+     }finally{
+       stmt.finalize();
+     }
+
+     mark("06-verify","Row/day/range/quick_check verification");
+     const actual=Number(scalar(dstDb,`SELECT COUNT(*) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const actualDays=Number(scalar(dstDb,`SELECT COUNT(DISTINCT date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const dstMin=String(scalar(dstDb,`SELECT MIN(date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||"");
+     const dstMax=String(scalar(dstDb,`SELECT MAX(date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||"");
+     const qc=String(scalar(dstDb,"PRAGMA quick_check")||"");
+
+     if(actual!==expected) throw new Error(`Row mismatch source=${expected}, destination=${actual}`);
+     if(actualDays!==tradingDays) throw new Error(`Trading-day mismatch source=${tradingDays}, destination=${actualDays}`);
+     if(dstMin!==minDate || dstMax!==maxYearDate) throw new Error(`Range mismatch source=${minDate}..${maxYearDate}, destination=${dstMin}..${dstMax}`);
+     if(qc!=="ok") throw new Error(`quick_check=${qc}`);
+
+     const at=new Date().toISOString().replace(/'/g,"''");
+     const meta={
+       role:shardKey,
+       schema_version:"bars-v1",
+       calendar_year:String(year),
+       range_start:dstMin,
+       range_end:dstMax,
+       source_db:resolved.name,
+       migrated_at:at
+     };
+     for(const [k,v] of Object.entries(meta)){
+       const kk=String(k).replace(/'/g,"''"), vv=String(v).replace(/'/g,"''");
+       dstDb.exec(`INSERT INTO shard_meta(key,value) VALUES('${kk}','${vv}')
+         ON CONFLICT(key) DO UPDATE SET value='${vv}'`);
+     }
+     dstDb.close(); dstDb=null;
+     srcDb.close(); srcDb=null;
+
+     mark("07-catalog-register",`${shardKey} register`);
+     catDb=new p.OpfsSAHPoolDb(catalogName,"c");
+     catDb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+       shard_key TEXT PRIMARY KEY,
+       logical_name TEXT NOT NULL,
+       dataset TEXT NOT NULL,
+       range_start TEXT,
+       range_end TEXT,
+       schema_version TEXT NOT NULL,
+       state TEXT NOT NULL,
+       updated_at TEXT NOT NULL
+     )`);
+     const safeName=shardName.replace(/'/g,"''");
+     catDb.exec(`INSERT INTO shard_catalog(
+       shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at
+     ) VALUES(
+       '${shardKey}','${safeName}','bars_daily','${dstMin}','${dstMax}','bars-v1','ready','${at}'
+     )
+     ON CONFLICT(shard_key) DO UPDATE SET
+       logical_name='${safeName}',
+       dataset='bars_daily',
+       range_start='${dstMin}',
+       range_end='${dstMax}',
+       schema_version='bars-v1',
+       state='ready',
+       updated_at='${at}'`);
+     const catalogRows=execRows(catDb,`SELECT * FROM shard_catalog WHERE shard_key='${shardKey}'`);
+     catDb.close(); catDb=null;
+
+     self.postMessage({
+       ok:true,type:"result",stage:"PASS",
+       source:resolved.name,year,shardKey,shardName,
+       expectedRows:expected,writtenRows:written,verifiedRows:actual,
+       tradingDays,verifiedTradingDays:actualDays,
+       minDate:dstMin,maxDate:dstMax,quickCheck:qc,catalogRows,
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }catch(err){
+     self.postMessage({
+       ok:false,type:"error",stage,
+       message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }finally{
+     try{if(catDb)catDb.close()}catch(_){}
+     try{if(dstDb)dstDb.close()}catch(_){}
+     try{if(srcDb)srcDb.close()}catch(_){}
+   }
+ }
  if(cmd==="shard-health"){
    const catalogName="/jq_catalog_v1.sqlite";
    let cdb=null,sdb=null,stage="start";
