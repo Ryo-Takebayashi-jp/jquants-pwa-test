@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha60");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha61");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha60").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha61").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2118,6 +2118,7 @@ if($("screeningBaseBtn")) $("screeningBaseBtn").onclick=async()=>{
    if(!latestFinancialNormalized){const fr=await workerCall("financial-normalize-latest",180000);latestFinancialNormalized=fr.rows}
    const r=await workerCall("screening-base-snapshot",240000,null,null,{asOf,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized});
    latestScreeningBaseRows=r.rows||[];
+   try{const sf=await workerCall("screening-supply-features",180000,null,null,{asOf});const sm=new Map((sf.rows||[]).map(x=>[String(x.code),x]));latestScreeningBaseRows=latestScreeningBaseRows.map(x=>({...x,...(sm.get(String(x.NormalizedCode))||{})}));}catch(_){/* supply is optional; PC logic treats missing as zero penalty */}
    const x=r.coverage||{};
    box("screeningBaseResult",(x.technical===r.count&&x.master===r.count)?"pass":"warn",`Screening統合母集団\n基準日: ${asOf}\nフィルタ前: ${x.preFilter??"-"}\nフィルタ後: ${r.count}\nテクニカル: ${x.technical}/${r.count}\nMaster: ${x.master}/${r.count}\n財務: ${x.financial}/${r.count}\n会社予想: ${x.forecast}/${r.count}\n\n${x.master===r.count?"Master JOIN: PASS":"Master JOIN: 要確認"}\n母集団フィルタ: Market + 普通株011 + 売買代金5,000万円 + 株価100円 + 履歴60日\n次段階: PC版5戦略スコア/Top20選抜`);
    if($("screeningBaseExportBtn")) $("screeningBaseExportBtn").disabled=!latestScreeningBaseRows.length;
@@ -2169,7 +2170,11 @@ function buildScreeningStrategies(rows){
    const base=weighted(r,[["Relative20Score",.17],["Relative60Score",.13],["MA25SlopeScore",.14],["MA75SlopeScore",.10],["MACDHistogramImprovementScore",.12],["VolumePickupScore",.10]],50);
    r.QVRReRatingScore=Math.max(0,Math.min(100,base*.76+rsi*.09+early*.08+mb*.07));
    let mismatch=0;if(r.PrimaryProfitYoY>20&&r.LatestAvailableCFO<0)mismatch+=10;if(Math.abs(Number(r.PrimaryProfitYoY))>300)mismatch+=8;if(Number(r.AverageTradingValue20D)<100000000)mismatch+=5;
-   r.QVRCrowdingPenalty=0; // active once supply-change fields are normalized
+   let crowd=0;
+   const ml=Number(r.MarginLongChangePct1W);if(Number.isFinite(ml)&&ml>10)crowd+=Math.min(12,(ml-10)*.4);
+   const fresh=String(r.LargeShortAggregateFreshness||r.LargeShortFreshness||"");const sc=Number(r.LargeShortRatioChange1W);
+   if((fresh==="Fresh"||fresh==="Recent")&&Number.isFinite(sc)&&sc>0)crowd+=Math.min(8,sc*100*4);
+   r.QVRCrowdingPenalty=Math.min(crowd,15);
    r.QVRQualityMismatchPenalty=mismatch;
    r.QualityValueReRatingScore=r.QVRValueScore==null?null:Math.max(0,Math.min(100,r.QVRQualityScore*.36+r.QVRValueScore*.28+r.QVRReRatingScore*.36-r.QVRCrowdingPenalty-mismatch));
    let chase=0;if(r.Return5D>10)chase+=Math.min((r.Return5D-10)*1.5,20);if(r.Return20D>25)chase+=Math.min((r.Return20D-25)*.8,20);if(r.MA25DeviationPct>12)chase+=Math.min(r.MA25DeviationPct-12,15);r.ChasePenalty=chase;
@@ -2272,6 +2277,9 @@ ${exact?"完全一致 PASS":"選抜ロジック調整対象"}
 
 【戦略別Top20境界差】
 ${d.byStrategy.join("\n")||"なし"}
+
+【QVR共通銘柄 Score差】
+${(()=>{const fs=["QualityValueReRatingScore","QVRQualityScore","QVRValueScore","QVRReRatingScore","QVRCrowdingPenalty","QVRQualityMismatchPenalty","QVROverheatPenalty","ForecastPER","PBR","ForecastDividendYieldPct","ROE","EquityRatioPct","LatestAvailableCFO","LatestAvailableFCF","MarginLongChangePct1W","LargeShortRatioChange1W"];const z=[];for(const c of d.pm.keys()){if(!d.wm.has(c))continue;const a=d.pm.get(c),b=d.wm.get(c),xs=[];for(const f of fs){const x=a?.[f],y=b?.[f];if(x==null&&y==null)continue;const nx=Number(x),ny=Number(y),neq=Number.isFinite(nx)&&Number.isFinite(ny)?Math.abs(nx-ny)>1e-6:String(x??"")!==String(y??"");if(neq)xs.push(f+":"+(x??"-")+"/"+(y??"-"))}if(xs.length)z.push(c+" "+xs.slice(0,6).join(" | "))}return z.slice(0,12).join("\n")||"主要入力/Score差なし"})()}
 
 【差分銘柄 rank PC/Web】
 ${d.detail.slice(0,40).join("\n")||"なし"}${diff.length?"\n\nPrimary差分:\n"+diff.slice(0,12).join("\n"):""}`)

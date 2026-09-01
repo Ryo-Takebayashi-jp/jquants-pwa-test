@@ -1385,6 +1385,20 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    self.postMessage({ok:true,type:"result",result});return;
  }
 
+ if(cmd==="screening-supply-features"){
+   const payload=d.payload||{},asOf=String(payload.asOf||"9999-12-31");
+   const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const num=(o,ks)=>{for(const k of ks){const v=o?.[k];if(v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)))return Number(v)}return null};
+   const rows=new Map();
+   // PC QVR uses only a small capped supply penalty. Recreate the margin-long 1W component from the latest two weekly observations.
+   let db=null;try{db=new p.OpfsSAHPoolDb("/jq_margin_interest_v1.sqlite","r");const rs=execRows(db,"SELECT data_date,raw_json FROM margin_interest WHERE data_date<=? ORDER BY data_date DESC",[asOf]);const hist=new Map();
+     for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const c=norm(o.Code??o.code??o.IssueCode);if(!c)continue;const v=num(o,["LongMarginTradeVolume","LongMarginOutstanding","BuyBalance","LongMarginTradeBalance","LongMargin"]);if(v==null)continue;if(!hist.has(c))hist.set(c,[]);const a=hist.get(c);if(a.length<2)a.push({date:String(rr.data_date||""),v})}
+     for(const [c,a] of hist){if(a.length>=2&&a[1].v!==0){const ch=(a[0].v/a[1].v-1)*100;rows.set(c,{code:c,MarginLongChangePct1W:ch})}}db.close();db=null
+   }catch(_){try{if(db)db.close()}catch(__){}}
+   // Large-short penalty is freshness-gated. Preserve missing when the report schema cannot prove a comparable aggregate.
+   self.postMessage({ok:true,type:"result",rows:[...rows.values()]});return;
+ }
+
  if(cmd==="screening-event-features"){
    let cdb=null,tdb=null,stage="01-input";
    try{
