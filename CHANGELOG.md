@@ -1,13 +1,9 @@
-# v7e-alpha62
+# CHANGELOG
 
-- Screening統合母集団へ `ProfitType` を正式伝播。Web QVR Quality の営業利益率スコアが常時50点になる欠落を修正。
-- QVR監査でPC空欄を `Number("")=0` と誤表示しない blank-safe 比較へ修正。
-- 6838等について ProfitType / BPS / PBR / ForecastPER / ForecastDividendYieldPct のPC/Web原材料を同時表示。
-- PBR差はPCへ盲目的に合わせず、BPS原材料の妥当性を確認してから判断する方針。
-
-# v7e-alpha62
-
-- Screening選抜ParityにQVR差分の自動監査を追加。
-- 6838を優先サンプルとして、Quality/Value/ReRatingとその原材料をPC/Webで直接比較。
-- 最初にズレる原材料を画面内に短く表示し、長い診断ログを追わずに原因特定できるよう改善。
-- 選抜ロジック自体はalpha60から変更せず、診断専用リリース。
+## v7e-alpha63 — 2026-09-02
+- QVR Sector相対評価の欠損処理バグを修正。
+- JavaScriptの `Number(null) === 0` により、PBR等の空欄銘柄が0としてSector peer順位へ混入していた。
+- group rankはblank/nullを除外。ForecastPER/PBRは正値のみ有効。
+- rawが欠損ならSectorForecastPER/PBR/DividendYieldValueScoreも欠損のまま保持。
+- QVRValueScoreは有効な評価軸だけで重みを再正規化。
+- 6838についてSector33、peer有効件数、rank、percentile再計算、PC/Web保存scoreを表示する監査を追加。

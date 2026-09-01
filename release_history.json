@@ -1,1 +1,10 @@
-[{"version":"v7e-alpha62","date":"2026-09-02","summary":"QVR ProfitType propagation fix + raw BPS/PBR validity audit; blank-safe parity diagnostics"},{"version":"v7e-alpha61","date":"2026-09-02","summary":"QVR component parity pinpoint diagnostics"}]
+{
+  "current_release": "v7e-alpha63",
+  "history": [
+    {
+      "release": "v7e-alpha63",
+      "date": "2026-09-02",
+      "note": "Fix null-to-zero contamination in sector-relative QVR ranks and add peer percentile audit."
+    }
+  ]
+}

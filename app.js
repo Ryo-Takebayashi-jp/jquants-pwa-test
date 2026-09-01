@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha60");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha63");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha60").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha63").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2142,11 +2142,22 @@ function buildScreeningStrategies(rows){
  const weighted=(r,defs,neutral=50)=>{let total=0,w=0;for(const [k,wt] of defs){const v=r[k];total+=(v==null?neutral:Number(v))*wt;w+=wt}return w?total/w:neutral};
  const rank=(field,out,reverse=false,groupField=null)=>{const assign=(items)=>{items.sort((a,b)=>a.v-b.v);const n=items.length;if(!n)return;let s=0;while(s<n){let e=s+1;while(e<n&&items[e].v===items[s].v)e++;const p=(((s+e-1)/2)+1)/n*100,q=reverse?100-p:p;for(let i=s;i<e;i++)rr[items[i].i][out]=q;s=e}};
    rr.forEach(r=>r[out]=null);
-   if(groupField){const gs=new Map();rr.forEach((r,i)=>{const v=Number(r[field]),g=String(r[groupField]||"").trim();if(Number.isFinite(v)&&g){if(!gs.has(g))gs.set(g,[]);gs.get(g).push({i,v})}});for(const items of gs.values())if(items.length>=5)assign(items)}
-   else assign(rr.map((r,i)=>({i,v:Number(r[field])})).filter(x=>Number.isFinite(x.v)));
+   if(groupField){const gs=new Map();rr.forEach((r,i)=>{
+     const raw=r[field],blank=raw==null||String(raw).trim()==="",v=blank?null:Number(raw),g=String(r[groupField]||"").trim();
+     const valid=Number.isFinite(v)&&g&&(!["ForecastPER","PBR"].includes(field)||v>0);
+     if(valid){if(!gs.has(g))gs.set(g,[]);gs.get(g).push({i,v})}
+   });for(const items of gs.values())if(items.length>=5)assign(items)}
+   else assign(rr.map((r,i)=>{const raw=r[field],blank=raw==null||String(raw).trim()==="";return {i,v:blank?null:Number(raw)}}).filter(x=>Number.isFinite(x.v)));
  };
  for(const [f,o] of [["SalesYoY","SalesGrowthScore"],["PrimaryProfitYoY","ProfitGrowthScore"],["OperatingMarginChangePt","MarginQualityScore"],["RelativeToTOPIX20D","Relative20Score"],["RelativeToTOPIX60D","Relative60Score"],["RelativeToTOPIX120D","Relative120Score"],["MA75DeviationPct","MA75StretchScore"],["PositionVs60DHighPct","HighPositionScore"],["Return5D","ShortMomentumScore"],["VolumeRatio5To20","VolumePickupScore"],["MA25DeviationPct","MA25PositionScore"]])rank(f,o);
- rank("ForecastPER","SectorForecastPERValueScore",true,"Sector33");rank("PBR","SectorPBRValueScore",true,"Sector33");rank("ForecastDividendYieldPct","SectorDividendYieldValueScore",false,"Sector33");
+ rank("ForecastPER","SectorForecastPERValueScore",true,"Sector33");
+ rank("PBR","SectorPBRValueScore",true,"Sector33");
+ rank("ForecastDividendYieldPct","SectorDividendYieldValueScore",false,"Sector33");
+ rr.forEach(r=>{
+   if(r.ForecastPER==null||String(r.ForecastPER).trim()===""||!(Number(r.ForecastPER)>0)) r.SectorForecastPERValueScore=null;
+   if(r.PBR==null||String(r.PBR).trim()===""||!(Number(r.PBR)>0)) r.SectorPBRValueScore=null;
+   if(r.ForecastDividendYieldPct==null||String(r.ForecastDividendYieldPct).trim()===""||!Number.isFinite(Number(r.ForecastDividendYieldPct))) r.SectorDividendYieldValueScore=null;
+ });
  rank("MACDHistogramChange5D","MACDHistogramImprovementScore");rank("MA25Slope5DPct","MA25SlopeScore");rank("MA75Slope20DPct","MA75SlopeScore");
  rr.forEach(r=>{
   r.GuidanceDirectionScore=lin(r.ForecastSalesGrowthPct,[[-20,10],[-5,30],[0,50],[10,70],[30,90]])*.5+lin(r.ForecastPrimaryProfitGrowthPct,[[-30,10],[-10,30],[0,50],[15,70],[50,90]])*.5;
@@ -2162,7 +2173,8 @@ function buildScreeningStrategies(rows){
  });
  // QVR value requires peer ranks, calculated above.
  rr.forEach(r=>{
-   const av=[["SectorForecastPERValueScore",.45],["SectorPBRValueScore",.30],["SectorDividendYieldValueScore",.25]].filter(([k])=>r[k]!=null);
+   const av=[["SectorForecastPERValueScore",.45],["SectorPBRValueScore",.30],["SectorDividendYieldValueScore",.25]]
+     .filter(([k])=>r[k]!=null&&String(r[k]).trim()!==""&&Number.isFinite(Number(r[k])));
    if(!av.length)r.QVRValueScore=null;else{let v=av.reduce((s,[k,w])=>s+Number(r[k])*w,0)/av.reduce((s,[,w])=>s+w,0);if(r.ForecastPrimaryProfitGrowthPct!=null&&r.ForecastPrimaryProfitGrowthPct<-20)v-=Math.min(20,Math.abs(r.ForecastPrimaryProfitGrowthPct+20)*.5);r.QVRValueScore=Math.max(0,Math.min(100,v))}
    const rsi=lin(r.RSI14,[[20,25],[35,50],[50,78],[65,85],[75,60],[90,25]]),early=lin(r.DistanceFrom52WLowPct,[[0,55],[10,75],[30,88],[60,72],[120,35],[250,15]]);
    const mb={GoldenCross:90,AboveSignal:72,OnSignal:50,BelowSignal:35,DeadCross:20}[r.MACDState]??50;
@@ -2246,6 +2258,37 @@ function screeningBoundaryDiagnostics(pcRows,webRows){
  return {onlyPc,onlyWeb,byStrategy,detail,pm,wm,sts};
 }
 
+
+function sectorRelativeAudit(pcRows,webRows,targetCode="6838"){
+ const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+ const pm=new Map(pcRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const wm=new Map(webRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const p=pm.get(targetCode),q=wm.get(targetCode);if(!q)return "対象なし";
+ const sector=String(q.Sector33||p?.Sector33||"").trim();
+ const axes=[
+   ["ForecastPER","SectorForecastPERValueScore",true,true],
+   ["PBR","SectorPBRValueScore",true,true],
+   ["ForecastDividendYieldPct","SectorDividendYieldValueScore",false,false]
+ ];
+ const lines=[`対象 ${targetCode} / Sector33=${sector||"(blank)"}`];
+ for(const [rawKey,scoreKey,reverse,positiveOnly] of axes){
+   const raw0=q[rawKey],rawBlank=raw0==null||String(raw0).trim()==="",raw=rawBlank?null:Number(raw0);
+   const peers=webRows.filter(r=>String(r.Sector33||"").trim()===sector).map(r=>{
+     const x=r[rawKey],blank=x==null||String(x).trim()==="",v=blank?null:Number(x);
+     return Number.isFinite(v)&&(!positiveOnly||v>0)?v:null;
+   }).filter(Number.isFinite).sort((x,y)=>x-y);
+   let recompute=null,rankText="-";
+   if(Number.isFinite(raw)&&(!positiveOnly||raw>0)&&peers.length>=5){
+     let less=0,equal=0;for(const v of peers){if(v<raw)less++;else if(v===raw)equal++}
+     const avgRank=less+(equal+1)/2; // pandas rank(method='average'), 1-based
+     let pct=avgRank/peers.length*100;if(reverse)pct=100-pct;
+     recompute=pct;rankText=`${avgRank.toFixed(1)}/${peers.length}`;
+   }
+   lines.push(`${rawKey}: raw PC=${p?.[rawKey]==null||String(p?.[rawKey]).trim()===""?"(blank)":p[rawKey]} / Web=${rawBlank?"(blank)":raw0} | Web peer有効=${peers.length} | rank=${rankText} | 再計算=${recompute==null?"(blank)":recompute.toFixed(4)} | score PC=${p?.[scoreKey]==null||String(p?.[scoreKey]).trim()===""?"(blank)":p[scoreKey]} / Web=${q?.[scoreKey]==null||String(q?.[scoreKey]).trim()===""?"(blank)":q[scoreKey]}`);
+ }
+ return lines.join("\n");
+}
+
 if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=async()=>{try{
  const f=$("screeningStrategyParityFile").files?.[0];if(!f)throw new Error("screening_candidates.csvを選択してください");
  if(!latestScreeningCandidates.length)throw new Error("先にWebの5戦略選抜を実行してください");
@@ -2273,7 +2316,7 @@ if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=asyn
  qvrAudit.sort((a,b)=>(b.deltas[0]?.d||0)-(a.deltas[0]?.d||0));
  const focus=qvrAudit.find(x=>x.c==="6838")||qvrAudit[0];
  const fp=focus?pmap.get(focus.c):null,fw=focus?wmap.get(focus.c):null;
- const sourceAudit=focus?`\n\n【QVR原材料・正当性監査】\nProfitType: PC=${fp?.ProfitType||"(blank)"} / Web=${fw?.ProfitType||"(blank)"}\nBPS: PC=${fp?.BPS==null||String(fp?.BPS).trim()===""?"(blank)":fp.BPS} / Web=${fw?.BPS==null||String(fw?.BPS).trim()===""?"(blank)":fw.BPS}\nPBR: PC=${fp?.PBR==null||String(fp?.PBR).trim()===""?"(blank)":fp.PBR} / Web=${fw?.PBR==null||String(fw?.PBR).trim()===""?"(blank)":fw.PBR}\nForecastPER: PC=${fp?.ForecastPER??"(blank)"} / Web=${fw?.ForecastPER??"(blank)"}\nForecastDividendYieldPct: PC=${fp?.ForecastDividendYieldPct??"(blank)"} / Web=${fw?.ForecastDividendYieldPct??"(blank)"}\n\n注記: PC空欄を0として扱わず、空欄のまま監査します。Web側ProfitType欠落はalpha62で修正済み。PBRはPCへ盲目的に合わせず、BPS原材料の妥当性を確認してから採否を決めます。`:"";
+ const sourceAudit=focus?`\n\n【QVR原材料・正当性監査】\nProfitType: PC=${fp?.ProfitType||"(blank)"} / Web=${fw?.ProfitType||"(blank)"}\nBPS: PC=${fp?.BPS==null||String(fp?.BPS).trim()===""?"(blank)":fp.BPS} / Web=${fw?.BPS==null||String(fw?.BPS).trim()===""?"(blank)":fw.BPS}\nPBR: PC=${fp?.PBR==null||String(fp?.PBR).trim()===""?"(blank)":fp.PBR} / Web=${fw?.PBR==null||String(fw?.PBR).trim()===""?"(blank)":fw.PBR}\nForecastPER: PC=${fp?.ForecastPER??"(blank)"} / Web=${fw?.ForecastPER??"(blank)"}\nForecastDividendYieldPct: PC=${fp?.ForecastDividendYieldPct??"(blank)"} / Web=${fw?.ForecastDividendYieldPct??"(blank)"}\n\n【Sector相対評価エンジン監査】\n${sectorRelativeAudit(pcRows,latestScreeningCandidates,focus.c)}\n\n注記: alpha63ではblank/nullをNumber(0)へ変換しないよう修正。PER/PBRは正値のみpeer母集団へ入れます。PC空欄へ盲目的に合わせず、同じraw値から同じpercentileになるかを監査します。`:"";
  const auditText=focus?`\n\n【QVR最初の差 自動監査】\n対象: ${focus.c} ${focus.name}\n${focus.deltas.map(x=>`${x.k}: PC=${x.a} / Web=${x.b}`).join("\n")}\n${sourceAudit}\n\n判定: 最初の原材料差を、PC/Webどちらが正しいかまで監査します。`:"\n\n【QVR最初の差 自動監査】\n共通銘柄の対象項目に差なし";
  $("screeningDiffExportBtn").disabled=false;
  box("screeningStrategyParityResult",exact?"pass":"warn",`Screening 選抜Parity

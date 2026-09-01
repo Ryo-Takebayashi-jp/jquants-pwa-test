@@ -1,16 +1,11 @@
-# v7e-alpha59
-
-①〜③はalpha58で通っていれば再実行不要。
+# v7e-alpha63
 
 今回:
-4. 「5戦略でTop20を選抜」
-   - PostEarningsDrift 20/20 が期待
-5. screening_candidates.csv → 「選抜Parityを実行」
+1. ③ Screening母集団を構築
+2. ④ 5戦略選抜
+3. ⑤ PC/Web Parity
 
-alpha58:
-- PC 92
-- Web 75
-- 共通 62
-- PrimaryStrategy 61/62
-
-PED正式移植で、PCのみ30件の大部分が縮むことを確認する。
+確認ポイント:
+- 6838はPBR rawがblankなので Web SectorPBRValueScoreもblankになること。
+- 「Sector相対評価エンジン監査」で ForecastPER / PBR / 配当利回りのpeer数・rank・再計算percentileを確認。
+- 共通率90.2%から動くかも確認。
