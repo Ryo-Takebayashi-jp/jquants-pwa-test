@@ -1385,6 +1385,84 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    self.postMessage({ok:true,type:"result",result});return;
  }
 
+ if(cmd==="screening-event-features"){
+   let cdb=null,tdb=null,stage="01-input";
+   try{
+     const payload=d.payload||{},asOf=String(payload.asOf||""),events=Array.isArray(payload.events)?payload.events:[];
+     const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+     const active=events.map(x=>({code:norm(x.code),disc:String(x.disclosureDate||"").slice(0,10)})).filter(x=>x.code&&x.disc);
+     if(!asOf||!active.length){self.postMessage({ok:true,type:"result",rows:[]});return}
+
+     // TOPIX dates are the PC screen's ordered trading calendar.
+     stage="02-trade-dates";
+     tdb=new p.OpfsSAHPoolDb("/jq_topix_v1.sqlite","r");
+     const trs=execRows(tdb,"SELECT raw_json FROM topix");
+     const tradeDates=[];
+     for(const rr of trs){try{const o=JSON.parse(String(rr.raw_json||"{}")),dt=String(o.Date??o.date??"").slice(0,10);if(dt&&dt<=asOf)tradeDates.push(dt)}catch(_){}}
+     tdb.close();tdb=null;
+     tradeDates.sort();
+     const uniqueDates=[...new Set(tradeDates)];
+     const eligible=active.filter(x=>{
+       const elapsed=uniqueDates.filter(dt=>x.disc<=dt&&dt<=asOf).length-1;
+       return x.disc===asOf || (elapsed>=0&&elapsed<=22);
+     });
+     if(!eligible.length){self.postMessage({ok:true,type:"result",rows:[]});return}
+     const minDisc=eligible.map(x=>x.disc).sort()[0];
+     const minIdx=uniqueDates.findIndex(x=>x>=minDisc);
+     const from=uniqueDates[Math.max(0,minIdx-3)]||minDisc;
+     const codes=new Set(eligible.map(x=>x.code));
+
+     // Load only the small event window across ready annual bars shards.
+     stage="03-bars";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end
+       FROM shard_catalog WHERE dataset='bars_daily' AND state='ready'
+       AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key`);
+     cdb.close();cdb=null;
+     const byCode=new Map();
+     for(const sh of cats){
+       if(String(sh.range_end||"")<from||String(sh.range_start||"")>asOf)continue;
+       let db=null;
+       try{
+         const name=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
+         const rs=execRows(db,`SELECT code,date,COALESCE(adj_c,c) AS c
+           FROM bars_daily WHERE date>=? AND date<=? AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,asOf]);
+         for(const r of rs){
+           const code=norm(r.code);if(!codes.has(code))continue;
+           const c=Number(r.c);if(!Number.isFinite(c)||c<=0)continue;
+           if(!byCode.has(code))byCode.set(code,[]);
+           byCode.get(code).push({date:String(r.date),c});
+         }
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+
+     stage="04-calc";
+     const pct=(x,b)=>Number.isFinite(x)&&Number.isFinite(b)&&b!==0?(x/b-1)*100:null;
+     const rows=[];
+     for(const ev of eligible){
+       const arr=(byCode.get(ev.code)||[]).sort((x,y)=>x.date.localeCompare(y.date));
+       const elapsed=uniqueDates.filter(dt=>ev.disc<=dt&&dt<=asOf).length-1;
+       const reaction=ev.disc===asOf;
+       const preCandidates=arr.map((x,i)=>[x,i]).filter(([x])=>x.date<ev.disc);
+       const startCandidates=arr.map((x,i)=>[x,i]).filter(([x])=>x.date>=ev.disc);
+       let e1=null,e3=null,e5=null,e10=null,follow=null;
+       if(preCandidates.length&&startCandidates.length){
+         const pre=preCandidates.at(-1)[1],start=startCandidates[0][1],base=arr[pre].c;
+         const ret=win=>{const idx=start+win-1;return idx<arr.length?pct(arr[idx].c,base):null};
+         e1=ret(1);e3=ret(3);e5=ret(5);e10=ret(10);
+         follow=(e5!=null&&e1!=null)?e5-e1:null;
+       }
+       rows.push({code:ev.code,EarningsElapsedTradingDays:elapsed,EarningsReactionPending:reaction,
+         EarningsReturn1D:e1,EarningsReturn3D:e3,EarningsReturn5D:e5,EarningsReturn10D:e10,EarningsFollowThrough5D:follow});
+     }
+     self.postMessage({ok:true,type:"result",rows,tradeDates:uniqueDates.length,from,asOf});
+     return;
+   }catch(err){
+     try{if(cdb)cdb.close()}catch(_){}try{if(tdb)tdb.close()}catch(_){}
+     throw new Error(`[screening-event-features:${stage}] ${err?.message||err}`);
+   }
+ }
+
  if(cmd==="screening-base-snapshot"){
    const payload=d.payload||{}, techRows=payload.techRows||[], finRows=payload.finRows||[];
    const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};

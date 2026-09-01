@@ -1,13 +1,16 @@
-# v7e-alpha58
+# v7e-alpha59
 
-①/②は再実行不要。
-③ Screening母集団を構築。
+①〜③はalpha58で通っていれば再実行不要。
 
-期待:
-- フィルタ前 4167前後
-- フィルタ後 1967前後
-- テクニカル 1967/1967
-- Master 1967/1967
-- Master JOIN PASS
+今回:
+4. 「5戦略でTop20を選抜」
+   - PostEarningsDrift 20/20 が期待
+5. screening_candidates.csv → 「選抜Parityを実行」
 
-③がPASSなら④→⑤へ。
+alpha58:
+- PC 92
+- Web 75
+- 共通 62
+- PrimaryStrategy 61/62
+
+PED正式移植で、PCのみ30件の大部分が縮むことを確認する。

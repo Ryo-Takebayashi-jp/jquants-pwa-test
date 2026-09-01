@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha58");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha59");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha58").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha59").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2174,27 +2174,56 @@ function buildScreeningStrategies(rows){
    r.QualityValueReRatingScore=r.QVRValueScore==null?null:Math.max(0,Math.min(100,r.QVRQualityScore*.36+r.QVRValueScore*.28+r.QVRReRatingScore*.36-r.QVRCrowdingPenalty-mismatch));
    let chase=0;if(r.Return5D>10)chase+=Math.min((r.Return5D-10)*1.5,20);if(r.Return20D>25)chase+=Math.min((r.Return20D-25)*.8,20);if(r.MA25DeviationPct>12)chase+=Math.min(r.MA25DeviationPct-12,15);r.ChasePenalty=chase;
    if(r.QualityValueReRatingScore!=null)r.QualityValueReRatingScore=Math.max(0,Math.min(100,r.QualityValueReRatingScore-Math.min(chase,15)));
-   // No fake PED score: until true event-return window is available, leave blank exactly rather than inventing a proxy.
-   r.PostEarningsDriftScore=null;
+   const eventShape=lin(r.EarningsReturn5D,[[-15,10],[0,50],[10,75],[25,95]]);
+   const followScore=lin(r.EarningsFollowThrough5D,[[-15,10],[0,50],[10,75],[20,95]]);
+   r.PostEarningsDriftScore=(r.EarningsElapsedTradingDays!=null&&r.EarningsElapsedTradingDays>=3&&r.EarningsElapsedTradingDays<=20)
+     ?r.FundamentalScore*.35+eventShape*.30+followScore*.20+(r.VolumePickupScore??50)*.15:null;
+   r.CandidateStatus=r.EarningsReactionPending?"ReactionPending":"Normal";
  });
- rank("FundamentalPriceGap","GapPercentile");rank("FundamentalScore","FundamentalPercentile");rank("ReRatingScore","ReRatingPercentile");rank("QualityValueReRatingScore","QVRPercentile");
+ rank("FundamentalPriceGap","GapPercentile");rank("FundamentalScore","FundamentalPercentile");rank("ReRatingScore","ReRatingPercentile");rank("PostEarningsDriftScore","PEDPercentile");rank("QualityValueReRatingScore","QVRPercentile");
  rr.forEach(r=>{r.GapCompositeScore=(r.GapPercentile||0)*.65+(r.ReRatingScore||50)*.35-(r.ChasePenalty||0);r.FundamentalMomentumScore=r.FundamentalScore*.55+r.ReRatingScore*.45-(r.ChasePenalty||0);r.GrowthAccelerationScore=r.FundamentalScore});
  const defs=[["FundamentalPriceGap","GapCompositeScore"],["FundamentalMomentum","FundamentalMomentumScore"],["PostEarningsDrift","PostEarningsDriftScore"],["GrowthAcceleration","GrowthAccelerationScore"],["QualityValueReRating","QualityValueReRatingScore"]];
  const map=new Map();
- for(const [name,key] of defs){const ranked=rr.filter(r=>r[key]!=null&&r.FinancialDataFlag!=="WebRequired"&&r.FinancialDataFlag!=="NoLatestFinancial").sort((a,b)=>Number(b[key])-Number(a[key])||String(a.NormalizedCode).localeCompare(String(b.NormalizedCode))).slice(0,20);ranked.forEach((r,i)=>{let c=map.get(r.NormalizedCode);if(!c){c={...r,_ranks:{}};map.set(r.NormalizedCode,c)}c._ranks[name]=i+1})}
- const order=defs.map(x=>x[0]),out=[...map.values()].map(r=>{const sel=Object.keys(r._ranks).sort((x,y)=>r._ranks[x]-r._ranks[y]||order.indexOf(x)-order.indexOf(y));r.SelectedByStrategies=sel.join(";");r.StrategyCount=sel.length;r.BestStrategyRank=Math.min(...sel.map(n=>r._ranks[n]));r.PrimaryStrategy=sel[0];for(const n of order)r[n+"Rank"]=r._ranks[n]??null;delete r._ranks;return r}).sort((x,y)=>y.StrategyCount-x.StrategyCount||x.BestStrategyRank-y.BestStrategyRank||String(x.PrimaryStrategy).localeCompare(String(y.PrimaryStrategy))||String(x.NormalizedCode).localeCompare(String(y.NormalizedCode)));
+ for(const [name,key] of defs){
+   const ranked=rr.filter(r=>r[key]!=null&&!r.EarningsReactionPending&&r.FinancialDataFlag!=="WebRequired"&&r.FinancialDataFlag!=="NoLatestFinancial")
+     .sort((a,b)=>Number(b[key])-Number(a[key])||String(a.NormalizedCode).localeCompare(String(b.NormalizedCode))).slice(0,20);
+   ranked.forEach((r,i)=>{let c=map.get(r.NormalizedCode);if(!c){c={...r,_ranks:{}};map.set(r.NormalizedCode,c)}c._ranks[name]=i+1});
+ }
+ const pending=rr.filter(r=>r.EarningsReactionPending&&r.FinancialDataFlag!=="WebRequired"&&r.FinancialDataFlag!=="NoLatestFinancial")
+   .sort((a,b)=>Number(b.FundamentalScore||0)-Number(a.FundamentalScore||0)||String(a.NormalizedCode).localeCompare(String(b.NormalizedCode))).slice(0,20);
+ pending.forEach((r,i)=>{let c=map.get(r.NormalizedCode);if(!c){c={...r,_ranks:{}};map.set(r.NormalizedCode,c)}c.PendingReviewRank=i+1});
+ const order=defs.map(x=>x[0]),out=[...map.values()].map(r=>{
+   const sel=Object.keys(r._ranks).sort((x,y)=>r._ranks[x]-r._ranks[y]||order.indexOf(x)-order.indexOf(y));
+   r.SelectedByStrategies=sel.join(";");r.StrategyCount=sel.length;r.BestStrategyRank=sel.length?Math.min(...sel.map(n=>r._ranks[n])):null;
+   r.PrimaryStrategy=sel[0]||(r.EarningsReactionPending?"EarningsReactionPending":"");
+   r.CandidateStatus=r.EarningsReactionPending?"ReactionPending":"Normal";
+   for(const n of order)r[n+"Rank"]=r._ranks[n]??null;delete r._ranks;return r;
+ }).sort((x,y)=>(x.CandidateStatus==="ReactionPending"?1:0)-(y.CandidateStatus==="ReactionPending"?1:0)
+   ||y.StrategyCount-x.StrategyCount||(x.BestStrategyRank??999)-(y.BestStrategyRank??999)
+   ||(x.PendingReviewRank??999)-(y.PendingReviewRank??999)||String(x.PrimaryStrategy).localeCompare(String(y.PrimaryStrategy))
+   ||String(x.NormalizedCode).localeCompare(String(y.NormalizedCode)));
  return {rows:out,defs};
 }
-if($("screeningStrategyBtn")) $("screeningStrategyBtn").onclick=()=>{
+if($("screeningStrategyBtn")) $("screeningStrategyBtn").onclick=async()=>{
  if(!latestScreeningBaseRows.length){box("screeningStrategyResult","warn","先に『Screening母集団を構築』を実行してください。");return}
- const r=buildScreeningStrategies(latestScreeningBaseRows);latestScreeningCandidates=r.rows;
- const counts=Object.fromEntries(r.defs.map(([n])=>[n,latestScreeningCandidates.filter(x=>x[n+"Rank"]!=null).length]));
- box("screeningStrategyResult","pass",`Web Screening 5戦略\n母集団: ${latestScreeningBaseRows.length}\n候補ユニーク: ${latestScreeningCandidates.length}\n${Object.entries(counts).map(([k,v])=>k+": "+v+"/20").join("\n")}\n\n選抜経路: PASS\n次段階: PC版候補とのParity`);
- $("screeningCandidatesExportBtn").disabled=!latestScreeningCandidates.length;
- const top=latestScreeningCandidates.slice(0,30);$("screeningStrategyTable").innerHTML=`<div style="overflow:auto"><table style="width:100%;font-size:12px"><tr><th>#</th><th>Code</th><th>Name</th><th>Primary</th><th>Count</th><th>Best</th></tr>${top.map((x,i)=>`<tr><td>${i+1}</td><td>${x.NormalizedCode}</td><td>${x.CompanyName||"-"}</td><td>${x.PrimaryStrategy}</td><td>${x.StrategyCount}</td><td>${x.BestStrategyRank}</td></tr>`).join("")}</table></div>`;
+ const btn=$("screeningStrategyBtn");btn.disabled=true;
+ try{
+   box("screeningStrategyResult","run","決算イベント窓（1/3/5/10営業日）を計算中…");
+   const asOf=$("screeningBaseAsOf")?.value||todayIsoLocal();
+   const ev=await workerCall("screening-event-features",300000,null,null,{asOf,events:latestScreeningBaseRows.map(r=>({code:r.NormalizedCode,disclosureDate:r.LatestDisclosureDate}))});
+   const em=new Map((ev.rows||[]).map(x=>[String(x.code),x]));
+   const enriched=latestScreeningBaseRows.map(r=>({...r,...(em.get(String(r.NormalizedCode))||{EarningsElapsedTradingDays:null,EarningsReactionPending:false})}));
+   const r=buildScreeningStrategies(enriched);latestScreeningCandidates=r.rows;
+   const counts=Object.fromEntries(r.defs.map(([n])=>[n,latestScreeningCandidates.filter(x=>x[n+"Rank"]!=null).length]));
+   const pending=latestScreeningCandidates.filter(x=>x.CandidateStatus==="ReactionPending").length;
+   box("screeningStrategyResult","pass",`Web Screening 5戦略\n母集団: ${enriched.length}\n候補ユニーク: ${latestScreeningCandidates.length}\n${Object.entries(counts).map(([k,v])=>k+": "+v+"/20").join("\n")}\nReactionPending: ${pending}\n\nPEDイベント窓: PC版定義で計算\n次段階: PC版候補とのParity`);
+   $("screeningCandidatesExportBtn").disabled=!latestScreeningCandidates.length;
+   const top=latestScreeningCandidates.slice(0,30);$("screeningStrategyTable").innerHTML=`<div style="overflow:auto"><table style="width:100%;font-size:12px"><tr><th>#</th><th>Code</th><th>Name</th><th>Primary</th><th>Count</th><th>Best</th></tr>${top.map((x,i)=>`<tr><td>${i+1}</td><td>${x.NormalizedCode}</td><td>${x.CompanyName||"-"}</td><td>${x.PrimaryStrategy}</td><td>${x.StrategyCount}</td><td>${x.BestStrategyRank??"-"}</td></tr>`).join("")}</table></div>`;
+ }catch(e){box("screeningStrategyResult","fail","FAIL\n"+(e?.message||e))}
+ finally{btn.disabled=false}
 };
 if($("screeningCandidatesExportBtn")) $("screeningCandidatesExportBtn").onclick=()=>{if(!latestScreeningCandidates.length)return;const keys=[...new Set(latestScreeningCandidates.flatMap(Object.keys))],esc=v=>'"'+String(v??'').replaceAll('"','""')+'"',csv=[keys.join(','),...latestScreeningCandidates.map(r=>keys.map(k=>esc(r[k])).join(','))].join('\n');downloadBlob(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}),`web_screening_candidates_${($("screeningBaseAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};
-if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=async()=>{try{const f=$("screeningStrategyParityFile").files?.[0];if(!f)throw new Error("screening_candidates.csvを選択してください");if(!latestScreeningCandidates.length)throw new Error("先にWebの5戦略選抜を実行してください");const pc=parseCsv(await f.text());if(!pc||!Array.isArray(pc.rows))throw new Error("PC CSV解析失敗");const pcRows=pc.rows,pmap=new Map(pcRows.map(r=>[String(r.NormalizedCode||r.Code||"").trim(),r])),wmap=new Map(latestScreeningCandidates.map(r=>[String(r.NormalizedCode),r]));let both=0,strategy=0;const missing=[],extra=[],diff=[];for(const [c,w] of wmap){const p=pmap.get(c);if(!p){extra.push(c);continue}both++;if(String(p.PrimaryStrategy||"")===String(w.PrimaryStrategy||""))strategy++;else diff.push(`${c}: PC=${p.PrimaryStrategy||"-"} / Web=${w.PrimaryStrategy||"-"}`)}for(const c of pmap.keys())if(!wmap.has(c))missing.push(c);const exact=missing.length===0&&extra.length===0&&strategy===both;box("screeningStrategyParityResult",exact?"pass":"warn",`Screening 選抜Parity\nPC CSV行数: ${pcRows.length}\nPC候補: ${pmap.size}\nWeb候補: ${wmap.size}\n共通: ${both}\nPrimaryStrategy一致: ${strategy}/${both}\nPCのみ: ${missing.length}\nWebのみ: ${extra.length}\n共通率: ${(both/Math.max(1,pmap.size)*100).toFixed(1)}%\n\n${exact?"完全一致 PASS":"選抜ロジック調整対象"}${diff.length?"\n\nPrimary差分:\n"+diff.slice(0,12).join("\n"):""}`)}catch(e){box("screeningStrategyParityResult","fail","FAIL\n"+(e?.message||e))}};
+if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=async()=>{try{const f=$("screeningStrategyParityFile").files?.[0];if(!f)throw new Error("screening_candidates.csvを選択してください");if(!latestScreeningCandidates.length)throw new Error("先にWebの5戦略選抜を実行してください");const pc=parseCsv(await f.text());if(!pc||!Array.isArray(pc.rows))throw new Error("PC CSV解析失敗");const pcRows=pc.rows,pmap=new Map(pcRows.map(r=>[String(r.NormalizedCode||r.Code||"").trim(),r])),wmap=new Map(latestScreeningCandidates.map(r=>[String(r.NormalizedCode),r]));let both=0,strategy=0;const missing=[],extra=[],diff=[];for(const [c,w] of wmap){const p=pmap.get(c);if(!p){extra.push(c);continue}both++;if(String(p.PrimaryStrategy||"")===String(w.PrimaryStrategy||""))strategy++;else diff.push(`${c}: PC=${p.PrimaryStrategy||"-"} / Web=${w.PrimaryStrategy||"-"}`)}for(const c of pmap.keys())if(!wmap.has(c))missing.push(c);const exact=missing.length===0&&extra.length===0&&strategy===both;box("screeningStrategyParityResult",exact?"pass":"warn",`Screening 選抜Parity\nPC CSV行数: ${pcRows.length}\nPC候補: ${pmap.size}\nWeb候補: ${wmap.size}\n共通: ${both}\nPrimaryStrategy一致: ${strategy}/${both}\nPCのみ: ${missing.length}\nWebのみ: ${extra.length}\n共通率: ${(both/Math.max(1,pmap.size)*100).toFixed(1)}%\n\n${exact?"完全一致 PASS":"選抜ロジック調整対象"}\nPCのみ例: ${missing.slice(0,12).join(", ")||"-"}\nWebのみ例: ${extra.slice(0,12).join(", ")||"-"}${diff.length?"\n\nPrimary差分:\n"+diff.slice(0,12).join("\n"):""}`)}catch(e){box("screeningStrategyParityResult","fail","FAIL\n"+(e?.message||e))}};
 
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();
 if($("technicalScreeningBtn")) $("technicalScreeningBtn").onclick=async()=>{
