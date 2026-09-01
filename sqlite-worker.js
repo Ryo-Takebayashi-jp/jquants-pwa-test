@@ -773,6 +773,102 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    finally{try{if(cdb)cdb.close()}catch(_){}try{if(db)db.close()}catch(_){}}
  }
 
+
+ if(cmd==="technical-screening-poc"){
+   const payload=e.data.payload||{};
+   const asOf=String(payload.asOf||"");
+   const lookback=Math.max(75,Math.min(160,Number(payload.lookback||100)));
+   const topN=Math.max(10,Math.min(200,Number(payload.topN||50)));
+   let cdb=null,stage="01-validate";
+   try{
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+     stage="02-catalog";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end
+       FROM shard_catalog WHERE dataset='bars_daily' AND state='ready'
+       AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key DESC`);
+     cdb.close();cdb=null;
+     const usable=cats.filter(x=>String(x.range_start||"")<=asOf);
+     if(!usable.length)throw new Error("No ready year shard for asOf");
+
+     // Gather distinct trading dates backwards across only the shards needed.
+     stage="03-dates";
+     const dates=[];
+     for(const s of usable){
+       let db=null;
+       try{
+         const name=String(s.logical_name||"");
+         db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
+         const rs=execRows(db,`SELECT DISTINCT date FROM bars_daily WHERE date<=? ORDER BY date DESC LIMIT ${lookback}`,[asOf]);
+         for(const r of rs){const d=String(r.date);if(!dates.includes(d))dates.push(d)}
+         dates.sort().reverse();
+         if(dates.length>=lookback)break;
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+     const chosen=dates.sort().slice(-lookback);
+     if(chosen.length<75)throw new Error(`Need >=75 trading dates, got ${chosen.length}`);
+     const from=chosen[0],actualAsOf=chosen[chosen.length-1];
+     const chosenSet=new Set(chosen);
+
+     stage="04-bars";
+     const byCode=new Map(),usedShards=[];
+     for(const s of usable.slice().reverse()){
+       if(String(s.range_end||"")<from||String(s.range_start||"")>actualAsOf)continue;
+       let db=null;
+       try{
+         const name=String(s.logical_name||"");
+         db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
+         const rs=execRows(db,`SELECT code,date,c,volume FROM bars_daily
+           WHERE date>=? AND date<=? AND c IS NOT NULL ORDER BY code,date`,[from,actualAsOf]);
+         usedShards.push(String(s.shard_key));
+         for(const r of rs){
+           const d=String(r.date); if(!chosenSet.has(d))continue;
+           const code=String(r.code), c=Number(r.c),v=Number(r.volume||0);
+           if(!Number.isFinite(c)||c<=0)continue;
+           if(!byCode.has(code))byCode.set(code,[]);
+           byCode.get(code).push({date:d,c,v});
+         }
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+
+     stage="05-calc";
+     const avg=(a)=>a.reduce((x,y)=>x+y,0)/a.length;
+     const pct=(a,b)=>b?((a/b)-1)*100:null;
+     function rsi14(xs){
+       if(xs.length<15)return null; let g=0,l=0;
+       const z=xs.slice(-15);
+       for(let i=1;i<z.length;i++){const d=z[i]-z[i-1];if(d>0)g+=d;else l-=d}
+       if(l===0)return 100; const rs=(g/14)/(l/14); return 100-(100/(1+rs));
+     }
+     const rows=[];
+     for(const [code,a0] of byCode){
+       const a=a0.sort((x,y)=>x.date.localeCompare(y.date));
+       if(a.length<75)continue;
+       const closes=a.map(x=>x.c), vols=a.map(x=>x.v), last=a[a.length-1];
+       if(last.date!==actualAsOf)continue;
+       const ma5=avg(closes.slice(-5)),ma25=avg(closes.slice(-25)),ma75=avg(closes.slice(-75));
+       const prev5=closes.length>=6?closes[closes.length-6]:null;
+       const prev20=closes.length>=21?closes[closes.length-21]:null;
+       const vol20=avg(vols.slice(-20));
+       const rs=rsi14(closes);
+       const ret5=prev5?pct(last.c,prev5):null,ret20=prev20?pct(last.c,prev20):null;
+       const volRatio=vol20>0?last.v/vol20:null;
+       // Transparent PoC score: trend + momentum + volume. Not yet the desktop production screener.
+       let score=0;
+       if(last.c>ma25)score+=1;
+       if(ma25>ma75)score+=1;
+       if(ret20!=null)score+=Math.max(-2,Math.min(2,ret20/10));
+       if(volRatio!=null)score+=Math.max(-1,Math.min(1,(volRatio-1)));
+       rows.push({code,date:last.date,close:last.c,ma5,ma25,ma75,rsi14:rs,ret5,ret20,volume:last.v,vol20,volRatio,score});
+     }
+     rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);
+     self.postMessage({ok:true,type:"result",stage:"PASS",requestedAsOf:asOf,asOf:actualAsOf,
+       from,tradingDates:chosen.length,usedShards,candidates:rows.length,top:rows.slice(0,topN),
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}
+   finally{try{if(cdb)cdb.close()}catch(_){}}
+ }
  if(cmd==="scan-missing-weekdays"){
    let cdb=null,stage="01-catalog";
    try{

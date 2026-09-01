@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha22");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha23");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1129,7 +1129,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha22",
+   appVersion:"v7e-alpha23",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1632,4 +1632,36 @@ ${e.message||e}
 
 同じ①→②を再実行できます（UPSERT）。`);
  }finally{$("autoGapRepairBtn").disabled=false}
+};
+
+if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();
+if($("technicalScreeningBtn")) $("technicalScreeningBtn").onclick=async()=>{
+ const asOf=$("screeningAsOf").value;
+ if(!asOf){box("technicalScreeningResult","warn","基準日を選択してください。");return}
+ $("technicalScreeningBtn").disabled=true;
+ $("technicalScreeningTable").innerHTML="";
+ box("technicalScreeningResult","run",`${asOf} を基準にCatalogから直近100取引日を読み込み中…`);
+ try{
+   const r=await workerCall("technical-screening-poc",600000,
+     s=>box("technicalScreeningResult","run",`${asOf}
+${s.stage||"-"} ${s.detail||""}`),null,{asOf,lookback:100,topN:50});
+   box("technicalScreeningResult","pass",`PASS
+基準日: ${r.asOf}
+読込開始: ${r.from}
+取引日: ${r.tradingDates}
+使用Shard: ${r.usedShards.join(", ")}
+75日以上データ有: ${r.candidates.toLocaleString()}銘柄
+処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒
+
+判定: Catalog → Shard → テクニカル計算 PASS`);
+   const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+   const n=(x,d=1)=>Number.isFinite(Number(x))?Number(x).toFixed(d):"-";
+   let h=`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+   <thead><tr><th>#</th><th>Code</th><th>Close</th><th>MA5</th><th>MA25</th><th>MA75</th><th>5D%</th><th>20D%</th><th>RSI</th><th>Vol比</th></tr></thead><tbody>`;
+   r.top.forEach((x,i)=>{h+=`<tr><td>${i+1}</td><td>${esc(x.code)}</td><td>${n(x.close,1)}</td><td>${n(x.ma5,1)}</td><td>${n(x.ma25,1)}</td><td>${n(x.ma75,1)}</td><td>${n(x.ret5,1)}</td><td>${n(x.ret20,1)}</td><td>${n(x.rsi14,1)}</td><td>${n(x.volRatio,2)}</td></tr>`});
+   h+="</tbody></table></div>";
+   $("technicalScreeningTable").innerHTML=h;
+ }catch(e){box("technicalScreeningResult","fail",`FAIL
+${e.stage?`stage: ${e.stage}\n`:""}${e.message||e}`)}
+ finally{$("technicalScreeningBtn").disabled=false}
 };

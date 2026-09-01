@@ -1,5 +1,21 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha23 — CURRENT (2026-09-01)
+- Catalog + year Shardsを直接利用するWebテクニカルScreening PoCを追加。
+- 直近100取引日からMA5/25/75、5D/20D騰落率、RSI14、出来高20日比を計算。
+- 75日以上の履歴を持つ銘柄を対象にTop50を画面表示。
+- Screening処理時間・使用Shard・対象銘柄数を実機確認可能にした。
+- 正式Screeningロジック移植前の読み取り性能/メモリ/計算基盤検証版。
+
+# J-Quants Project Changelog
+
+## Web/PWA v7e-alpha22b — CURRENT (2026-09-01)
+- alpha22で `app.js` がindex.htmlから2回読み込まれていた問題を修正。
+- 二重実行により発生した `continuousStopRequested` のduplicate variable SyntaxErrorを解消。
+- app.js内の変数宣言自体は重複していなかったことを確認。
+- DataLake / Shard / Catalogロジックは変更なし。
+
+
 ## Web/PWA v7e-alpha22 — CURRENT (2026-09-01)
 - 本番DataLake UIを「日次更新」「抜けチェック」「抜け自動補完」に整理。
 - 全年別Shard内部のmissing weekday候補を自動検出。
