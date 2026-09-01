@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha32b",
+  "current_release": "v7e-alpha33",
   "history": [
     {
-      "release": "v7e-alpha32b",
+      "release": "v7e-alpha33",
       "date": "2026-09-01",
-      "note": "Fix equities master API token routing on iPhone and guarantee retryable master fetch button lifecycle."
+      "note": "Bundle master parity, fins summary shard, and earnings calendar shard to accelerate Web DataLake migration."
     }
   ]
 }

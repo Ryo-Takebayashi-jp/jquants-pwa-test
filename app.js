@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha32b");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha33");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -254,6 +254,40 @@ if($("batchResumeBtn")) $("batchResumeBtn").onclick=async()=>{
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function jqAuthHeaders(token){
  return {"x-api-key":token,"Accept":"application/json"};
+}
+
+
+async function jqFetchV2Rows(path, params, token){
+ if(!token) throw new Error("APIキーを入力してください");
+ const u0=new URL(`/api/jquants${path}`,location.origin);
+ for(const [k,v] of Object.entries(params||{})) if(v!=null&&v!=="") u0.searchParams.set(k,String(v));
+ let all=[], pageToken=null, pages=0, cursor=null;
+ do{
+   const u=new URL(u0);
+   if(pageToken) u.searchParams.set("pagination_key",pageToken);
+   let res;
+   for(let attempt=0;attempt<5;attempt++){
+     res=await fetch(u,{headers:jqAuthHeaders(token),cache:"no-store"});
+     if(res.status!==429 && res.status<500) break;
+     const ra=Number(res.headers.get("Retry-After")||0);
+     await sleep(ra?ra*1000:Math.min(16000,1000*(2**attempt)));
+   }
+   const text=await res.text(); let j={}; try{j=text?JSON.parse(text):{}}catch(_){}
+   if(!res.ok) throw new Error(`J-Quants HTTP ${res.status}: ${j.message||j.error||text.slice(0,300)}`);
+   const rows=j.data||[];
+   if(!Array.isArray(rows)) throw new Error(`J-Quants ${path} response data not recognized`);
+   all.push(...rows);
+   pageToken=j.pagination_key||j.paginationKey||null;
+   cursor=j.cursor||cursor;
+   pages++; if(pages>200) throw new Error("pagination safety stop");
+ }while(pageToken);
+ return {rows:all,pages,cursor,endpoint:`/v2${path}`};
+}
+async function jqFetchFinsSummary(date,token){
+ return jqFetchV2Rows("/fins/summary",{date:String(date||"").replaceAll("-","")},token);
+}
+async function jqFetchEarningsCalendar(date,token){
+ return jqFetchV2Rows("/equities/earnings-calendar",{date:String(date||"").replaceAll("-","")},token);
 }
 
 async function jqFetchEquitiesMaster(date, token){
@@ -1181,7 +1215,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha32b",
+   appVersion:"v7e-alpha33",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1710,6 +1744,48 @@ if($("masterFetchBtn")) $("masterFetchBtn").onclick=async()=>{
    btn.disabled=false;
  }
 };
+
+
+if($("masterParityBtn")) $("masterParityBtn").onclick=async()=>{
+ const f=$("masterParityCsv").files?.[0];
+ if(!f){box("masterParityResult","warn","PC版 screening_candidates.csv を選択してください。");return}
+ const btn=$("masterParityBtn");btn.disabled=true;
+ try{
+   const mat=parseSimpleCsv(await f.text()); if(mat.length<2)throw new Error("CSVデータなし");
+   const head=mat[0].map(x=>x.trim()), ix=n=>head.indexOf(n);
+   if(ix("NormalizedCode")<0)throw new Error("NormalizedCode列がありません");
+   const fields=[
+     ["CompanyName","company_name"],["Market","market_name"],["Sector17","sector17_name"],
+     ["Sector33","sector33_name"],["MarginCategory","margin_name"]
+   ].filter(([pc])=>ix(pc)>=0);
+   const pcRows=mat.slice(1).filter(r=>r[ix("NormalizedCode")]).map(r=>{
+     const o={code:normCodeForParity(r[ix("NormalizedCode")])};
+     for(const [pc] of fields)o[pc]=String(r[ix(pc)]??"").trim();
+     return o;
+   });
+   const wr=await workerCall("equities-master-parity",300000,null,null,{rows:pcRows,fields});
+   const stat=wr.fieldStats.map(x=>`${x.field}: ${x.match}/${x.compared}一致`).join("\n");
+   box("masterParityResult",wr.mismatch===0&&wr.missing===0?"pass":"warn",
+     `${wr.mismatch===0&&wr.missing===0?"PASS":"要確認"}\nPC候補: ${wr.total}\n比較: ${wr.compared}\n完全一致: ${wr.perfect}\n不一致: ${wr.mismatch}\nWeb欠損: ${wr.missing}\n\n${stat}`);
+   $("masterParityTable").innerHTML=(wr.diffs||[]).slice(0,30).map(x=>`<div><b>${x.code}</b> ${x.field}: PC=${String(x.pc)} / Web=${String(x.web)}</div>`).join("");
+ }catch(e){box("masterParityResult","fail","FAIL\n"+(e?.message||e))}
+ finally{btn.disabled=false}
+};
+
+async function runDailyDataset(btnId,resultId,dateId,fetcher,workerCmd,label){
+ const btn=$(btnId), date=$(dateId).value||localTodayIso();
+ const token=prodTokenValue();
+ if(!token){box(resultId,"fail","APIキーを入力してください");return}
+ btn.disabled=true;box(resultId,"run",`${label}取得中…\n基準日: ${date}`);
+ try{
+   const got=await fetcher(date,token);
+   const wr=await workerCall(workerCmd,300000,null,null,{date,rows:got.rows});
+   box(resultId,"pass",`PASS\nEndpoint: ${got.endpoint}\n基準日: ${date}\nAPI rows: ${got.rows.length}\n保存 rows: ${wr.rows}\nDB: ${wr.dbName}\nquick_check: ${wr.quickCheck}\n適用日: ${wr.minDate||"-"} ～ ${wr.maxDate||"-"}`);
+ }catch(e){box(resultId,"fail","FAIL\n"+(e?.message||e))}
+ finally{btn.disabled=false}
+}
+if($("finsFetchBtn")) $("finsFetchBtn").onclick=()=>runDailyDataset("finsFetchBtn","finsResult","finsDate",jqFetchFinsSummary,"fins-summary-write","財務サマリー");
+if($("earningsFetchBtn")) $("earningsFetchBtn").onclick=()=>runDailyDataset("earningsFetchBtn","earningsResult","earningsDate",jqFetchEarningsCalendar,"earnings-calendar-write","決算予定");
 
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();
 if($("technicalScreeningBtn")) $("technicalScreeningBtn").onclick=async()=>{

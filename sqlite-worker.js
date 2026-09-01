@@ -1056,6 +1056,96 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }
  }
 
+
+ if(cmd==="equities-master-parity"){
+   const payload=d.payload||{}, input=payload.rows||[], fields=payload.fields||[];
+   let db=null;
+   try{
+     db=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");
+     const rows=[];
+     db.exec({sql:`SELECT code,company_name,market_name,sector17_name,sector33_name,margin_name
+                   FROM equities_master
+                   WHERE effective_date=(SELECT max(effective_date) FROM equities_master)`,
+              rowMode:"object",callback:r=>rows.push(r)});
+     const norm=v=>{const s=String(v??"").trim().toUpperCase();return s.length===5&&s.endsWith("0")?s.slice(0,4):s};
+     const wm=new Map(rows.map(r=>[norm(r.code),r]));
+     const stats=Object.fromEntries(fields.map(([pc])=>[pc,{field:pc,compared:0,match:0}]));
+     let compared=0,perfect=0,missing=0,mismatch=0;const diffs=[];
+     for(const p of input){
+       const x=wm.get(norm(p.code)); if(!x){missing++;diffs.push({code:p.code,field:"Code",pc:p.code,web:"欠損"});continue}
+       compared++;let ok=true;
+       for(const [pc,wf] of fields){
+         const pv=String(p[pc]??"").trim(),wv=String(x[wf]??"").trim();
+         stats[pc].compared++;
+         if(pv===wv)stats[pc].match++;else{ok=false;diffs.push({code:p.code,field:pc,pc:pv,web:wv})}
+       }
+       if(ok)perfect++;else mismatch++;
+     }
+     db.close();
+     self.postMessage({ok:true,type:"result",total:input.length,compared,perfect,missing,mismatch,
+       fieldStats:Object.values(stats),diffs});
+     return;
+   }catch(err){try{if(db)db.close()}catch(_){} throw err}
+ }
+
+ if(cmd==="fins-summary-write" || cmd==="earnings-calendar-write"){
+   const payload=d.payload||{}, rows=payload.rows||[], requestedDate=String(payload.date||"");
+   const isFins=cmd==="fins-summary-write";
+   const dbName=isFins?"/jq_fins_summary_v1.sqlite":"/jq_earnings_calendar_v1.sqlite";
+   const table=isFins?"fins_summary":"earnings_calendar";
+   const dataset=table, shardKey=table;
+   let db=null;
+   try{
+     db=new p.OpfsSAHPoolDb(dbName,"c");
+     db.exec(`CREATE TABLE IF NOT EXISTS ${table}(
+       row_key TEXT PRIMARY KEY,
+       data_date TEXT NOT NULL,
+       code TEXT,
+       disclosed_date TEXT,
+       disclosed_time TEXT,
+       raw_json TEXT NOT NULL
+     ) WITHOUT ROWID`);
+     db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_date ON ${table}(data_date)`);
+     db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_code ON ${table}(code)`);
+     const stmt=db.prepare(`INSERT OR REPLACE INTO ${table}(row_key,data_date,code,disclosed_date,disclosed_time,raw_json) VALUES(?,?,?,?,?,?)`);
+     db.exec("BEGIN");
+     try{
+       let seq=0;
+       for(const r of rows){
+         const code=String(r.Code??r.code??"").trim();
+         const disc=String(r.DiscDate??r.DisclosedDate??r.Date??r.date??requestedDate).slice(0,10);
+         const time=String(r.DiscTime??r.DisclosedTime??r.Time??"");
+         const stable=[requestedDate,code,disc,time,r.DocType??r.Type??"",r.CurPerType??r.FY??"",seq++].join("|");
+         stmt.bind([stable,requestedDate,code||null,disc||null,time||null,JSON.stringify(r)]).stepReset();
+       }
+       db.exec("COMMIT");
+     }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
+     stmt.finalize();
+     const count=Number(scalar(db,`SELECT count(*) FROM ${table}`)||0);
+     const minDate=scalar(db,`SELECT min(data_date) FROM ${table}`);
+     const maxDate=scalar(db,`SELECT max(data_date) FROM ${table}`);
+     const quickCheck=scalar(db,"PRAGMA quick_check");
+     db.close();db=null;
+     let cdb=null;
+     try{
+       cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+       cdb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+         shard_key TEXT PRIMARY KEY, logical_name TEXT NOT NULL, dataset TEXT NOT NULL,
+         range_start TEXT, range_end TEXT, schema_version TEXT, state TEXT NOT NULL, updated_at TEXT NOT NULL
+       )`);
+       const esc=x=>String(x||"").replaceAll("'","''"),now=new Date().toISOString().replaceAll("'","''");
+       cdb.exec(`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at)
+         VALUES('${shardKey}','${esc(dbName)}','${dataset}','${esc(minDate)}','${esc(maxDate)}','raw-v1','ready','${now}')
+         ON CONFLICT(shard_key) DO UPDATE SET logical_name=excluded.logical_name,dataset=excluded.dataset,
+         range_start=excluded.range_start,range_end=excluded.range_end,schema_version=excluded.schema_version,
+         state=excluded.state,updated_at=excluded.updated_at`);
+       cdb.close();
+     }catch(_){try{if(cdb)cdb.close()}catch(__){}}
+     self.postMessage({ok:true,type:"result",dbName,rows:count,minDate,maxDate,quickCheck});
+     return;
+   }catch(err){try{if(db)db.close()}catch(_){} throw err}
+ }
+
  if(cmd==="technical-screening-poc"){
    const payload=e.data.payload||{};
    const asOf=String(payload.asOf||"");

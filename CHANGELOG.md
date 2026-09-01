@@ -1,10 +1,11 @@
 # CHANGELOG
 
-## v7e-alpha32b — 2026-09-01
-- 銘柄マスターShardのAPIキー入力導線を修正。
-- Masterカード内に専用APIキー欄を追加。
-- 既存の複数APIキー欄をセッションメモリ上で同期し、どの欄へ入力してもMaster取得で利用可能にした。
-- APIキーはlocalStorage/SQLiteへ保存しない。
-- Master取得ボタンを処理中のみdisabled、成功/失敗にかかわらずfinallyで必ず再有効化。
-- APIキー未入力時はMasterカードの入力欄へfocusし、再試行可能。
-- v7e-alpha32bへ表示・Service Worker cache-bust更新。
+## v7e-alpha33 — 2026-09-01
+- 開発ピッチを上げ、3工程を同梱。
+- 銘柄マスターPC/Web Parityを追加（CompanyName / Market / Sector17 / Sector33 / MarginCategory）。
+- J-Quants V2 `/fins/summary` の財務サマリーShardを追加。
+- J-Quants V2 `/equities/earnings-calendar` の決算予定Shardを追加。
+- 財務・決算予定はraw_jsonを完全保持して先にDataLakeを構築。PC列Parity確認後に正規化列を追加する方針。
+- 新ShardはCatalogへcoverage/stateを登録。
+- APIキーはセッションのみ、alpha32bの入力同期・再試行安全化を維持。
+- alpha31の日足テクニカル完全Parityを維持。
