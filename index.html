@@ -21,15 +21,51 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha11</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha12</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha11 起動確認</h2>
+<h2>v7e-alpha12 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
 
-<section class="card production-card" id="poolDiagnosticCard">
+<section class="card production-card">
+<h2>Web版 DataLake</h2>
+<div class="desc">
+現在の本番DataLake導線です。Catalog + Shards方式で、必要な小型DBだけを使います。旧巨大DataLake操作は開発者診断へ移しました。
+</div>
+
+<button id="shardBootstrapBtn">① Catalog / bars_recent を準備</button>
+<div id="shardBootstrapResult" class="result">未実行</div><br>
+
+<button id="shardHealthBtn">② bars_recent を確認</button>
+<div id="shardHealthResult" class="result">未実行</div><br>
+
+<label>移行対象：最新営業日数
+<input id="shardPilotDays" type="number" min="1" max="10" value="5" style="width:72px">
+</label>
+<button id="shardPilotBtn">③ Legacy DataLake → bars_recent 移行</button>
+<div id="shardPilotResult" class="result">未実行</div>
+
+<hr>
+<h3>年別Shard移行</h3>
+<div class="desc">最新年を既定値として、1暦年分の日足を専用Shardへ移します。</div>
+<label>対象年
+<input id="yearShardYear" type="number" min="2000" max="2100" value="2026" style="width:96px">
+</label>
+<button id="yearShardBtn">④ 1年分を年別Shardへ移行</button>
+<div id="yearShardResult" class="result">未実行</div>
+
+<hr>
+<h3>過去年を一括Shard化</h3>
+<div class="desc">Legacy DataLakeに実在する年を自動検出し、未移行年を新しい順に1年ずつ検証しながらShard化します。</div>
+<button id="yearInventoryBtn">⑤ 収録年を確認</button>
+<div id="yearInventoryResult" class="result">未実行</div><br>
+<button id="multiYearBtn">⑥ 過去年を順番に一括移行</button>
+<div id="multiYearResult" class="result">未実行</div>
+</section>
+
+<section class="card" id="poolDiagnosticCard">
 <h2>SAH Pool 緊急診断</h2>
 <div class="result" id="storageIdentity">
 固定Storage identity: origin=https://jquants-pwa-test.pages.dev / pool=jq-sahpool / directory=.jq-sahpool-v7c-r5
@@ -43,7 +79,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 <div id="writeGateResult" class="result">未実行</div>
 </section>
 
-<section class="card production-card" id="dailyUpdateCard">
+<section class="card" id="dailyUpdateCard">
 <h2>J-Quants DataLake 更新</h2>
 <div class="desc">
 普段はこちらだけ使います。J-Quants V2 APIキーはセッション中だけ利用し保存しません。
@@ -68,8 +104,8 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </section>
 
 
-<section class="card production-card" id="fastBackfillCard">
-<h2>高速バックフィル v7e-alpha11</h2>
+<section class="card" id="fastBackfillCard">
+<h2>高速バックフィル v7e-alpha12</h2>
 <div class="desc">
 書込みを1行ごとの db.exec から prepared statement 再利用へ変更しました。
 祝日ではなく「実際に株価データがある欠損営業日」を自動で探し、API取得＋SQLite書込みを1日分実測してから大量穴埋めを開始します。
@@ -85,33 +121,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 <details class="card">
 <summary><strong>開発者診断（通常は開かなくてOK）</strong></summary>
 
-<section class="card production-card">
-<h2>Web版 DataLake</h2>
-<div class="desc">
-現在の本番導線です。Catalog + Shards方式で、必要な小型DBだけを使います。
-</div>
 
-<button id="shardBootstrapBtn">① Catalog / bars_recent を準備</button>
-<div id="shardBootstrapResult" class="result">未実行</div><br>
-
-<button id="shardHealthBtn">② bars_recent を確認</button>
-<div id="shardHealthResult" class="result">未実行</div><br>
-
-<label>移行対象：最新営業日数
-<input id="shardPilotDays" type="number" min="1" max="10" value="5" style="width:72px">
-</label>
-<button id="shardPilotBtn">③ Legacy DataLake → bars_recent 移行</button>
-<div id="shardPilotResult" class="result">未実行</div>
-
-<hr>
-<h3>年別Shard移行</h3>
-<div class="desc">最新年を既定値として、1暦年分の日足を専用Shardへ移します。</div>
-<label>対象年
-<input id="yearShardYear" type="number" min="2000" max="2100" value="2026" style="width:96px">
-</label>
-<button id="yearShardBtn">④ 1年分を年別Shardへ移行</button>
-<div id="yearShardResult" class="result">未実行</div>
-</section>
 <div id="legacyDiagnosticsHost"></div>
 </details>
 
@@ -125,15 +135,15 @@ Import先はCloudflare Pages側OPFSの <b>jq_market_v7c.sqlite</b> です。
 GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更しません。
 </div>
 
-<section class="card production-card" id="autoBackfillCard">
-<h2>自動連続バックフィル v7e-alpha11</h2>
+<section class="card" id="autoBackfillCard">
+<h2>自動連続バックフィル v7e-alpha12</h2>
 <p>穴を再検出しながら連続処理。日付単位Commitなので安全停止・再開できます。Safariは前面表示のままにしてください。</p>
 <label>1バッチ日数 <input id="continuousBatch" type="number" min="5" max="120" value="40"></label>
 <button id="continuousStartBtn">▶ 自動連続バックフィル開始</button>
 <button id="continuousStopBtn" class="secondary">■ 安全停止</button>
 <div id="continuousResult" class="result">未実行</div>
 </section>
-<section class="card production-card" id="backupCard">
+<section class="card" id="backupCard">
 <h2>DataLake ローカルスナップショット</h2>
 <p>全DBをRAM展開せず、SAH Pool内に完全SQLiteスナップショットを作成・検証します。</p>
 <button id="backupEstimateBtn">① バックアップ可能容量を確認</button><div id="backupEstimateResult" class="result">未実行</div>
@@ -190,14 +200,14 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>7. v7e-alpha11総合判定</h2>
+<h2>7. v7e-alpha12総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 
 <section class="card">
-<h2>v7e-alpha11 実運用同期エンジン前段テスト</h2>
+<h2>v7e-alpha12 実運用同期エンジン前段テスト</h2>
 <div class="desc">
 既存1.12GB DataLakeの実スキーマを検査し、日付単位Transaction → Commit → Checkpoint →
 Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM展開・db.export()は使いません。
@@ -212,7 +222,7 @@ Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM
 
 
 <section class="card">
-<h2>v7e-alpha11 J-Quants 実データ同期</h2>
+<h2>v7e-alpha12 J-Quants 実データ同期</h2>
 <div class="desc">
 J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付単位で直接Commitします。
 認証情報はこの画面のメモリ内だけで使用し、SQLite・localStorage・GitHubには保存しません。
@@ -231,7 +241,7 @@ J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付
 
 
 <section class="card">
-<h2>v7e-alpha11 自動Catch-up Sync</h2>
+<h2>v7e-alpha12 自動Catch-up Sync</h2>
 <div class="desc">
 DataLakeの最終取得日と専用Checkpointを自動判定し、その翌日から指定日まで順番に同期します。
 土日はAPI呼出しを省略。祝日などAPIが0件の日も「確認済み」としてCheckpointを進めます。
@@ -253,13 +263,13 @@ iPhoneでは前景実行のため、このカードの同期中はSafariを閉�
 <h2>10. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7e-alpha11
+<div id="historyResult" class="result">Version: v7e-alpha12
 Build date: 2026-09-01
 Schema version: catalog-shards-v1
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7e-alpha11 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
+<footer>Version v7e-alpha12 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
 通常運用は上部カードだけを使用。旧PoCテストは「開発者診断」に隔離しています。</footer>
 </main>
 <script src="./app.js"></script>

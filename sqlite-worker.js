@@ -377,6 +377,34 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }finally{try{if(catDb)catDb.close()}catch(_){} try{if(dstDb)dstDb.close()}catch(_){} try{if(srcDb)srcDb.close()}catch(_){}}
  }
 
+
+ if(cmd==="shard-year-inventory"){
+   let srcDb=null,stage="01-source-open";
+   try{
+     const resolved=resolveExistingMarketDb(p,name);
+     srcDb=new p.OpfsSAHPoolDb(resolved.name,"r");
+     stage="02-inventory";
+     const years=execRows(srcDb,`
+       SELECT substr(date,1,4) AS year,
+              COUNT(*) AS rows,
+              COUNT(DISTINCT date) AS trading_days,
+              MIN(date) AS min_date,
+              MAX(date) AS max_date
+       FROM bars_daily
+       GROUP BY substr(date,1,4)
+       ORDER BY year DESC`);
+     srcDb.close();srcDb=null;
+     self.postMessage({ok:true,type:"result",stage:"PASS",source:resolved.name,years,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,
+       message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(srcDb)srcDb.close()}catch(_){}}
+ }
  if(cmd==="shard-migrate-year"){
    const catalogName="/jq_catalog_v1.sqlite";
    const sourceName=name;

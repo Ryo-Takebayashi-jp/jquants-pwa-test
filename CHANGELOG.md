@@ -1,5 +1,21 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha12 — CURRENT (2026-09-01)
+- alpha11の2026年年別Shard移行がiPhone実機PASS。
+  - 63営業日 / 279,928行
+  - Source = Write = Verified
+  - quick_check=ok
+  - 5.88秒
+  - Catalog bars_2026 ready
+- Legacy DataLakeの収録年一覧をread-onlyで自動検出するYear Inventoryを追加。
+- 収録年を新しい順に1年ずつ移行・検証する一括年別Shard化を追加。
+- 各年ごとに行数、営業日数、MIN/MAX、quick_checkを検証し、PASS後だけCatalog登録。
+- UI整理を修正。Web版 DataLakeを前面へ移動。
+- SAH緊急診断、旧巨大DataLake更新、高速/自動バックフィル、旧バックアップ、旧PoCを開発者診断へ収納。
+- 診断機能自体は削除せず保持。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha11 — CURRENT (2026-09-01)
 - alpha9の5営業日移行がiPhone実機で22,215行 / 0.37秒 / quick_check=ok / source-destination完全一致でPASS。
 - 年別Shard移行を追加。

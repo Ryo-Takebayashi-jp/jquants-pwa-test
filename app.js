@@ -856,3 +856,71 @@ stack: ${x.stack||"-"}
 Legacy DataLake: read-only`);
  }
 };
+
+let _yearInventoryCache=null;
+
+if($("yearInventoryBtn")) $("yearInventoryBtn").onclick=async()=>{
+ box("yearInventoryResult","run","Legacy DataLakeの収録年を確認中…");
+ try{
+   const r=await workerCall("shard-year-inventory",120000,
+     s=>box("yearInventoryResult","run",`進行中: ${s.stage||"-"}\n${s.detail||""}`));
+   _yearInventoryCache=r.years||[];
+   const lines=_yearInventoryCache.map(x=>
+     `${x.year}: ${Number(x.trading_days).toLocaleString()}営業日 / ${Number(x.rows).toLocaleString()}行 / ${x.min_date}～${x.max_date}`);
+   box("yearInventoryResult","pass",`PASS
+Source: ${r.source}
+収録年: ${_yearInventoryCache.length}年
+${lines.join("\n")}`);
+ }catch(e){
+   const x=e&&typeof e==="object"?e:{message:String(e)};
+   box("yearInventoryResult","fail",`FAIL
+stage: ${x.stage||"unknown"}
+message: ${x.message||String(e)}`);
+ }
+};
+
+if($("multiYearBtn")) $("multiYearBtn").onclick=async()=>{
+ box("multiYearResult","run","収録年を確認中…");
+ try{
+   let inv=_yearInventoryCache;
+   if(!inv){
+     const r=await workerCall("shard-year-inventory",120000,null);
+     inv=r.years||[];
+     _yearInventoryCache=inv;
+   }
+   if(!inv.length) throw new Error("移行対象年がありません");
+
+   const years=inv.map(x=>Number(x.year)).filter(Number.isFinite).sort((a,b)=>b-a);
+   const results=[];
+   for(let i=0;i<years.length;i++){
+     const year=years[i];
+     box("multiYearResult","run",
+       `年別Shard一括移行 ${i+1}/${years.length}\n現在: ${year}年\n完了: ${results.map(x=>x.year).join(", ")||"なし"}`);
+     const r=await workerCall("shard-migrate-year",900000,
+       s=>box("multiYearResult","run",
+         `年別Shard一括移行 ${i+1}/${years.length}\n現在: ${year}年\n${s.stage||"-"} ${s.detail||""}\n完了: ${results.map(x=>x.year).join(", ")||"なし"}`),
+       null,{year});
+     results.push(r);
+   }
+   const totalRows=results.reduce((a,x)=>a+Number(x.verifiedRows||0),0);
+   const totalDays=results.reduce((a,x)=>a+Number(x.verifiedTradingDays||x.tradingDays||0),0);
+   const totalMs=results.reduce((a,x)=>a+Number(x.elapsedMs||0),0);
+   box("multiYearResult","pass",`PASS
+移行年数: ${results.length}
+対象年: ${results.map(x=>x.year).join(", ")}
+Verified rows合計: ${totalRows.toLocaleString()}
+営業日合計: ${totalDays.toLocaleString()}
+各年 quick_check: ${results.every(x=>x.quickCheck==="ok")?"ALL ok":"要確認"}
+処理時間合計: ${(totalMs/1000).toFixed(2)}秒
+Catalog: 各 bars_YYYY を ready 登録
+Legacy DataLake: read-only / 未変更
+判定: 全収録年の年別Shard化 PASS`);
+ }catch(e){
+   const x=e&&typeof e==="object"?e:{message:String(e)};
+   box("multiYearResult","fail",`FAIL
+message: ${x.message||String(e)}
+stack: ${x.stack||"-"}
+途中までPASSした年別Shardは保持されます。
+Legacy DataLake: read-only / 未変更`);
+ }
+};
