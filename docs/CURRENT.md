@@ -1,10 +1,11 @@
-# v7e-alpha53
+# v7e-alpha54 実機テスト
 
-今回の実機テスト:
-1. 5戦略選抜はalpha52でPASS済みなので再実行不要。
-2. screening_candidates.csv を選択。
-3. 「選抜Parityを実行」。
+Screening開発エリアだけ使います。
 
-狙い:
-- CSV解析エラーなし
-- PC候補/Web候補の実際の一致率・差分を表示
+1. 「財務データを正規化」
+2. 「Screening母集団を構築」
+3. 「5戦略でTop20を選抜」
+4. screening_candidates.csv を選び「選抜Parityを実行」
+
+今回はPC版Core計算を移植した最初の版です。
+PEDとQVRはまだ暫定なので完全一致ではなく、共通銘柄がalpha53の16からどこまで増えるかを確認します。
