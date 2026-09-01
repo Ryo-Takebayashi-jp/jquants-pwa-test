@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha61");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha62");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha61").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha62").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2251,6 +2251,38 @@ function screeningBoundaryDiagnostics(pcRows,webRows){
  return {onlyPc,onlyWeb,byStrategy,detail,pm,wm,sts};
 }
 
+
+function qvrExactnessDiagnostics(d){
+ const fields=[
+  "ROE","CurrentOperatingMarginPct","OperatingMarginChangePt","LatestAvailableCFO","LatestAvailableFCF","EquityRatioPct",
+  "ForecastPER","PBR","ForecastDividendYieldPct","Sector33","SectorForecastPERValueScore","SectorPBRValueScore","SectorDividendYieldValueScore",
+  "RelativeToTOPIX20D","RelativeToTOPIX60D","MA25Slope5DPct","MA75Slope20DPct","MACDHistogramChange5D","VolumeRatio5To20","RSI14","DistanceFrom52WLowPct","MACDState",
+  "PrimaryProfitYoY","AverageTradingValue20D","MarginLongChangePct1W","LargeShortRatioChange1W",
+  "QVRQualityScore","QVRValueScore","QVRReRatingScore","QVRCrowdingPenalty","QVRQualityMismatchPenalty","ChasePenalty","QualityValueReRatingScore","QVRPercentile","QualityValueReRatingRank"
+ ];
+ const numEq=(a,b)=>{const x=Number(a),y=Number(b);return Number.isFinite(x)&&Number.isFinite(y)?Math.abs(x-y)<=1e-6:String(a??"")===String(b??"")};
+ const codes=[...new Set([...d.onlyPc,...d.onlyWeb,...[...d.pm.keys()].filter(c=>d.wm.has(c))])];
+ const rows=[];
+ for(const c of codes){const p=d.pm.get(c),w=d.wm.get(c);if(!p||!w)continue;const dif=[];for(const f of fields)if(!numEq(p[f],w[f]))dif.push(f);
+   if(!dif.length)continue;
+   const raw=dif.filter(f=>!f.startsWith("QVR")&&f!=="QualityValueReRatingScore"&&f!=="ChasePenalty"&&f!=="QualityValueReRatingRank");
+   let first="最終順位/母集団境界";
+   if(raw.length)first="入力:"+raw[0];
+   else if(dif.includes("QVRQualityScore"))first="Quality計算";
+   else if(dif.includes("QVRValueScore"))first="Value peer-rank計算";
+   else if(dif.includes("QVRReRatingScore"))first="ReRating計算";
+   else if(dif.includes("QVRCrowdingPenalty"))first="需給Penalty";
+   else if(dif.includes("QVRQualityMismatchPenalty"))first="QualityMismatchPenalty";
+   else if(dif.includes("ChasePenalty"))first="ChasePenalty";
+   else if(dif.includes("QualityValueReRatingScore"))first="最終QVR合成";
+   rows.push({code:c,name:p.CompanyName||p.Name||w.CompanyName||"",first,dif,p,w});
+ }
+ const focus=rows.filter(x=>d.onlyPc.includes(x.code)||d.onlyWeb.includes(x.code)).concat(rows.filter(x=>!d.onlyPc.includes(x.code)&&!d.onlyWeb.includes(x.code))).slice(0,20);
+ const text=focus.map(x=>{const xs=x.dif.slice(0,8).map(f=>`${f}=${x.p?.[f]??"-"}/${x.w?.[f]??"-"}`).join(" | ");return `${x.code} ${x.first}\n  ${xs}`}).join("\n");
+ const counts={};for(const x of rows)counts[x.first]=(counts[x.first]||0)+1;
+ return {rows,summary:Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join(" / "),text};
+}
+
 if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=async()=>{try{
  const f=$("screeningStrategyParityFile").files?.[0];if(!f)throw new Error("screening_candidates.csvを選択してください");
  if(!latestScreeningCandidates.length)throw new Error("先にWebの5戦略選抜を実行してください");
@@ -2261,7 +2293,8 @@ if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=asyn
  let both=0,strategy=0;const missing=[],extra=[],diff=[];
  for(const [c,w] of wmap){const p=pmap.get(c);if(!p){extra.push(c);continue}both++;if(String(p.PrimaryStrategy||"")===String(w.PrimaryStrategy||""))strategy++;else diff.push(`${c}: PC=${p.PrimaryStrategy||"-"} / Web=${w.PrimaryStrategy||"-"}`)}
  for(const c of pmap.keys())if(!wmap.has(c))missing.push(c);
- const exact=missing.length===0&&extra.length===0&&strategy===both,d=screeningBoundaryDiagnostics(pcRows,latestScreeningCandidates);
+ const exact=missing.length===0&&extra.length===0&&strategy===both,d=screeningBoundaryDiagnostics(pcRows,latestScreeningCandidates),qx=qvrExactnessDiagnostics(d);
+ window.__latestQvrExactness=qx;
  $("screeningDiffExportBtn").disabled=false;
  box("screeningStrategyParityResult",exact?"pass":"warn",`Screening 選抜Parity
 PC CSV行数: ${pcRows.length}
@@ -2280,6 +2313,12 @@ ${d.byStrategy.join("\n")||"なし"}
 
 【QVR共通銘柄 Score差】
 ${(()=>{const fs=["QualityValueReRatingScore","QVRQualityScore","QVRValueScore","QVRReRatingScore","QVRCrowdingPenalty","QVRQualityMismatchPenalty","QVROverheatPenalty","ForecastPER","PBR","ForecastDividendYieldPct","ROE","EquityRatioPct","LatestAvailableCFO","LatestAvailableFCF","MarginLongChangePct1W","LargeShortRatioChange1W"];const z=[];for(const c of d.pm.keys()){if(!d.wm.has(c))continue;const a=d.pm.get(c),b=d.wm.get(c),xs=[];for(const f of fs){const x=a?.[f],y=b?.[f];if(x==null&&y==null)continue;const nx=Number(x),ny=Number(y),neq=Number.isFinite(nx)&&Number.isFinite(ny)?Math.abs(nx-ny)>1e-6:String(x??"")!==String(y??"");if(neq)xs.push(f+":"+(x??"-")+"/"+(y??"-"))}if(xs.length)z.push(c+" "+xs.slice(0,6).join(" | "))}return z.slice(0,12).join("\n")||"主要入力/Score差なし"})()}
+
+【QVR 最初の不一致地点 集計】
+${qx.summary||"差なし"}
+
+【QVR Exactness 診断 PC/Web】
+${qx.text||"差なし"}
 
 【差分銘柄 rank PC/Web】
 ${d.detail.slice(0,40).join("\n")||"なし"}${diff.length?"\n\nPrimary差分:\n"+diff.slice(0,12).join("\n"):""}`)
@@ -2599,10 +2638,13 @@ if($("screeningDiffExportBtn")) $("screeningDiffExportBtn").onclick=()=>{
  if(!latestScreeningParityPcRows.length||!latestScreeningCandidates.length)return;
  const d=screeningBoundaryDiagnostics(latestScreeningParityPcRows,latestScreeningCandidates),codes=[...new Set([...d.onlyPc,...d.onlyWeb])].sort();
  const esc=v=>'"'+String(v??"").replaceAll('"','""')+'"';
- const hdr=["Code","Side","CompanyName","PC_Primary","Web_Primary",...d.sts.flatMap(st=>["PC_"+st+"Rank","Web_"+st+"Rank","Web_"+st+"Score"])];
+ const qfields=["ROE","CurrentOperatingMarginPct","OperatingMarginChangePt","LatestAvailableCFO","LatestAvailableFCF","EquityRatioPct","ForecastPER","PBR","ForecastDividendYieldPct","Sector33","SectorForecastPERValueScore","SectorPBRValueScore","SectorDividendYieldValueScore","RelativeToTOPIX20D","RelativeToTOPIX60D","MA25Slope5DPct","MA75Slope20DPct","MACDHistogramChange5D","VolumeRatio5To20","RSI14","DistanceFrom52WLowPct","MACDState","PrimaryProfitYoY","AverageTradingValue20D","MarginLongChangePct1W","LargeShortRatioChange1W","QVRQualityScore","QVRValueScore","QVRReRatingScore","QVRCrowdingPenalty","QVRQualityMismatchPenalty","ChasePenalty","QualityValueReRatingScore","QVRPercentile","QualityValueReRatingRank"];
+ const hdr=["Code","Side","CompanyName","PC_Primary","Web_Primary","QVR_FirstDivergence",...d.sts.flatMap(st=>["PC_"+st+"Rank","Web_"+st+"Rank","Web_"+st+"Score"]),...qfields.flatMap(f=>["PC_"+f,"Web_"+f])];
  const lines=[hdr.map(esc).join(",")];
- for(const c of codes){const p=d.pm.get(c),q=d.wm.get(c),vals=[c,p&&!q?"PC_ONLY":"WEB_ONLY",p?.CompanyName??p?.Name??q?.CompanyName??"",p?.PrimaryStrategy??"",q?.PrimaryStrategy??""];
+ const qx=window.__latestQvrExactness||qvrExactnessDiagnostics(d),qxm=new Map((qx.rows||[]).map(x=>[x.code,x]));
+ for(const c of codes){const p=d.pm.get(c),q=d.wm.get(c),vals=[c,p&&!q?"PC_ONLY":"WEB_ONLY",p?.CompanyName??p?.Name??q?.CompanyName??"",p?.PrimaryStrategy??"",q?.PrimaryStrategy??"",qxm.get(c)?.first??""];
    for(const st of d.sts)vals.push(p?.[st+"Rank"]??"",q?.[st+"Rank"]??"",q?.[st+"Score"]??"");
+   for(const f of qfields)vals.push(p?.[f]??"",q?.[f]??"");
    lines.push(vals.map(esc).join(","));
  }
  downloadBlob(new Blob(["\uFEFF"+lines.join("\n")],{type:"text/csv;charset=utf-8"}),`screening_parity_diff_${($("screeningBaseAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`);

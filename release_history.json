@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha60",
+  "current_release": "v7e-alpha62",
   "history": [
     {
       "release": "v7e-alpha60",
@@ -8,6 +8,11 @@
     }
   ],
   "releases": [
+    {
+      "version": "v7e-alpha62",
+      "date": "2026-09-02",
+      "summary": "QVR first-divergence exactness diagnostics; no selection behavior change"
+    },
     {
       "version": "v7e-alpha61",
       "date": "2026-09-01",

@@ -1,8 +1,8 @@
 # CHANGELOG
 
-## v7e-alpha61 — QVR exactness / supply penalty diagnostics
-- PC版 `QualityValueReRating` の `QVRCrowdingPenalty` 計算をWebへ移植。
-- Webの信用週末残高Shardから `MarginLongChangePct1W` をScreening母集団へ自動結合。
-- QVR共通銘柄について Score / Quality / Value / ReRating / penalty / valuation / CF / supply の差をParity結果へ表示。
-- 需給データが無い場合は従来どおり欠損扱いとし、選抜処理自体は停止しない。
-- alpha60の戦略別Top20境界診断を維持。
+## v7e-alpha62 — QVR first-divergence exactness diagnostics
+- Screening選抜Parityで、QVRのPC/Web差を「元入力 → Quality / Value / ReRating → penalty → 最終Score → rank」の順に診断。
+- 各銘柄について最初に不一致が発生した層を自動分類して画面へ表示。
+- QVR診断対象を ROE・利益率・CF・自己資本比率・PER/PBR/配当利回り・Sector peer rank・相対強度・傾き・MACD・出来高・RSI・52週位置・需給まで拡張。
+- Parity差分CSVへPC/Web双方のQVR入力・サブスコア・penalty・最終Score・rankを追加。
+- 選抜ロジック自体はalpha61から変更せず、原因特定専用。87%が据え置きでも正常。
