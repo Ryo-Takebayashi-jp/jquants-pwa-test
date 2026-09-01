@@ -1,5 +1,14 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha25 — CURRENT (2026-09-01)
+- ユーザー固有の銘柄登録を `/jq_private_v1.sqlite` へ分離。
+- マイ銘柄の追加/更新/削除を追加。
+- 現物/NISA/信用買/信用売/WATCH区分を保持。
+- PC版 portfolio.csv の一括Importを追加。
+- 市場DataLakeと個人ポートフォリオ情報を論理・物理分離。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha24 — CURRENT (2026-09-01)
 - Web ScreeningをPoCから正式移植準備のCore 1へ進行。
 - 日足Shard由来のMA5/25/75、MA乖離率、5D/20D騰落率、RSI14、出来高20日比をCore指標化。

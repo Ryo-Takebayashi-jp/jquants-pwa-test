@@ -774,6 +774,64 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
 
+
+ if(cmd==="my-stocks-list"||cmd==="my-stocks-upsert"||cmd==="my-stocks-delete"||cmd==="my-stocks-import"){
+   let db=null,stage="01-open";
+   try{
+     db=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     db.exec(`CREATE TABLE IF NOT EXISTS user_stocks(
+       code TEXT NOT NULL,
+       name TEXT,
+       account TEXT NOT NULL DEFAULT '',
+       shares REAL,
+       avg_cost REAL,
+       strategy TEXT,
+       memo TEXT,
+       created_at TEXT NOT NULL,
+       updated_at TEXT NOT NULL,
+       PRIMARY KEY(code,account)
+     ) WITHOUT ROWID`);
+     const now=new Date().toISOString();
+     if(cmd==="my-stocks-upsert"){
+       stage="02-upsert";
+       const x=e.data.payload||{},code=String(x.code||"").trim().toUpperCase(),account=String(x.account||"").trim();
+       if(!/^[0-9A-Z]{4,5}$/.test(code))throw new Error("銘柄コードが不正です");
+       db.exec({sql:`INSERT INTO user_stocks(code,name,account,shares,avg_cost,strategy,memo,created_at,updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(code,account) DO UPDATE SET name=excluded.name,shares=excluded.shares,avg_cost=excluded.avg_cost,
+         strategy=excluded.strategy,memo=excluded.memo,updated_at=excluded.updated_at`,
+         bind:[code,String(x.name||""),account,x.shares==null?null:Number(x.shares),x.avgCost==null?null:Number(x.avgCost),
+         String(x.strategy||""),String(x.memo||""),now,now]});
+     }else if(cmd==="my-stocks-delete"){
+       stage="02-delete"; const x=e.data.payload||{};
+       db.exec({sql:"DELETE FROM user_stocks WHERE code=? AND account=?",bind:[String(x.code||""),String(x.account||"")]});
+     }else if(cmd==="my-stocks-import"){
+       stage="02-import"; const rows=(e.data.payload||{}).rows||[]; let n=0;
+       db.exec("BEGIN");
+       try{
+         for(const x of rows){
+           const code=String(x.code||"").trim().toUpperCase(),account=String(x.account||"").trim();
+           if(!/^[0-9A-Z]{4,5}$/.test(code))continue;
+           db.exec({sql:`INSERT INTO user_stocks(code,name,account,shares,avg_cost,strategy,memo,created_at,updated_at)
+             VALUES(?,?,?,?,?,?,?,?,?)
+             ON CONFLICT(code,account) DO UPDATE SET name=excluded.name,shares=excluded.shares,avg_cost=excluded.avg_cost,
+             strategy=excluded.strategy,updated_at=excluded.updated_at`,
+             bind:[code,String(x.name||""),account,x.shares==null?null:Number(x.shares),x.avgCost==null?null:Number(x.avgCost),
+             String(x.strategy||""),"",now,now]}); n++;
+         }
+         db.exec("COMMIT");
+       }catch(err){try{db.exec("ROLLBACK")}catch(_){}throw err}
+       self.postMessage({ok:true,type:"result",stage:"PASS",imported:n,elapsedMs:Math.round(performance.now()-t0)});
+       return;
+     }
+     stage="03-list";
+     const rows=execRows(db,`SELECT code,name,account,shares,avg_cost,strategy,memo,created_at,updated_at
+       FROM user_stocks ORDER BY CASE account WHEN 'NISA' THEN 1 WHEN '現物' THEN 2 WHEN '信用買' THEN 3 WHEN '信用売' THEN 4 ELSE 9 END,code`);
+     self.postMessage({ok:true,type:"result",stage:"PASS",rows,count:rows.length,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}
+   finally{try{if(db)db.close()}catch(_){}}
+ }
  if(cmd==="technical-screening-poc"){
    const payload=e.data.payload||{};
    const asOf=String(payload.asOf||"");

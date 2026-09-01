@@ -1,22 +1,18 @@
-# v7e-alpha24 — Screening Core 1
+# v7e-alpha25 — My Stocks / private registry
 
-正式Screening移植の第1段階。
+## 追加
+- `/jq_private_v1.sqlite` に `user_stocks` を作成
+- 銘柄コード＋口座区分をキーに追加/更新
+- 個別削除
+- PC版 `portfolio.csv` の一括Import
+- 登録一覧表示
+- 現物 / NISA / 信用買 / 信用売 / WATCH
 
-## Core 1
-日足Shardだけで再現可能な価格・出来高系指標をWeb側で計算する。
+## 設計
+個人の保有・管理銘柄は市場DataLakeから分離してprivate DBへ保存。
+同じコードでも口座区分が違えば別レコードとして保持。
 
-- MA5 / MA25 / MA75
-- 株価のMA25・MA75乖離率
-- 5日 / 20日騰落率
-- RSI14
-- 当日出来高 / 20日平均出来高
-- 20日高値・安値とレンジ位置
-- 60日高値・安値とレンジ位置
-
-Catalogが基準日に必要なShardのみ選択する。
-現段階のランキングスコアは表示検証用で、正式な投資判断には未使用。
-
-## 次工程
-実機PASS後、デスクトップ版Screening出力との同一基準日突合を行い、
-一致確認できた指標を正式Web Coreへ昇格する。
-財務・需給など日足以外の列は次Shard群へ分離する。
+## 次
+Web Screening CoreとMy Stocksを接続し、
+保有/Watch銘柄の順位・テクニカル状態を一覧化。
+PC版9/1 ScreeningとのParity Testも並行する。

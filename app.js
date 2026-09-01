@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha24");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha25");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1129,7 +1129,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha24",
+   appVersion:"v7e-alpha25",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1665,3 +1665,68 @@ ${s.stage||"-"} ${s.detail||""}`),null,{asOf,lookback:100,topN:50});
 ${e.stage?`stage: ${e.stage}\n`:""}${e.message||e}`)}
  finally{$("technicalScreeningBtn").disabled=false}
 };
+
+function parseSimpleCsv(text){
+ const rows=[];let row=[],field="",q=false;
+ for(let i=0;i<text.length;i++){
+   const c=text[i],n=text[i+1];
+   if(q){
+     if(c=='"'&&n=='"'){field+='"';i++}
+     else if(c=='"')q=false;
+     else field+=c;
+   }else{
+     if(c=='"')q=true;
+     else if(c==','){row.push(field);field=""}
+     else if(c=='\n'){row.push(field.replace(/\r$/,""));rows.push(row);row=[];field=""}
+     else field+=c;
+   }
+ }
+ if(field.length||row.length){row.push(field.replace(/\r$/,""));rows.push(row)}
+ return rows;
+}
+async function loadMyStocks(){
+ box("myStockListResult","run","private DBから読込中…");
+ try{
+   const r=await workerCall("my-stocks-list",300000);
+   box("myStockListResult","pass",`PASS\n登録: ${r.count}件\n処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒`);
+   const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+   let h='<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>Code</th><th>Name</th><th>区分</th><th>株数</th><th>平均取得</th><th></th></tr></thead><tbody>';
+   for(const x of r.rows){
+     h+=`<tr><td>${esc(x.code)}</td><td>${esc(x.name)}</td><td>${esc(x.account)}</td><td>${x.shares??"-"}</td><td>${x.avg_cost??"-"}</td><td><button class="my-stock-del" data-code="${esc(x.code)}" data-account="${esc(x.account)}" style="padding:6px 10px">削除</button></td></tr>`;
+   }
+   h+="</tbody></table></div>";$("myStockTable").innerHTML=h;
+   document.querySelectorAll(".my-stock-del").forEach(b=>b.onclick=async()=>{
+     const code=b.dataset.code,account=b.dataset.account;
+     if(!confirm(`${code} / ${account} を削除しますか？`))return;
+     await workerCall("my-stocks-delete",300000,null,null,{code,account}); await loadMyStocks();
+   });
+ }catch(e){box("myStockListResult","fail","FAIL\n"+(e.message||e))}
+}
+if($("myStockReloadBtn"))$("myStockReloadBtn").onclick=loadMyStocks;
+if($("myStockSaveBtn"))$("myStockSaveBtn").onclick=async()=>{
+ const code=$("myStockCode").value.trim().toUpperCase(),name=$("myStockName").value.trim(),account=$("myStockAccount").value;
+ const shares=$("myStockShares").value===""?null:Number($("myStockShares").value);
+ const avgCost=$("myStockAvgCost").value===""?null:Number($("myStockAvgCost").value);
+ try{
+   const r=await workerCall("my-stocks-upsert",300000,null,null,{code,name,account,shares,avgCost,strategy:$("myStockStrategy").value,memo:$("myStockMemo").value});
+   box("myStockSaveResult","pass",`PASS\n${code} / ${account} を保存しました。\n登録合計: ${r.count}件`);
+   await loadMyStocks();
+ }catch(e){box("myStockSaveResult","fail","FAIL\n"+(e.message||e))}
+};
+if($("myStockImportBtn"))$("myStockImportBtn").onclick=async()=>{
+ const f=$("myStockImportFile").files?.[0]; if(!f){box("myStockImportResult","warn","portfolio.csvを選択してください");return}
+ try{
+   const matrix=parseSimpleCsv(await f.text()); if(matrix.length<2)throw new Error("CSVにデータがありません");
+   const head=matrix[0].map(x=>x.trim()),idx=n=>head.indexOf(n);
+   for(const req of ["Code","Name","Account","Shares","AvgCost"])if(idx(req)<0)throw new Error(`列 ${req} がありません`);
+   const rows=matrix.slice(1).filter(r=>r[idx("Code")]).map(r=>({
+     code:r[idx("Code")],name:r[idx("Name")],account:r[idx("Account")],
+     shares:r[idx("Shares")]===""?null:Number(r[idx("Shares")]),avgCost:r[idx("AvgCost")]===""?null:Number(r[idx("AvgCost")]),
+     strategy:idx("Strategy")>=0?r[idx("Strategy")]:""
+   }));
+   const wr=await workerCall("my-stocks-import",300000,null,null,{rows});
+   box("myStockImportResult","pass",`PASS\nportfolio.csv: ${wr.imported}行を登録/更新`);
+   await loadMyStocks();
+ }catch(e){box("myStockImportResult","fail","FAIL\n"+(e.message||e))}
+};
+setTimeout(()=>{if($("myStockTable"))loadMyStocks()},50);

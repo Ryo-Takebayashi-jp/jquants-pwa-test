@@ -613,8 +613,13 @@
       ]
     }
   ],
-  "current_release": "v7e-alpha24",
+  "current_release": "v7e-alpha25",
   "history": [
+    {
+      "release": "v7e-alpha25",
+      "date": "2026-09-01",
+      "note": "Private My Stocks registry with CRUD and desktop portfolio.csv import."
+    },
     {
       "release": "v7e-alpha24",
       "date": "2026-09-01",
