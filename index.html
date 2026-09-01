@@ -21,10 +21,10 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha33</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha34</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha33 起動確認</h2>
+<h2>v7e-alpha34 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -101,6 +101,37 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
   <label>基準日 <input id="earningsDate" type="date" value="2026-09-01"></label>
   <button id="earningsFetchBtn">決算予定を取得・保存</button>
   <pre id="earningsResult" class="result">未実行</pre>
+</section>
+
+
+<section class="card">
+  <h2>⑥ 市場基礎 Shard（TOPIX + 営業日）</h2>
+  <p>PC版の相対強度・市場状態判定に必要な基礎層です。初回は既存DataLakeと同じ2016-08-30から一括構築できます。</p>
+  <label>TOPIX From <input id="topixFrom" type="date" value="2016-08-30"></label>
+  <label>To <input id="topixTo" type="date" value="2026-09-01"></label>
+  <button id="topixFetchBtn">TOPIXを取得・保存</button>
+  <pre id="topixResult" class="result">未実行</pre>
+  <label>Calendar From <input id="calendarFrom" type="date" value="2016-08-30"></label>
+  <label>To <input id="calendarTo" type="date" value="2026-09-01"></label>
+  <button id="calendarFetchBtn">営業日カレンダーを取得・保存</button>
+  <pre id="calendarResult" class="result">未実行</pre>
+  <button id="marketBaseAllBtn">市場基礎2種をまとめて構築</button>
+  <pre id="marketBaseAllResult" class="result">未実行</pre>
+</section>
+
+<section class="card">
+  <h2>⑦ Standard需給 Shard 5種</h2>
+  <p>信用残・日々公表信用・空売り比率・空売り報告・投資部門別を独立Shardで保持します。Plan差で取得不能な項目があっても他項目は継続します。</p>
+  <label>From <input id="sdFrom" type="date" value="2026-06-01"></label>
+  <label>To <input id="sdTo" type="date" value="2026-09-01"></label>
+  <button id="supplyDemandAllBtn">需給5種をまとめて取得</button>
+  <pre id="supplyDemandAllResult" class="result">未実行</pre>
+
+  <button id="marginInterestFetchBtn">信用取引週末残高</button><pre id="marginInterestResult" class="result">未実行</pre>
+  <button id="marginAlertFetchBtn">日々公表信用</button><pre id="marginAlertResult" class="result">未実行</pre>
+  <button id="shortRatioFetchBtn">空売り比率</button><pre id="shortRatioResult" class="result">未実行</pre>
+  <button id="shortSaleFetchBtn">空売り報告</button><pre id="shortSaleResult" class="result">未実行</pre>
+  <button id="investorTypesFetchBtn">投資部門別</button><pre id="investorTypesResult" class="result">未実行</pre>
 </section>
 
 <section class="card" id="technicalScreeningCard">
@@ -285,7 +316,7 @@ Legacy DataLakeは未使用・未変更。
 
 
 <section class="card" id="fastBackfillCard">
-<h2>高速バックフィル v7e-alpha33</h2>
+<h2>高速バックフィル v7e-alpha34</h2>
 <div class="desc">
 書込みを1行ごとの db.exec から prepared statement 再利用へ変更しました。
 祝日ではなく「実際に株価データがある欠損営業日」を自動で探し、API取得＋SQLite書込みを1日分実測してから大量穴埋めを開始します。
@@ -400,7 +431,7 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </div>
 
 <section class="card" id="autoBackfillCard">
-<h2>自動連続バックフィル v7e-alpha33</h2>
+<h2>自動連続バックフィル v7e-alpha34</h2>
 <p>穴を再検出しながら連続処理。日付単位Commitなので安全停止・再開できます。Safariは前面表示のままにしてください。</p>
 <label>1バッチ日数 <input id="continuousBatch" type="number" min="5" max="120" value="40"></label>
 <button id="continuousStartBtn">▶ 自動連続バックフィル開始</button>
@@ -458,14 +489,14 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>7. v7e-alpha33総合判定</h2>
+<h2>7. v7e-alpha34総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 
 <section class="card">
-<h2>v7e-alpha33 実運用同期エンジン前段テスト</h2>
+<h2>v7e-alpha34 実運用同期エンジン前段テスト</h2>
 <div class="desc">
 既存1.12GB DataLakeの実スキーマを検査し、日付単位Transaction → Commit → Checkpoint →
 Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM展開・db.export()は使いません。
@@ -480,7 +511,7 @@ Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM
 
 
 <section class="card">
-<h2>v7e-alpha33 J-Quants 実データ同期</h2>
+<h2>v7e-alpha34 J-Quants 実データ同期</h2>
 <div class="desc">
 J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付単位で直接Commitします。
 認証情報はこの画面のメモリ内だけで使用し、SQLite・localStorage・GitHubには保存しません。
@@ -499,7 +530,7 @@ J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付
 
 
 <section class="card">
-<h2>v7e-alpha33 自動Catch-up Sync</h2>
+<h2>v7e-alpha34 自動Catch-up Sync</h2>
 <div class="desc">
 DataLakeの最終取得日と専用Checkpointを自動判定し、その翌日から指定日まで順番に同期します。
 土日はAPI呼出しを省略。祝日などAPIが0件の日も「確認済み」としてCheckpointを進めます。
@@ -521,13 +552,13 @@ iPhoneでは前景実行のため、このカードの同期中はSafariを閉�
 <h2>10. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7e-alpha33
+<div id="historyResult" class="result">Version: v7e-alpha34
 Build date: 2026-09-01
 Schema version: catalog-shards-v1
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7e-alpha33 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
+<footer>Version v7e-alpha34 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
 通常運用は上部カードだけを使用。旧PoCテストは「開発者診断」に隔離しています。</footer>
 </main>
 <script src="./app.js"></script>
@@ -649,7 +680,7 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </div>
 
 <section class="card" id="autoBackfillCard">
-<h2>自動連続バックフィル v7e-alpha33</h2>
+<h2>自動連続バックフィル v7e-alpha34</h2>
 <p>穴を再検出しながら連続処理。日付単位Commitなので安全停止・再開できます。Safariは前面表示のままにしてください。</p>
 <label>1バッチ日数 <input id="continuousBatch" type="number" min="5" max="120" value="40"></label>
 <button id="continuousStartBtn">▶ 自動連続バックフィル開始</button>
@@ -707,14 +738,14 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>7. v7e-alpha33総合判定</h2>
+<h2>7. v7e-alpha34総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 
 <section class="card">
-<h2>v7e-alpha33 実運用同期エンジン前段テスト</h2>
+<h2>v7e-alpha34 実運用同期エンジン前段テスト</h2>
 <div class="desc">
 既存1.12GB DataLakeの実スキーマを検査し、日付単位Transaction → Commit → Checkpoint →
 Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM展開・db.export()は使いません。
@@ -729,7 +760,7 @@ Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM
 
 
 <section class="card">
-<h2>v7e-alpha33 J-Quants 実データ同期</h2>
+<h2>v7e-alpha34 J-Quants 実データ同期</h2>
 <div class="desc">
 J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付単位で直接Commitします。
 認証情報はこの画面のメモリ内だけで使用し、SQLite・localStorage・GitHubには保存しません。
@@ -748,7 +779,7 @@ J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付
 
 
 <section class="card">
-<h2>v7e-alpha33 自動Catch-up Sync</h2>
+<h2>v7e-alpha34 自動Catch-up Sync</h2>
 <div class="desc">
 DataLakeの最終取得日と専用Checkpointを自動判定し、その翌日から指定日まで順番に同期します。
 土日はAPI呼出しを省略。祝日などAPIが0件の日も「確認済み」としてCheckpointを進めます。
@@ -770,13 +801,13 @@ iPhoneでは前景実行のため、このカードの同期中はSafariを閉�
 <h2>10. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7e-alpha33
+<div id="historyResult" class="result">Version: v7e-alpha34
 Build date: 2026-09-01
 Schema version: catalog-shards-v1
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7e-alpha33 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
+<footer>Version v7e-alpha34 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
 通常運用は上部カードだけを使用。旧PoCテストは「開発者診断」に隔離しています。</footer>
 </main>
 

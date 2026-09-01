@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha33");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha34");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -289,6 +289,17 @@ async function jqFetchFinsSummary(date,token){
 async function jqFetchEarningsCalendar(date,token){
  return jqFetchV2Rows("/equities/earnings-calendar",{date:String(date||"").replaceAll("-","")},token);
 }
+
+async function jqFetchRange(path,from,to,token){
+ return jqFetchV2Rows(path,{from:String(from||"").replaceAll("-",""),to:String(to||"").replaceAll("-","")},token);
+}
+async function jqFetchTopix(from,to,token){return jqFetchRange("/indices/bars/daily/topix",from,to,token)}
+async function jqFetchMarketCalendar(from,to,token){return jqFetchRange("/markets/calendar",from,to,token)}
+async function jqFetchMarginInterest(from,to,token){return jqFetchRange("/markets/margin-interest",from,to,token)}
+async function jqFetchMarginAlert(from,to,token){return jqFetchRange("/markets/margin-alert",from,to,token)}
+async function jqFetchShortRatio(from,to,token){return jqFetchRange("/markets/short-ratio",from,to,token)}
+async function jqFetchShortSaleReport(from,to,token){return jqFetchRange("/markets/short-sale-report",from,to,token)}
+async function jqFetchInvestorTypes(from,to,token){return jqFetchRange("/equities/investor-types",from,to,token)}
 
 async function jqFetchEquitiesMaster(date, token){
  if(!token) throw new Error("APIキーを入力してください");
@@ -1215,7 +1226,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha33",
+   appVersion:"v7e-alpha34",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1786,6 +1797,57 @@ async function runDailyDataset(btnId,resultId,dateId,fetcher,workerCmd,label){
 }
 if($("finsFetchBtn")) $("finsFetchBtn").onclick=()=>runDailyDataset("finsFetchBtn","finsResult","finsDate",jqFetchFinsSummary,"fins-summary-write","財務サマリー");
 if($("earningsFetchBtn")) $("earningsFetchBtn").onclick=()=>runDailyDataset("earningsFetchBtn","earningsResult","earningsDate",jqFetchEarningsCalendar,"earnings-calendar-write","決算予定");
+
+
+async function runRangeDataset(btnId,resultId,fromId,toId,fetcher,workerCmd,label){
+ const btn=$(btnId),from=$(fromId).value,to=$(toId).value,token=prodTokenValue();
+ if(!token){box(resultId,"fail","APIキーを入力してください");return {ok:false}}
+ btn.disabled=true;box(resultId,"run",`${label}取得中…\n${from} ～ ${to}`);
+ try{
+   const got=await fetcher(from,to,token);
+   const wr=await workerCall(workerCmd,300000,null,null,{from,to,rows:got.rows});
+   box(resultId,"pass",`PASS\nEndpoint: ${got.endpoint}\n範囲: ${from} ～ ${to}\nAPI rows: ${got.rows.length}\n保存 rows: ${wr.rows}\nDB: ${wr.dbName}\nquick_check: ${wr.quickCheck}\n適用日: ${wr.minDate||"-"} ～ ${wr.maxDate||"-"}`);
+   return {ok:true,rows:got.rows.length};
+ }catch(e){
+   box(resultId,"fail","FAIL\n"+(e?.message||e));
+   return {ok:false,error:String(e?.message||e)};
+ }finally{btn.disabled=false}
+}
+if($("topixFetchBtn")) $("topixFetchBtn").onclick=()=>runRangeDataset("topixFetchBtn","topixResult","topixFrom","topixTo",jqFetchTopix,"topix-write","TOPIX");
+if($("calendarFetchBtn")) $("calendarFetchBtn").onclick=()=>runRangeDataset("calendarFetchBtn","calendarResult","calendarFrom","calendarTo",jqFetchMarketCalendar,"market-calendar-write","営業日カレンダー");
+if($("marginInterestFetchBtn")) $("marginInterestFetchBtn").onclick=()=>runRangeDataset("marginInterestFetchBtn","marginInterestResult","sdFrom","sdTo",jqFetchMarginInterest,"margin-interest-write","信用取引週末残高");
+if($("marginAlertFetchBtn")) $("marginAlertFetchBtn").onclick=()=>runRangeDataset("marginAlertFetchBtn","marginAlertResult","sdFrom","sdTo",jqFetchMarginAlert,"margin-alert-write","日々公表信用");
+if($("shortRatioFetchBtn")) $("shortRatioFetchBtn").onclick=()=>runRangeDataset("shortRatioFetchBtn","shortRatioResult","sdFrom","sdTo",jqFetchShortRatio,"short-ratio-write","空売り比率");
+if($("shortSaleFetchBtn")) $("shortSaleFetchBtn").onclick=()=>runRangeDataset("shortSaleFetchBtn","shortSaleResult","sdFrom","sdTo",jqFetchShortSaleReport,"short-sale-report-write","空売り報告");
+if($("investorTypesFetchBtn")) $("investorTypesFetchBtn").onclick=()=>runRangeDataset("investorTypesFetchBtn","investorTypesResult","sdFrom","sdTo",jqFetchInvestorTypes,"investor-types-write","投資部門別");
+
+if($("marketBaseAllBtn")) $("marketBaseAllBtn").onclick=async()=>{
+ const btn=$("marketBaseAllBtn");btn.disabled=true;
+ try{
+   const r1=await runRangeDataset("topixFetchBtn","topixResult","topixFrom","topixTo",jqFetchTopix,"topix-write","TOPIX");
+   const r2=await runRangeDataset("calendarFetchBtn","calendarResult","calendarFrom","calendarTo",jqFetchMarketCalendar,"market-calendar-write","営業日カレンダー");
+   box("marketBaseAllResult",(r1.ok&&r2.ok)?"pass":"warn",`市場基礎2種: ${r1.ok&&r2.ok?"PASS":"要確認"}\nTOPIX: ${r1.ok?"OK":"NG"}\nCalendar: ${r2.ok?"OK":"NG"}`);
+ }finally{btn.disabled=false}
+};
+if($("supplyDemandAllBtn")) $("supplyDemandAllBtn").onclick=async()=>{
+ const btn=$("supplyDemandAllBtn");btn.disabled=true;
+ const jobs=[
+   ["marginInterestFetchBtn","marginInterestResult",jqFetchMarginInterest,"margin-interest-write","信用取引週末残高"],
+   ["marginAlertFetchBtn","marginAlertResult",jqFetchMarginAlert,"margin-alert-write","日々公表信用"],
+   ["shortRatioFetchBtn","shortRatioResult",jqFetchShortRatio,"short-ratio-write","空売り比率"],
+   ["shortSaleFetchBtn","shortSaleResult",jqFetchShortSaleReport,"short-sale-report-write","空売り報告"],
+   ["investorTypesFetchBtn","investorTypesResult",jqFetchInvestorTypes,"investor-types-write","投資部門別"]
+ ];
+ const results=[];
+ try{
+   for(const j of jobs){
+     results.push([j[4],await runRangeDataset(j[0],j[1],"sdFrom","sdTo",j[2],j[3],j[4])]);
+     await sleep(400);
+   }
+   const ok=results.filter(x=>x[1].ok).length;
+   box("supplyDemandAllResult",ok===results.length?"pass":"warn",`需給5種: ${ok}/${results.length} 成功\n`+results.map(x=>`${x[0]}: ${x[1].ok?"OK":"NG"}`).join("\n"));
+ }finally{btn.disabled=false}
+};
 
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();
 if($("technicalScreeningBtn")) $("technicalScreeningBtn").onclick=async()=>{

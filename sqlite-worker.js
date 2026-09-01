@@ -1146,6 +1146,68 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){try{if(db)db.close()}catch(_){} throw err}
  }
 
+
+ const RAW_RANGE_DATASETS={
+   "topix-write":{db:"/jq_topix_v1.sqlite",table:"topix",key:"topix",dataset:"topix"},
+   "market-calendar-write":{db:"/jq_market_calendar_v1.sqlite",table:"market_calendar",key:"market_calendar",dataset:"market_calendar"},
+   "margin-interest-write":{db:"/jq_margin_interest_v1.sqlite",table:"margin_interest",key:"margin_interest",dataset:"margin_interest"},
+   "margin-alert-write":{db:"/jq_margin_alert_v1.sqlite",table:"margin_alert",key:"margin_alert",dataset:"margin_alert"},
+   "short-ratio-write":{db:"/jq_short_ratio_v1.sqlite",table:"short_ratio",key:"short_ratio",dataset:"short_ratio"},
+   "short-sale-report-write":{db:"/jq_short_sale_report_v1.sqlite",table:"short_sale_report",key:"short_sale_report",dataset:"short_sale_report"},
+   "investor-types-write":{db:"/jq_investor_types_v1.sqlite",table:"investor_types",key:"investor_types",dataset:"investor_types"}
+ };
+ if(RAW_RANGE_DATASETS[cmd]){
+   const cfg=RAW_RANGE_DATASETS[cmd],payload=d.payload||{},rows=payload.rows||[],from=String(payload.from||""),to=String(payload.to||"");
+   let db=null;
+   try{
+     db=new p.OpfsSAHPoolDb(cfg.db,"c");
+     db.exec(`CREATE TABLE IF NOT EXISTS ${cfg.table}(
+       row_key TEXT PRIMARY KEY,
+       data_date TEXT,
+       code TEXT,
+       raw_json TEXT NOT NULL
+     ) WITHOUT ROWID`);
+     db.exec(`CREATE INDEX IF NOT EXISTS idx_${cfg.table}_date ON ${cfg.table}(data_date)`);
+     db.exec(`CREATE INDEX IF NOT EXISTS idx_${cfg.table}_code ON ${cfg.table}(code)`);
+     const stmt=db.prepare(`INSERT OR REPLACE INTO ${cfg.table}(row_key,data_date,code,raw_json) VALUES(?,?,?,?)`);
+     db.exec("BEGIN");
+     try{
+       let seq=0;
+       for(const r of rows){
+         const date=String(r.Date??r.date??r.StartDate??r.PubDate??"").slice(0,10);
+         const code=String(r.Code??r.code??r.S33??r.Sector33Code??r.Section??"").trim();
+         const signature=JSON.stringify(r);
+         const rowKey=[date,code,signature.slice(0,120),seq++].join("|");
+         stmt.bind([rowKey,date||null,code||null,signature]).stepReset();
+       }
+       db.exec("COMMIT");
+     }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
+     stmt.finalize();
+     const count=Number(scalar(db,`SELECT count(*) FROM ${cfg.table}`)||0);
+     const minDate=scalar(db,`SELECT min(data_date) FROM ${cfg.table}`);
+     const maxDate=scalar(db,`SELECT max(data_date) FROM ${cfg.table}`);
+     const quickCheck=scalar(db,"PRAGMA quick_check");
+     db.close();db=null;
+     let cdb=null;
+     try{
+       cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+       cdb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+         shard_key TEXT PRIMARY KEY, logical_name TEXT NOT NULL, dataset TEXT NOT NULL,
+         range_start TEXT, range_end TEXT, schema_version TEXT, state TEXT NOT NULL, updated_at TEXT NOT NULL
+       )`);
+       const esc=x=>String(x||"").replaceAll("'","''"),now=new Date().toISOString().replaceAll("'","''");
+       cdb.exec(`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at)
+       VALUES('${cfg.key}','${esc(cfg.db)}','${cfg.dataset}','${esc(minDate||from)}','${esc(maxDate||to)}','raw-v1','ready','${now}')
+       ON CONFLICT(shard_key) DO UPDATE SET logical_name=excluded.logical_name,dataset=excluded.dataset,
+       range_start=excluded.range_start,range_end=excluded.range_end,schema_version=excluded.schema_version,
+       state=excluded.state,updated_at=excluded.updated_at`);
+       cdb.close();
+     }catch(_){try{if(cdb)cdb.close()}catch(__){}}
+     self.postMessage({ok:true,type:"result",dbName:cfg.db,rows:count,minDate,maxDate,quickCheck});
+     return;
+   }catch(err){try{if(db)db.close()}catch(_){} throw err}
+ }
+
  if(cmd==="technical-screening-poc"){
    const payload=e.data.payload||{};
    const asOf=String(payload.asOf||"");

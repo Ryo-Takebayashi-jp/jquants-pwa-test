@@ -1,11 +1,14 @@
 # CHANGELOG
 
-## v7e-alpha33 — 2026-09-01
-- 開発ピッチを上げ、3工程を同梱。
-- 銘柄マスターPC/Web Parityを追加（CompanyName / Market / Sector17 / Sector33 / MarginCategory）。
-- J-Quants V2 `/fins/summary` の財務サマリーShardを追加。
-- J-Quants V2 `/equities/earnings-calendar` の決算予定Shardを追加。
-- 財務・決算予定はraw_jsonを完全保持して先にDataLakeを構築。PC列Parity確認後に正規化列を追加する方針。
-- 新ShardはCatalogへcoverage/stateを登録。
-- APIキーはセッションのみ、alpha32bの入力同期・再試行安全化を維持。
-- alpha31の日足テクニカル完全Parityを維持。
+## v7e-alpha34 — 2026-09-01
+- 開発加速版。市場基礎2種 + Standard需給5種を一括追加。
+- TOPIX日足 Shard `/jq_topix_v1.sqlite`。
+- 営業日カレンダー Shard `/jq_market_calendar_v1.sqlite`。
+- 信用取引週末残高 `/jq_margin_interest_v1.sqlite`。
+- 日々公表信用 `/jq_margin_alert_v1.sqlite`。
+- 空売り比率 `/jq_short_ratio_v1.sqlite`。
+- 空売り報告 `/jq_short_sale_report_v1.sqlite`。
+- 投資部門別 `/jq_investor_types_v1.sqlite`。
+- すべてCatalogへcoverage/state登録。raw_json完全保持。
+- 需給5種はPlan差・個別API失敗時も他データセットの取得を継続するPlan-Adaptive実装。
+- alpha31日足Parity、alpha33 Master/Financials/Earningsを維持。
