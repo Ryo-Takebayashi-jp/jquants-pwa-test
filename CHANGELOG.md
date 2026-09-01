@@ -1,9 +1,9 @@
 # CHANGELOG
 
-## v7e-alpha50
-- 開発用「今回の統合テスト手順」カードを削除。
-- Screening統合母集団ビルダーを追加。
-- Webテクニカル全銘柄 + Equities Master + 最新Financial Summaryを1行へ統合。
-- Master/財務/会社予想の接続率を表示。
-- Screening母集団CSVの書き出しを追加。
-- 次工程のPC版5戦略スコア/Top20選抜移植に使う正式入力層を確立。
+## v7e-alpha51 — 2026-09-01
+- Screening統合母集団のMaster 0/4167を修正。
+- 原因: equities_masterの実カラム名とScreening側SELECT名が不一致。
+- market_name / sector17_name / sector33_name / margin_name をAS aliasで共通形式へ変換。
+- 母集団CSV書き出し不反応を修正。downloadBlob(blob,fileName)の引数順を修正。
+- UTF-8 BOM付きCSV + 書き出し完了表示。
+- Screening統合母集団/Core1をページ上部「Screening 開発エリア」へ集約。

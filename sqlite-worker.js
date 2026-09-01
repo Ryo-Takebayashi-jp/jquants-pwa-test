@@ -1360,7 +1360,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
    const fmap=new Map(finRows.map(x=>[norm(x.code),x]));
    const mmap=new Map(); let mdb=null;
-   try{mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");for(const r of execRows(mdb,"SELECT code,company_name,market,sector17,sector33,margin_category FROM equities_master")){mmap.set(norm(r.code),r)}mdb.close();mdb=null}catch(e){try{if(mdb)mdb.close()}catch(_){}}
+   try{mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");for(const r of execRows(mdb,"SELECT code,company_name,market_name AS market,sector17_name AS sector17,sector33_name AS sector33,margin_name AS margin_category FROM equities_master")){mmap.set(norm(r.code),r)}mdb.close();mdb=null}catch(e){try{if(mdb)mdb.close()}catch(_){}}
    let master=0,financial=0,forecast=0;
    const rows=techRows.map(t=>{const code=norm(t.code),m=mmap.get(code)||{},f=fmap.get(code)||{};if(m.company_name)master++;if(f.discDate)financial++;if(f.forecastEPS!=null||f.forecastSales!=null||f.forecastOP!=null)forecast++;return {
      Date:payload.asOf||t.date||null,NormalizedCode:code,CompanyName:m.company_name||null,Market:m.market||null,Sector17:m.sector17||null,Sector33:m.sector33||null,MarginCategory:m.margin_category||null,

@@ -1,11 +1,10 @@
-# v7e-alpha49
+# v7e-alpha51
 
-推奨実機テスト:
-1. ⑨で portfolio.csv を選択し「Portfolio統合を実行」
-2. ⑩で portfolio.csv と technical_snapshot.csv を選択
-3. 「Portfolio/JQP統合Parityを実行」
-
-狙い:
-- Portfolio入力一致 14/14
-- JQPテクニカル統合一致 14/14
-- PC側欠損 0
+確認:
+1. 上部「Screening 開発エリア」
+2. Screening母集団を構築
+   - 銘柄 4167
+   - テクニカル 4167/4167
+   - Master 4167/4167
+3. 母集団CSVを書き出す
+   - Safariダウンロード確認
