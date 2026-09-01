@@ -832,6 +832,136 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}
    finally{try{if(db)db.close()}catch(_){}}
  }
+
+ if(cmd==="my-stocks-analysis"){
+   const payload=e.data.payload||{},asOf=String(payload.asOf||"");
+   let pdb=null,cdb=null,stage="01-validate";
+   try{
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+
+     stage="02-private";
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS user_stocks(
+       code TEXT NOT NULL,name TEXT,account TEXT NOT NULL DEFAULT '',shares REAL,avg_cost REAL,
+       strategy TEXT,memo TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+       PRIMARY KEY(code,account)) WITHOUT ROWID`);
+     const stocks=execRows(pdb,"SELECT code,name,account,shares,avg_cost,strategy,memo FROM user_stocks ORDER BY code,account");
+     pdb.close();pdb=null;
+     if(!stocks.length){
+       self.postMessage({ok:true,type:"result",stage:"PASS",asOf,rows:[],count:0,technicalCount:0,elapsedMs:Math.round(performance.now()-t0)});
+       return;
+     }
+
+     const jqCode=x=>{
+       const s=String(x||"").trim().toUpperCase();
+       return s.length===4?s+"0":s;
+     };
+     const norm=x=>{
+       const s=String(x||"").trim().toUpperCase();
+       return s.length===5&&s.endsWith("0")?s.slice(0,4):s;
+     };
+     const wanted=[...new Set(stocks.map(x=>jqCode(x.code)))];
+
+     stage="03-catalog";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end
+       FROM shard_catalog WHERE dataset='bars_daily' AND state='ready'
+       AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key DESC`);
+     cdb.close();cdb=null;
+
+     const dates=[];
+     for(const s of cats.filter(x=>String(x.range_start||"")<=asOf)){
+       let db=null;
+       try{
+         const n=String(s.logical_name||"");
+         db=new p.OpfsSAHPoolDb(n.startsWith("/")?n:"/"+n,"r");
+         const rs=execRows(db,"SELECT DISTINCT date FROM bars_daily WHERE date<=? ORDER BY date DESC LIMIT 100",[asOf]);
+         for(const r of rs){const d=String(r.date);if(!dates.includes(d))dates.push(d)}
+         dates.sort().reverse();
+         if(dates.length>=100)break;
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+
+     const chosen=dates.sort().slice(-100);
+     if(chosen.length<75)throw new Error(`Need >=75 dates, got ${chosen.length}`);
+     const from=chosen[0],actualAsOf=chosen[chosen.length-1],chosenSet=new Set(chosen);
+
+     stage="04-bars";
+     const byCode=new Map(),usedShards=[];
+     for(const s of cats.slice().reverse()){
+       if(String(s.range_end||"")<from||String(s.range_start||"")>actualAsOf)continue;
+       let db=null;
+       try{
+         const n=String(s.logical_name||"");
+         db=new p.OpfsSAHPoolDb(n.startsWith("/")?n:"/"+n,"r");
+         const ph=wanted.map(()=>"?").join(",");
+         const rs=execRows(db,`SELECT code,date,COALESCE(adj_c,c) AS c,COALESCE(adj_volume,volume) AS volume
+           FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph})
+           AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,actualAsOf,...wanted]);
+         usedShards.push(String(s.shard_key));
+         for(const r of rs){
+           const d=String(r.date);if(!chosenSet.has(d))continue;
+           const code=String(r.code),c=Number(r.c),v=Number(r.volume||0);
+           if(!Number.isFinite(c)||c<=0)continue;
+           if(!byCode.has(code))byCode.set(code,[]);
+           byCode.get(code).push({date:d,c,v});
+         }
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+
+     const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+     const pct=(a,b)=>b?((a/b)-1)*100:null;
+     function rsi14(xs){
+       if(xs.length<15)return null;
+       let g=0,l=0;const z=xs.slice(-15);
+       for(let i=1;i<z.length;i++){const d=z[i]-z[i-1];if(d>0)g+=d;else l-=d}
+       if(l===0)return 100;
+       const rs=(g/14)/(l/14);
+       return 100-(100/(1+rs));
+     }
+
+     const metrics=new Map();
+     for(const [jq,a0] of byCode){
+       const a=a0.sort((x,y)=>x.date.localeCompare(y.date));
+       if(a.length<75||a[a.length-1].date!==actualAsOf)continue;
+       const closes=a.map(x=>x.c),vols=a.map(x=>x.v),last=a[a.length-1];
+       const ma5=avg(closes.slice(-5)),ma25=avg(closes.slice(-25)),ma75=avg(closes.slice(-75));
+       const ret5=closes.length>=6?pct(last.c,closes[closes.length-6]):null;
+       const ret20=closes.length>=21?pct(last.c,closes[closes.length-21]):null;
+       const vol20=avg(vols.slice(-20)),volRatio=vol20>0?last.v/vol20:null;
+       const high20=Math.max(...closes.slice(-20)),low20=Math.min(...closes.slice(-20));
+       const high60=Math.max(...closes.slice(-60)),low60=Math.min(...closes.slice(-60));
+       metrics.set(norm(jq),{
+         close:last.c,ma5,ma25,ma75,
+         distMa25:pct(last.c,ma25),distMa75:pct(last.c,ma75),
+         ret5,ret20,rsi14:rsi14(closes),
+         volume:last.v,vol20,volRatio,high20,low20,high60,low60,
+         pos20:high20>low20?((last.c-low20)/(high20-low20))*100:null,
+         pos60:high60>low60?((last.c-low60)/(high60-low60))*100:null
+       });
+     }
+
+     const rows=stocks.map(s=>{
+       const m=metrics.get(norm(s.code))||{};
+       const close=Number(m.close),shares=Number(s.shares),cost=Number(s.avg_cost);
+       const pnlPct=Number.isFinite(close)&&Number.isFinite(cost)&&cost!==0?((close/cost)-1)*100:null;
+       const pnl=Number.isFinite(close)&&Number.isFinite(cost)&&Number.isFinite(shares)?(close-cost)*shares:null;
+       return {...s,...m,pnlPct,pnl,hasTechnical:Number.isFinite(close),date:actualAsOf};
+     });
+
+     self.postMessage({ok:true,type:"result",stage:"PASS",
+       requestedAsOf:asOf,asOf:actualAsOf,from,usedShards,
+       count:rows.length,technicalCount:rows.filter(x=>x.hasTechnical).length,rows,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{
+     try{if(cdb)cdb.close()}catch(_){}
+     try{if(pdb)pdb.close()}catch(_){}
+   }
+ }
  if(cmd==="technical-screening-poc"){
    const payload=e.data.payload||{};
    const asOf=String(payload.asOf||"");
@@ -876,8 +1006,8 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        try{
          const name=String(s.logical_name||"");
          db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
-         const rs=execRows(db,`SELECT code,date,c,volume FROM bars_daily
-           WHERE date>=? AND date<=? AND c IS NOT NULL ORDER BY code,date`,[from,actualAsOf]);
+         const rs=execRows(db,`SELECT code,date,COALESCE(adj_c,c) AS c,COALESCE(adj_volume,volume) AS volume FROM bars_daily
+           WHERE date>=? AND date<=? AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,actualAsOf]);
          usedShards.push(String(s.shard_key));
          for(const r of rs){
            const d=String(r.date); if(!chosenSet.has(d))continue;
@@ -928,6 +1058,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);
      self.postMessage({ok:true,type:"result",stage:"PASS",requestedAsOf:asOf,asOf:actualAsOf,
        from,tradingDates:chosen.length,usedShards,candidates:rows.length,top:rows.slice(0,topN),
+       all:payload.returnAll?rows:undefined,
        elapsedMs:Math.round(performance.now()-t0)});
      return;
    }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}

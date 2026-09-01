@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha25");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha26");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1129,7 +1129,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha25",
+   appVersion:"v7e-alpha26",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1730,3 +1730,138 @@ if($("myStockImportBtn"))$("myStockImportBtn").onclick=async()=>{
  }catch(e){box("myStockImportResult","fail","FAIL\n"+(e.message||e))}
 };
 setTimeout(()=>{if($("myStockTable"))loadMyStocks()},50);
+
+function normCodeForParity(v){
+ const s=String(v??"").trim().toUpperCase();
+ return s.length===5&&s.endsWith("0")?s.slice(0,4):s;
+}
+
+if($("myStockAnalysisDate")&&!$("myStockAnalysisDate").value)$("myStockAnalysisDate").value=todayIsoLocal();
+
+if($("myStockAnalyzeBtn"))$("myStockAnalyzeBtn").onclick=async()=>{
+ const asOf=$("myStockAnalysisDate").value;
+ box("myStockAnalyzeResult","run",`${asOf} の登録銘柄を分析中…`);
+ try{
+   const r=await workerCall("my-stocks-analysis",600000,null,null,{asOf});
+   box("myStockAnalyzeResult","pass",`PASS
+登録: ${r.count}件
+テクニカル取得: ${r.technicalCount}件
+基準日: ${r.asOf}
+使用Shard: ${r.usedShards.join(", ")}
+処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒`);
+   const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+   const n=(x,d=1)=>Number.isFinite(Number(x))?Number(x).toFixed(d):"-";
+   let h='<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>Code</th><th>Name</th><th>区分</th><th>Close</th><th>損益%</th><th>MA25</th><th>25乖離%</th><th>20D%</th><th>RSI</th><th>Vol比</th></tr></thead><tbody>';
+   for(const x of r.rows){
+     h+=`<tr><td>${esc(x.code)}</td><td>${esc(x.name)}</td><td>${esc(x.account)}</td><td>${n(x.close,1)}</td><td>${n(x.pnlPct,1)}</td><td>${n(x.ma25,1)}</td><td>${n(x.distMa25,1)}</td><td>${n(x.ret20,1)}</td><td>${n(x.rsi14,1)}</td><td>${n(x.volRatio,2)}</td></tr>`;
+   }
+   h+="</tbody></table></div>";
+   $("myStockAnalysisTable").innerHTML=h;
+ }catch(e){
+   box("myStockAnalyzeResult","fail","FAIL\n"+(e.message||e));
+ }
+};
+
+if($("parityRunBtn"))$("parityRunBtn").onclick=async()=>{
+ const f=$("parityCsv").files?.[0],asOf=$("parityAsOf").value;
+ if(!f){box("parityResult","warn","PC版 screening_candidates.csv を選択してください。");return}
+ $("parityRunBtn").disabled=true;
+ $("parityTable").innerHTML="";
+ try{
+   box("parityResult","run","PC版CSVを読込中…");
+   const mat=parseSimpleCsv(await f.text());
+   if(mat.length<2)throw new Error("CSVデータなし");
+   const head=mat[0].map(x=>x.trim()),ix=n=>head.indexOf(n);
+   if(ix("NormalizedCode")<0)throw new Error("NormalizedCode列がありません");
+
+   const pc=new Map();
+   for(const row of mat.slice(1)){
+     const code=normCodeForParity(row[ix("NormalizedCode")]);
+     if(!code)continue;
+     const obj={};head.forEach((k,i)=>obj[k]=row[i]);
+     pc.set(code,obj);
+   }
+
+   box("parityResult","run",`PC版: ${pc.size}銘柄
+Web版Core 1を${asOf}で全銘柄計算中…`);
+
+   const web=await workerCall("technical-screening-poc",600000,null,null,{asOf,lookback:100,topN:10,returnAll:true});
+   const wm=new Map((web.all||[]).map(x=>[normCodeForParity(x.code),x]));
+
+   const specs=[
+     ["Close","close",0.02],
+     ["MA5","ma5",0.02],
+     ["MA25","ma25",0.02],
+     ["MA75","ma75",0.02],
+     ["MA25DeviationPct","distMa25",0.02],
+     ["MA75DeviationPct","distMa75",0.02],
+     ["Return5D","ret5",0.02],
+     ["Return20D","ret20",0.02],
+     ["RSI14","rsi14",0.05],
+     ["LatestVolumeRatioTo20D","volRatio",0.005],
+     ["High20D","high20",0.02],
+     ["Low20D","low20",0.02],
+     ["High60D","high60",0.02],
+     ["Low60D","low60",0.02]
+   ].filter(s=>ix(s[0])>=0);
+
+   const fieldStats=Object.fromEntries(specs.map(s=>[s[0],{match:0,diff:0,max:0}]));
+   let compared=0,missingWeb=0,perfect=0;
+   const diffs=[];
+
+   for(const [code,p] of pc){
+     const x=wm.get(code);
+     if(!x){missingWeb++;continue}
+     compared++;
+     const bad=[];
+     for(const [pcf,wf,tol] of specs){
+       const pv=Number(p[pcf]),wv=Number(x[wf]);
+       if(!Number.isFinite(pv)&&!Number.isFinite(wv)){fieldStats[pcf].match++;continue}
+       if(!Number.isFinite(pv)||!Number.isFinite(wv)){
+         fieldStats[pcf].diff++;
+         bad.push(`${pcf}: PC=${p[pcf]??"-"} Web=${x[wf]??"-"}`);
+         continue;
+       }
+       const d=Math.abs(pv-wv);
+       fieldStats[pcf].max=Math.max(fieldStats[pcf].max,d);
+       if(d<=tol)fieldStats[pcf].match++;
+       else{
+         fieldStats[pcf].diff++;
+         bad.push(`${pcf}: PC=${pv.toFixed(4)} Web=${wv.toFixed(4)} Δ=${d.toFixed(4)}`);
+       }
+     }
+     if(!bad.length)perfect++;
+     else diffs.push({code,name:p.CompanyName||"",bad});
+   }
+
+   const fields=Object.entries(fieldStats)
+     .map(([k,s])=>`${k}: ${s.match}/${s.match+s.diff}一致 / maxΔ ${s.max.toFixed(4)}`)
+     .join("\n");
+   const verdict=diffs.length===0&&missingWeb===0?"PASS":"要確認";
+
+   box("parityResult",verdict==="PASS"?"pass":"warn",`${verdict}
+基準日: ${web.asOf}
+PC版銘柄: ${pc.size}
+Web計算銘柄: ${wm.size}
+比較できた銘柄: ${compared}
+全比較項目一致銘柄: ${perfect}
+不一致銘柄: ${diffs.length}
+Web側欠損: ${missingWeb}
+
+${fields}
+
+※許容差内を一致扱い。不一致だけ下に表示。`);
+
+   const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+   let h='<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th>Code</th><th>Name</th><th>差分</th></tr></thead><tbody>';
+   for(const x of diffs.slice(0,50)){
+     h+=`<tr><td>${esc(x.code)}</td><td>${esc(x.name)}</td><td>${x.bad.map(esc).join("<br>")}</td></tr>`;
+   }
+   h+="</tbody></table></div>";
+   $("parityTable").innerHTML=diffs.length?h:"";
+ }catch(e){
+   box("parityResult","fail","FAIL\n"+(e.message||e));
+ }finally{
+   $("parityRunBtn").disabled=false;
+ }
+};

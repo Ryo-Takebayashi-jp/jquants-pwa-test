@@ -1,5 +1,15 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha26 — CURRENT (2026-09-01)
+- privateマイ銘柄とScreening Core 1を接続し、登録銘柄だけのテクニカル分析を追加。
+- PC版 screening_candidates.csv とWeb Core 1の同一基準日Parity Testを追加。
+- NormalizedCodeでJOINし、主要14指標を許容差付きで自動比較。
+- 不一致銘柄・不一致項目だけを表示。
+- Web technical price/volume basisをadjusted close/volume優先へ変更し、PC版adjusted-basisとの整合を強化。
+- Parity機能を将来の回帰テストとして継続利用可能にした。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha25 — CURRENT (2026-09-01)
 - ユーザー固有の銘柄登録を `/jq_private_v1.sqlite` へ分離。
 - マイ銘柄の追加/更新/削除を追加。

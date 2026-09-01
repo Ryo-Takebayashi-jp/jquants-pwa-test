@@ -1,18 +1,20 @@
-# v7e-alpha25 — My Stocks / private registry
+# v7e-alpha26 — My Stocks Analysis + PC/Web Screening Parity
 
-## 追加
-- `/jq_private_v1.sqlite` に `user_stocks` を作成
-- 銘柄コード＋口座区分をキーに追加/更新
-- 個別削除
-- PC版 `portfolio.csv` の一括Import
-- 登録一覧表示
-- 現物 / NISA / 信用買 / 信用売 / WATCH
+## マイ銘柄分析
+private DB `user_stocks` と Screening Core 1 を接続。
+登録銘柄だけを基準日で分析し、Close / 損益率 / MA25 / MA25乖離 / Return20D / RSI14 / 出来高20日比を表示。
 
-## 設計
-個人の保有・管理銘柄は市場DataLakeから分離してprivate DBへ保存。
-同じコードでも口座区分が違えば別レコードとして保持。
+## PC / Web Parity
+PC版 `screening_candidates.csv` を読み込み、NormalizedCodeでWeb Core 1とJOIN。
+同一基準日で以下を比較:
+- Close
+- MA5 / MA25 / MA75
+- MA25 / MA75 Deviation
+- Return5D / Return20D
+- RSI14
+- LatestVolumeRatioTo20D
+- High / Low 20D
+- High / Low 60D
 
-## 次
-Web Screening CoreとMy Stocksを接続し、
-保有/Watch銘柄の順位・テクニカル状態を一覧化。
-PC版9/1 ScreeningとのParity Testも並行する。
+Web Coreはadjusted close / adjusted volumeを優先し、PC版のadjusted-basis technicalsに寄せた。
+不一致銘柄・不一致項目だけを表示するため、今後の回帰テストにも使える。
