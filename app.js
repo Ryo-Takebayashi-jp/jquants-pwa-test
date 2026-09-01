@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha28");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha29");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1129,7 +1129,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha28",
+   appVersion:"v7e-alpha29",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1827,7 +1827,18 @@ Web版Core 1を${asOf}で全銘柄計算中…`);
        if(d<=tol)fieldStats[pcf].match++;
        else{
          fieldStats[pcf].diff++;
-         bad.push(`${pcf}: PC=${pv.toFixed(4)} Web=${wv.toFixed(4)} Δ=${d.toFixed(4)}`);
+         {
+         let extra="";
+         if(pcf==="Low20D" && Number.isFinite(Number(x.lowClose20))){
+           const dc=Math.abs(pv-Number(x.lowClose20));
+           extra=` / Web終値Low20=${Number(x.lowClose20).toFixed(4)} Δ=${dc.toFixed(4)}`;
+         }
+         if(pcf==="Low60D" && Number.isFinite(Number(x.lowClose60))){
+           const dc=Math.abs(pv-Number(x.lowClose60));
+           extra=` / Web終値Low60=${Number(x.lowClose60).toFixed(4)} Δ=${dc.toFixed(4)}`;
+         }
+         bad.push(`${pcf}: PC=${pv.toFixed(4)} Web日中Low=${wv.toFixed(4)} Δ=${d.toFixed(4)}${extra}`);
+       }
        }
      }
      if(!bad.length)perfect++;
@@ -1896,7 +1907,12 @@ if($("holdParityBtn"))$("holdParityBtn").onclick=async()=>{
        const pv=Number(p[pf]),wv=Number(x[wf]);
        if(!Number.isFinite(pv)&&!Number.isFinite(wv))continue;
        if(!Number.isFinite(pv)||!Number.isFinite(wv)||Math.abs(pv-wv)>tol)
-         bad.push(`${pf}: PC=${Number.isFinite(pv)?pv.toFixed(4):p[pf]||"-"} Web=${Number.isFinite(wv)?wv.toFixed(4):"-"}`);
+         {
+         let extra="";
+         if(pf==="Low20D" && Number.isFinite(Number(x.lowClose20))) extra=` / Web終値Low20=${Number(x.lowClose20).toFixed(4)}`;
+         if(pf==="Low60D" && Number.isFinite(Number(x.lowClose60))) extra=` / Web終値Low60=${Number(x.lowClose60).toFixed(4)}`;
+         bad.push(`${pf}: PC=${Number.isFinite(pv)?pv.toFixed(4):p[pf]||"-"} Web日中Low=${Number.isFinite(wv)?wv.toFixed(4):"-"}${extra}`);
+       }
      }
      if(bad.length)diffs.push({code,name:x.name,bad});else perfect++;
    }

@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha29 — CURRENT (2026-09-01)
+- Low20D/Low60DのPC定義を推測で変更せず特定する診断を追加。
+- Web日中LowとWeb終値LowをPC値と同時表示。
+- RSI14 / VolumeRatio各1件の残差診断を継続。
+- alpha28のMy Stocks 14/14 PASSを維持。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha28 — CURRENT (2026-09-01)
 - All-market Screening Coreに残っていた旧RSI14実装を修正。
 - RSI14をWilder smoothingへ統一。

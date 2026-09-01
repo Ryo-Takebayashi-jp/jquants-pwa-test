@@ -1,15 +1,12 @@
-# v7e-alpha28 — RSI / High-Low parity fix
+# v7e-alpha29 — Low definition diagnostics
 
-alpha27実機結果から判明したテクニカル定義差を修正。
+alpha28でHigh20D/60Dは92/92一致した一方、Low20D/60Dは0/92だった。
+ここで推測だけでLow定義を変更せず、PC版Lowと以下を同時比較する診断版。
 
-- All-market Screening Coreに残っていた旧RSI14実装を修正。
-- My Stocks / Screening CoreのRSI14をWilder smoothingへ統一。
-- High20D / Low20D / High60D / Low60Dを終値max/minではなく調整後の日中高値・安値で計算。
-- adjusted H/L欠損時はraw H/L、それも無い場合のみcloseへfallback。
+- Web日中Low（adjusted intraday low）
+- Web終値Low（adjusted close minimum）
 
-確認ポイント:
-1. screening_candidates.csv再突合
-2. RSI14の一致率
-3. High/Low 20D/60Dの一致率
-4. LatestVolumeRatioTo20D 91/92の残り1銘柄
-5. technical_snapshot.csv再突合（テストNTTのPC側欠損1件は正常）
+不一致欄に両方を表示し、PC版がどちらの定義に一致するか実機データで特定する。
+RSI14 91/92、VolumeRatio 91/92の残り1銘柄も同じ差分一覧で継続確認する。
+
+マイ銘柄14/14完全一致はalpha28でPASS済み。

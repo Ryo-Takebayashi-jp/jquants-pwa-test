@@ -945,11 +945,12 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const vol20=avg(vols.slice(-20)),volRatio=vol20>0?last.v/vol20:null;
        const high20=Math.max(...highs.slice(-20)),low20=Math.min(...lows.slice(-20));
        const high60=Math.max(...highs.slice(-60)),low60=Math.min(...lows.slice(-60));
+       const lowClose20=Math.min(...closes.slice(-20)),lowClose60=Math.min(...closes.slice(-60));
        metrics.set(norm(jq),{
          close:last.c,ma5,ma25,ma75,
          distMa25:pct(last.c,ma25),distMa75:pct(last.c,ma75),
          ret5,ret20,rsi14:rsi14(closes),
-         volume:last.v,vol20,volRatio,high20,low20,high60,low60,
+         volume:last.v,vol20,volRatio,high20,low20,high60,low60,lowClose20,lowClose60,
          pos20:high20>low20?((last.c-low20)/(high20-low20))*100:null,
          pos60:high60>low60?((last.c-low60)/(high60-low60))*100:null
        });
@@ -1062,6 +1063,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const ma5=avg(closes.slice(-5)),ma25=avg(closes.slice(-25)),ma75=avg(closes.slice(-75));
        const high20=Math.max(...highs.slice(-20)), low20=Math.min(...lows.slice(-20));
        const high60=Math.max(...highs.slice(-60)), low60=Math.min(...lows.slice(-60));
+       const lowClose20=Math.min(...closes.slice(-20)), lowClose60=Math.min(...closes.slice(-60));
        const distMa25=pct(last.c,ma25), distMa75=pct(last.c,ma75);
        const pos20=high20>low20?((last.c-low20)/(high20-low20))*100:null;
        const pos60=high60>low60?((last.c-low60)/(high60-low60))*100:null;
