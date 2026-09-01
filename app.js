@@ -2257,7 +2257,7 @@ if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=asyn
  for(const [c,w] of wmap){const p=pmap.get(c);if(!p){extra.push(c);continue}both++;if(String(p.PrimaryStrategy||"")===String(w.PrimaryStrategy||""))strategy++;else diff.push(`${c}: PC=${p.PrimaryStrategy||"-"} / Web=${w.PrimaryStrategy||"-"}`)}
  for(const c of pmap.keys())if(!wmap.has(c))missing.push(c);
  const exact=missing.length===0&&extra.length===0&&strategy===both,d=screeningBoundaryDiagnostics(pcRows,latestScreeningCandidates);
- // alpha61: pinpoint the first QVR component divergence on common rows.
+ // alpha62: pinpoint the first QVR component divergence on common rows.
  const qvrFields=[
   "QualityValueReRatingScore","QVRQualityScore","QVRValueScore","QVRReRatingScore","QVRCrowdingPenalty","QVRQualityMismatchPenalty",
   "ROE","CurrentOperatingMarginPct","OperatingMarginChangePt","LatestAvailableCFO","LatestAvailableFCF","EquityRatioPct",
@@ -2267,12 +2267,14 @@ if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=asyn
  for(const c of [...pmap.keys()].filter(c=>wmap.has(c))){
    const p=pmap.get(c),w=wmap.get(c);
    const deltas=[];
-   for(const k of qvrFields){const a=Number(p?.[k]),b=Number(w?.[k]);if(Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)>1e-8)deltas.push({k,a,b,d:Math.abs(a-b)});else if((p?.[k]??"")!==""&&(w?.[k]??"")==="")deltas.push({k,a:p?.[k],b:"-",d:1e99})}
+   for(const k of qvrFields){const pa=p?.[k],wb=w?.[k],paBlank=pa==null||String(pa).trim()==="",wbBlank=wb==null||String(wb).trim()==="";const a=paBlank?null:Number(pa),b=wbBlank?null:Number(wb);if(!paBlank&&!wbBlank&&Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)>1e-8)deltas.push({k,a,b,d:Math.abs(a-b)});else if(paBlank!==wbBlank)deltas.push({k,a:paBlank?"(blank)":pa,b:wbBlank?"(blank)":wb,d:1e99})}
    if(deltas.length)qvrAudit.push({c,name:w.CompanyName||p.CompanyName||p.Name||"",deltas});
  }
  qvrAudit.sort((a,b)=>(b.deltas[0]?.d||0)-(a.deltas[0]?.d||0));
  const focus=qvrAudit.find(x=>x.c==="6838")||qvrAudit[0];
- const auditText=focus?`\n\n【QVR最初の差 自動監査】\n対象: ${focus.c} ${focus.name}\n${focus.deltas.map(x=>`${x.k}: PC=${x.a} / Web=${x.b}`).join("\n")}\n\n判定: 上から順に、最初にズレる原材料を修正対象にします。`:"\n\n【QVR最初の差 自動監査】\n共通銘柄の対象項目に差なし";
+ const fp=focus?pmap.get(focus.c):null,fw=focus?wmap.get(focus.c):null;
+ const sourceAudit=focus?`\n\n【QVR原材料・正当性監査】\nProfitType: PC=${fp?.ProfitType||"(blank)"} / Web=${fw?.ProfitType||"(blank)"}\nBPS: PC=${fp?.BPS==null||String(fp?.BPS).trim()===""?"(blank)":fp.BPS} / Web=${fw?.BPS==null||String(fw?.BPS).trim()===""?"(blank)":fw.BPS}\nPBR: PC=${fp?.PBR==null||String(fp?.PBR).trim()===""?"(blank)":fp.PBR} / Web=${fw?.PBR==null||String(fw?.PBR).trim()===""?"(blank)":fw.PBR}\nForecastPER: PC=${fp?.ForecastPER??"(blank)"} / Web=${fw?.ForecastPER??"(blank)"}\nForecastDividendYieldPct: PC=${fp?.ForecastDividendYieldPct??"(blank)"} / Web=${fw?.ForecastDividendYieldPct??"(blank)"}\n\n注記: PC空欄を0として扱わず、空欄のまま監査します。Web側ProfitType欠落はalpha62で修正済み。PBRはPCへ盲目的に合わせず、BPS原材料の妥当性を確認してから採否を決めます。`:"";
+ const auditText=focus?`\n\n【QVR最初の差 自動監査】\n対象: ${focus.c} ${focus.name}\n${focus.deltas.map(x=>`${x.k}: PC=${x.a} / Web=${x.b}`).join("\n")}\n${sourceAudit}\n\n判定: 最初の原材料差を、PC/Webどちらが正しいかまで監査します。`:"\n\n【QVR最初の差 自動監査】\n共通銘柄の対象項目に差なし";
  $("screeningDiffExportBtn").disabled=false;
  box("screeningStrategyParityResult",exact?"pass":"warn",`Screening 選抜Parity
 PC CSV行数: ${pcRows.length}
