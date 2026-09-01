@@ -1,5 +1,18 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha16 — CURRENT (2026-09-01)
+- alpha15の `from/to` 年間取得を廃止。V2日足APIが要求する `date` 指定方式へ修正。
+- 2020〜2025を1ボタンで直接年別Shardへ補完する全期間バックフィルを追加。
+- 平日のみAPI確認し、祝日・休場日の0件は安全にスキップ。
+- 1日単位でAPI取得→対象年ShardへUPSERT→date単位検証。
+- 各年完了時に営業日数・行数・MIN/MAX・quick_checkを検証し、Catalog `bars_YYYY` をready登録。
+- localStorage Checkpointを追加。Safari終了・通信失敗後も⑨で次の日から再開可能。
+- 再実行はUPSERTのため重複なし。
+- Legacy DataLakeはバックフィル処理では開かない。
+- APIキーは永続保存しない。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha15 — CURRENT (2026-09-01)
 - alpha14で全収録年の年別Shard化がiPhone実機PASS。
 - Legacy DataLakeに存在しない2020〜2025を、旧巨大DBを再構築せずJ-Quants V2 APIから年別Shardへ直接補完する導線を追加。

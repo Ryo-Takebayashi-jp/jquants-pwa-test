@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7d-beta5fb");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha16");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -942,88 +942,173 @@ message: ${x.message||String(e)}`);
  }
 };
 
-async function jqFetchYearRange(year,token,onProgress){
- if(!token) throw new Error("APIキーを入力してください");
- const from=`${year}0101`,to=`${year}1231`;
- let all=[],pageToken=null,pages=0;
- do{
-   const u=new URL("/api/jquants/equities/bars/daily",location.origin);
-   u.searchParams.set("from",from); u.searchParams.set("to",to);
-   if(pageToken) u.searchParams.set("pagination_key",pageToken);
-   let res;
-   for(let attempt=0;attempt<6;attempt++){
-     res=await fetch(u,{headers:jqAuthHeaders(token),cache:"no-store"});
-     if(res.status!==429) break;
-     const ra=Number(res.headers.get("Retry-After")||0);
-     await sleep(ra?ra*1000:Math.min(30000,1000*(2**attempt)));
-   }
-   const text=await res.text(); let j={};
-   try{j=text?JSON.parse(text):{}}catch(_){}
-   if(!res.ok) throw new Error(`J-Quants HTTP ${res.status}: ${j.message||j.error||text.slice(0,300)}`);
-   const rows=j.data||[];
-   if(!Array.isArray(rows)) throw new Error("J-Quants V2 response data not recognized");
-   all.push(...rows); pages++;
-   if(onProgress) onProgress({pages,rows:all.length});
-   pageToken=j.pagination_key||j.paginationKey||null;
-   if(pages>500) throw new Error("pagination safety stop");
- }while(pageToken);
- return {year,rows:all,pages,from,to};
+
+const BF_KEY="jq_v7e_alpha16_full_backfill_checkpoint";
+
+function isoDate(d){
+ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function nextDayIso(s){
+ const [y,m,d]=s.split("-").map(Number),x=new Date(y,m-1,d);
+ x.setDate(x.getDate()+1); return isoDate(x);
+}
+function isWeekendIso(s){
+ const [y,m,d]=s.split("-").map(Number),w=new Date(y,m-1,d).getDay();
+ return w===0||w===6;
+}
+function saveBackfillCheckpoint(x){
+ localStorage.setItem(BF_KEY,JSON.stringify({...x,savedAt:new Date().toISOString()}));
+}
+function loadBackfillCheckpoint(){
+ try{return JSON.parse(localStorage.getItem(BF_KEY)||"null")}catch(_){return null}
+}
+function clearBackfillCheckpoint(){localStorage.removeItem(BF_KEY)}
+
+async function fetchAndCommitShardDate(date,token){
+ const got=await jqFetchDaily(date,token);
+ if(!got.rows.length) return {date,apiRows:0,verifiedRows:0,skipped:true,pages:got.pages};
+ const wr=await workerCall("shard-write-api-date",300000,null,null,{date,rows:got.rows});
+ return {...wr,pages:got.pages,skipped:false};
 }
 
-let _shardApiYearCache=null;
-if($("shardApiFetchBtn")) $("shardApiFetchBtn").onclick=async()=>{
- const year=Number($("shardApiYear").value),token=$("shardApiToken").value.trim();
- box("shardApiFetchResult","run",`${year}年をJ-Quantsから取得中… DB書込なし`);
+async function finalizeShardYear(year){
+ return await workerCall("shard-finalize-api-year",300000,null,null,{year});
+}
+
+async function runFullBackfill(startYear,endYear,token,outputId,resumeFrom=null){
+ if(!token) throw new Error("APIキーを入力してください");
+ if(!Number.isFinite(startYear)||!Number.isFinite(endYear)||startYear>endYear) throw new Error("開始年・終了年が不正です");
+
+ const first=`${startYear}-01-01`, last=`${endYear}-12-31`;
+ let cursor=resumeFrom||first;
+ if(cursor<first||cursor>last) cursor=first;
+
+ let apiDays=0,marketDays=0,emptyDays=0,totalRows=0,yearsDone=[];
+ const t0=performance.now();
+
+ box(outputId,"run",`開始: ${cursor}
+対象: ${startYear}〜${endYear}
+方式: date単位 → 年別Shard直接Commit
+Legacy DataLake: 未使用`);
+
+ while(cursor<=last){
+   const year=Number(cursor.slice(0,4));
+   const yearEnd=`${year}-12-31`;
+
+   while(cursor<=yearEnd && cursor<=last){
+     if(isWeekendIso(cursor)){
+       cursor=nextDayIso(cursor);
+       saveBackfillCheckpoint({startYear,endYear,nextDate:cursor,status:"running"});
+       continue;
+     }
+
+     box(outputId,"run",`全期間補完中…
+対象: ${startYear}〜${endYear}
+現在: ${cursor}
+API確認日数: ${apiDays.toLocaleString()}
+取引日: ${marketDays.toLocaleString()}
+0件日: ${emptyDays.toLocaleString()}
+保存行数: ${totalRows.toLocaleString()}
+完了年: ${yearsDone.length?yearsDone.join(", "):"まだなし"}
+経過: ${((performance.now()-t0)/1000).toFixed(1)}秒
+※画面を閉じても⑨で再開可能`);
+
+     const r=await fetchAndCommitShardDate(cursor,token);
+     apiDays++;
+     if(r.skipped) emptyDays++;
+     else{
+       marketDays++;
+       totalRows+=Number(r.verifiedRows||r.apiRows||0);
+     }
+
+     cursor=nextDayIso(cursor);
+     saveBackfillCheckpoint({startYear,endYear,nextDate:cursor,status:"running",
+       apiDays,marketDays,emptyDays,totalRows,yearsDone});
+   }
+
+   if(year>=startYear && year<=endYear){
+     const fin=await finalizeShardYear(year);
+     if(!yearsDone.includes(year)) yearsDone.push(year);
+     saveBackfillCheckpoint({startYear,endYear,nextDate:cursor,status:"running",
+       apiDays,marketDays,emptyDays,totalRows,yearsDone,lastYearSummary:fin});
+     box(outputId,"run",`${year}年 PASS
+期間: ${fin.minDate} ～ ${fin.maxDate}
+営業日: ${Number(fin.tradingDays).toLocaleString()}
+Verified rows: ${Number(fin.verifiedRows).toLocaleString()}
+quick_check: ${fin.quickCheck}
+Catalog: bars_${year} ready
+
+次: ${cursor<=last?cursor:"全期間検証へ"}
+累計保存行数: ${totalRows.toLocaleString()}`);
+   }
+ }
+
+ clearBackfillCheckpoint();
+ box(outputId,"pass",`PASS
+対象期間: ${startYear}〜${endYear}
+完了年: ${yearsDone.join(", ")}
+API確認日数: ${apiDays.toLocaleString()}
+取引日: ${marketDays.toLocaleString()}
+0件日（祝日等）: ${emptyDays.toLocaleString()}
+API→Shard保存行数: ${totalRows.toLocaleString()}
+各年 quick_check: PASS
+Catalog: 全年 bars_YYYY ready
+Legacy DataLake: 未使用 / 未変更
+再実行: UPSERTなので安全
+処理時間: ${((performance.now()-t0)/1000).toFixed(1)}秒
+判定: 不足期間の直接Shard補完 PASS`);
+ return {startYear,endYear,yearsDone,apiDays,marketDays,emptyDays,totalRows};
+}
+
+if($("backfillProbeBtn")) $("backfillProbeBtn").onclick=async()=>{
+ const token=$("shardApiToken").value.trim();
+ const year=Number($("backfillStartYear").value||2020);
+ const testDate=`${year}-01-06`;
+ box("backfillProbeResult","run",`${testDate} を date=YYYYMMDD 方式で取得中…\nDB書込なし`);
  try{
-   const r=await jqFetchYearRange(year,token,p=>
-     box("shardApiFetchResult","run",`${year}年 API取得中…\npage: ${p.pages}\nrows: ${p.rows.toLocaleString()}`));
-   if(!r.rows.length) throw new Error(`${year}年のAPIデータが0件です。契約プランの履歴範囲も確認してください。`);
-   _shardApiYearCache=r;
-   const dates=r.rows.map(x=>String(x.Date||x.date||"")).filter(Boolean).sort();
-   box("shardApiFetchResult","pass",`PASS
-対象年: ${year}
-API rows: ${r.rows.length.toLocaleString()}
-pages: ${r.pages}
-API range: ${dates[0]||"-"} ～ ${dates[dates.length-1]||"-"}
+   const r=await jqFetchDaily(testDate,token);
+   box("backfillProbeResult","pass",`PASS
+Date: ${testDate}
+Endpoint: ${r.endpoint}
+Rows: ${r.rows.length.toLocaleString()}
+Pages: ${r.pages}
 DB書込: なし
-次: ⑧で年別Shardへ直接補完`);
+判定: date指定APIルート PASS`);
  }catch(e){
-   _shardApiYearCache=null;
-   box("shardApiFetchResult","fail",`FAIL\n${e.message||String(e)}`);
+   box("backfillProbeResult","fail",`FAIL\n${e.message||String(e)}`);
  }
 };
 
-if($("shardApiWriteBtn")) $("shardApiWriteBtn").onclick=async()=>{
- const year=Number($("shardApiYear").value),token=$("shardApiToken").value.trim();
- box("shardApiWriteResult","run",`${year}年を取得して年別Shardへ直接補完中…`);
+if($("backfillAllBtn")) $("backfillAllBtn").onclick=async()=>{
+ const token=$("shardApiToken").value.trim();
+ const sy=Number($("backfillStartYear").value),ey=Number($("backfillEndYear").value);
+ clearBackfillCheckpoint();
  try{
-   let r=_shardApiYearCache;
-   if(!r||Number(r.year)!==year){
-     r=await jqFetchYearRange(year,token,p=>
-       box("shardApiWriteResult","run",`${year}年 API取得中…\npage: ${p.pages}\nrows: ${p.rows.toLocaleString()}`));
-   }
-   if(!r.rows.length) throw new Error(`${year}年のAPIデータが0件です`);
-   const wr=await workerCall("shard-write-api-year",900000,
-     s=>box("shardApiWriteResult","run",`${year}年 Shard書込中…\n${s.stage||"-"} ${s.detail||""}`),
-     null,{year,rows:r.rows});
-   box("shardApiWriteResult","pass",`PASS
-Shard: ${wr.shardName}
-対象年: ${wr.year}
-期間: ${wr.minDate} ～ ${wr.maxDate}
-営業日数: ${Number(wr.tradingDays).toLocaleString()}
-API rows: ${Number(wr.apiRows).toLocaleString()}
-Write attempts: ${Number(wr.writtenRows).toLocaleString()}
-Verified rows: ${Number(wr.verifiedRows).toLocaleString()}
-quick_check: ${wr.quickCheck}
-Catalog: bars_${wr.year} ready
-Legacy DataLake: 未使用 / 未変更
-判定: J-Quants API → 年別Shard直接補完 PASS`);
-   _shardApiYearCache=null;
+   await runFullBackfill(sy,ey,token,"backfillAllResult");
  }catch(e){
-   const x=e&&typeof e==="object"?e:{message:String(e)};
-   box("shardApiWriteResult","fail",`FAIL
-stage: ${x.stage||"API"}
-message: ${x.message||String(e)}
+   const cp=loadBackfillCheckpoint();
+   box("backfillAllResult","fail",`FAIL
+${e.message||String(e)}
+${cp?.nextDate?`再開位置: ${cp.nextDate}\n⑨「前回の続きから再開」で継続できます。`:""}
+Legacy DataLake: 未使用 / 未変更`);
+ }
+};
+
+if($("backfillResumeBtn")) $("backfillResumeBtn").onclick=async()=>{
+ const token=$("shardApiToken").value.trim(),cp=loadBackfillCheckpoint();
+ if(!cp||!cp.nextDate){
+   box("backfillResumeResult","warn","再開Checkpointがありません。⑧から開始してください。");
+   return;
+ }
+ $("backfillStartYear").value=cp.startYear;
+ $("backfillEndYear").value=cp.endYear;
+ try{
+   await runFullBackfill(Number(cp.startYear),Number(cp.endYear),token,"backfillResumeResult",cp.nextDate);
+ }catch(e){
+   const cp2=loadBackfillCheckpoint();
+   box("backfillResumeResult","fail",`FAIL
+${e.message||String(e)}
+${cp2?.nextDate?`次回再開位置: ${cp2.nextDate}`:""}
 Legacy DataLake: 未使用 / 未変更`);
  }
 };

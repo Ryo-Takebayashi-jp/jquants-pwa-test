@@ -613,8 +613,13 @@
       ]
     }
   ],
-  "current_release": "v7e-alpha15",
+  "current_release": "v7e-alpha16",
   "history": [
+    {
+      "release": "v7e-alpha16",
+      "date": "2026-09-01",
+      "note": "Full 2020-2025 date-by-date J-Quants V2 backfill directly into yearly shards with per-date UPSERT verification, yearly finalization and resumable checkpoint."
+    },
     {
       "release": "v7e-alpha15",
       "date": "2026-09-01",
