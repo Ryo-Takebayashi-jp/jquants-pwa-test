@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha57");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha58");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha57").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha58").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2119,7 +2119,7 @@ if($("screeningBaseBtn")) $("screeningBaseBtn").onclick=async()=>{
    const r=await workerCall("screening-base-snapshot",240000,null,null,{asOf,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized});
    latestScreeningBaseRows=r.rows||[];
    const x=r.coverage||{};
-   box("screeningBaseResult",(x.technical===r.count&&x.master===r.count)?"pass":"warn",`Screening統合母集団\n基準日: ${asOf}\n銘柄: ${r.count}\nテクニカル: ${x.technical}/${r.count}\nMaster: ${x.master}/${r.count}\n財務: ${x.financial}/${r.count}\n会社予想: ${x.forecast}/${r.count}\n\n${x.master===r.count?"Master JOIN: PASS":"Master JOIN: 要確認"}\n次段階: PC版5戦略スコア/Top20選抜`);
+   box("screeningBaseResult",(x.technical===r.count&&x.master===r.count)?"pass":"warn",`Screening統合母集団\n基準日: ${asOf}\nフィルタ前: ${x.preFilter??"-"}\nフィルタ後: ${r.count}\nテクニカル: ${x.technical}/${r.count}\nMaster: ${x.master}/${r.count}\n財務: ${x.financial}/${r.count}\n会社予想: ${x.forecast}/${r.count}\n\n${x.master===r.count?"Master JOIN: PASS":"Master JOIN: 要確認"}\n母集団フィルタ: Market + 普通株011 + 売買代金5,000万円 + 株価100円 + 履歴60日\n次段階: PC版5戦略スコア/Top20選抜`);
    if($("screeningBaseExportBtn")) $("screeningBaseExportBtn").disabled=!latestScreeningBaseRows.length;
  }catch(e){box("screeningBaseResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
 };

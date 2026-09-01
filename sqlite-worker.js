@@ -1410,7 +1410,13 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      FinancialHistoryCount:f.FinancialHistoryCount??0,ComparablePriorFound:!!f.ComparablePriorFound
    }});
    const filtered=rows.filter(r=>["プライム","スタンダード","グロース"].includes(String(r.Market||""))&&String(r.ProductCategory||"")==="011"&&Number(r.AverageTradingValue20D)>=50000000&&Number(r.Close)>=100&&Number(r.PriceHistoryDays)>=60);
-   self.postMessage({ok:true,type:"result",rows:filtered,count:filtered.length,coverage:{technical:techRows.length,master,financial,forecast,screened:filtered.length}});return;
+   const postCoverage={
+     technical:filtered.filter(r=>r.Close!=null).length,
+     master:filtered.filter(r=>r.CompanyName!=null&&r.Market!=null).length,
+     financial:filtered.filter(r=>r.LatestDisclosureDate!=null||r.DiscDate!=null).length,
+     forecast:filtered.filter(r=>r.ForecastEPS!=null||r.ForecastSales!=null||r.ForecastOperatingProfit!=null||r.ForecastOrdinaryProfit!=null||r.ForecastNetProfit!=null).length
+   };
+   self.postMessage({ok:true,type:"result",rows:filtered,count:filtered.length,coverage:{preFilter:rows.length,screened:filtered.length,...postCoverage}});return;
  }
 
  if(cmd==="portfolio-integrated-snapshot"){

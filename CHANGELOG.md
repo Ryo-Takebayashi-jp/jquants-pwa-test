@@ -1,8 +1,8 @@
 # CHANGELOG
 
-## v7e-alpha57 — 2026-09-01
-- alpha56で残った Screening統合母集団 `[05-calc] Worker失敗` を修正。
-- 実機エラー行 `sqlite-worker.js:1672:47` を確認し、`historyDays: arr.length` が原因と特定。
-- technical-screening-poc の現在銘柄系列は `a` なので、`historyDays: a.length` へ修正。
-- `a` が存在しない異常状態を明示するローカル診断を追加。
-- alpha56の①→②→③→④→⑤のScreening順序UIはそのまま維持。
+## v7e-alpha58 — 2026-09-01
+- Screening統合母集団のcoverage表示を修正。
+- alpha57ではフィルタ前4,167銘柄のJOIN件数を、フィルタ後1,967銘柄を分母に表示していたため `4167/1967` のような不可能な値になっていた。
+- coverageをフィルタ後母集団で再集計。
+- フィルタ前 / フィルタ後を明示。
+- Master JOIN判定もフィルタ後母集団に対して評価。

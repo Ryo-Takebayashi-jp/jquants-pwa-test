@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha57",
+  "current_release": "v7e-alpha58",
   "history": [
     {
-      "release": "v7e-alpha57",
+      "release": "v7e-alpha58",
       "date": "2026-09-01",
-      "note": "Fix Screening calc crash at real-machine line 1672: historyDays used arr.length instead of current series a.length."
+      "note": "Fix Screening post-filter coverage accounting."
     }
   ]
 }
