@@ -43,7 +43,7 @@ async function initSqlite(){
        if(!probe.ok) throw new Error(`SQLite module probe HTTP ${probe.status}: ${await probe.text()}`);
        const ct=probe.headers.get("content-type")||"";
        if(!/javascript|ecmascript|module/i.test(ct)) throw new Error(`SQLite module Content-Type invalid: ${ct||"(none)"}`);
-       mod=await import(`/sqlite/index.mjs?v=v7e-alpha44-${attempt}`);
+       mod=await import(`/sqlite/index.mjs?v=v7e-alpha45-${attempt}`);
      }catch(e){
        lastErr=e; status("import-retry",`attempt ${attempt}/3: ${e?.message||e}`);
        if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));
@@ -1526,7 +1526,9 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        if(a.length<75)continue;
        const closes=a.map(x=>x.c), vols=a.map(x=>x.v), highs=a.map(x=>x.h), lows=a.map(x=>x.l), last=a[a.length-1];
        if(last.date!==actualAsOf)continue;
-       const ma5=avg(closes.slice(-5)),ma25=avg(closes.slice(-25)),ma75=avg(closes.slice(-75));
+       const ms5=rollingMA(closes,5),ms25=rollingMA(closes,25),ms75=rollingMA(closes,75),ms200=rollingMA(closes,200);
+       const ma5=ms5.at(-1),ma25=ms25.at(-1),ma75=ms75.at(-1),ma200=ms200.at(-1);
+       const slope5=slopePct(ms5,5),slope25=slopePct(ms25,5),slope75=slopePct(ms75,20),slope200=slopePct(ms200,20);
        const high20=Math.max(...highs.slice(-20)), low20=Math.min(...lows.slice(-20));
        const high60=Math.max(...highs.slice(-60)), low60=Math.min(...lows.slice(-60));
        const lowClose20=Math.min(...closes.slice(-20)), lowClose60=Math.min(...closes.slice(-60));
@@ -1553,6 +1555,9 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        if(ma25>ma75)score+=1;
        if(ret20!=null)score+=Math.max(-2,Math.min(2,ret20/10));
        if(volRatio!=null)score+=Math.max(-1,Math.min(1,(volRatio-1)));
+       if(typeof ma200==="undefined"||typeof atr14==="undefined"||typeof ichi==="undefined"){
+         throw new Error(`advanced technical calculation incomplete for ${code}`);
+       }
        rows.push({code,date:last.date,close:last.c,ma5,ma25,ma75,ma200,slope5,slope25,slope75,slope200,
          distMa5:pct(last.c,ma5),distMa25,distMa75,distMa200:pct(last.c,ma200),atr14,atr14Pct,
          high20,low20,high60,low60,high52,low52,distHigh20:pct(last.c,high20),distLow20:pct(last.c,low20),

@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha44",
+  "current_release": "v7e-alpha45",
   "history": [
     {
-      "release": "v7e-alpha44",
+      "release": "v7e-alpha45",
       "date": "2026-09-01",
-      "note": "Full desktop technical layer + technical_snapshot parity."
+      "note": "Fix advanced technical calculation block missing behind alpha44 expanded row schema."
     }
   ]
 }
