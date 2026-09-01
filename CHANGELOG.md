@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha3 — CURRENT (2026-09-01)
+- alpha2でCatalog診断ブロックを挿入した際に欠落した `await initSqlite()` と `s/p` 初期化を復元。
+- `01-catalog-open` の `p is undefined` 相当の失敗を修正。
+- 段階診断はそのまま維持。
+- 既存1.12GB DataLakeは新Catalog機能からOpen/変更/削除/移行しない。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha2 — CURRENT (2026-09-01)
 - Catalog + Shards bootstrapを段階診断化。
 - `shard-bootstrap` を 01〜08 のステージに分解し、どの工程で失敗したかをUIへ返す。

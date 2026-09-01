@@ -152,6 +152,7 @@ self.onmessage=async e=>{
  const originalPostMessage=self.postMessage.bind(self);
  self.postMessage=(msg,...rest)=>originalPostMessage({...msg,requestId},...rest);
 const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
+ const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
 
  if(cmd==="shard-bootstrap"){
    const catalogName="/jq_catalog_v1.sqlite", recentName="/jq_bars_recent_v1.sqlite";
