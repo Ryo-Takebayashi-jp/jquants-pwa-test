@@ -43,7 +43,7 @@ async function initSqlite(){
        if(!probe.ok) throw new Error(`SQLite module probe HTTP ${probe.status}: ${await probe.text()}`);
        const ct=probe.headers.get("content-type")||"";
        if(!/javascript|ecmascript|module/i.test(ct)) throw new Error(`SQLite module Content-Type invalid: ${ct||"(none)"}`);
-       mod=await import(`/sqlite/index.mjs?v=v7e-alpha41-${attempt}`);
+       mod=await import(`/sqlite/index.mjs?v=v7e-alpha42-${attempt}`);
      }catch(e){
        lastErr=e; status("import-retry",`attempt ${attempt}/3: ${e?.message||e}`);
        if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));
@@ -1297,8 +1297,9 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
  if(cmd==="portfolio-integrated-snapshot"){
    const payload=d.payload||{}, stocks=payload.stocks||[], techRows=payload.techRows||[], finRows=payload.finRows||[];
-   const tmap=new Map(techRows.map(x=>[String(x.code),x]));
-   const fmap=new Map(finRows.map(x=>[String(x.code),x]));
+   const normCode=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const tmap=new Map(techRows.map(x=>[normCode(x.code),x]));
+   const fmap=new Map(finRows.map(x=>[normCode(x.code),x]));
    let mdb=null; const names=new Map();
    try{
      mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");

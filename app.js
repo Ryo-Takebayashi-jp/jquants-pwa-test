@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha41");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha42");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha41").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha42").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1297,7 +1297,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha41",
+   appVersion:"v7e-alpha42",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1994,15 +1994,16 @@ if($("portfolioIntegratedBtn")) $("portfolioIntegratedBtn").onclick=async()=>{
    const txt=await file.text(), parsed=parseCsv(txt);
    const stocks=parsed.rows.map(r=>({code:r.Code,name:r.Name,account:r.Account,shares:r.Shares,avgCost:r.AvgCost}));
    const asOf=$("screeningAsOf")?.value||new Date().toISOString().slice(0,10);
-   const tech=await workerCall("technical-screening-poc",300000,null,null,{asOf,lookbackDays:320,topN:5000});
+   const tech=await workerCall("technical-screening-poc",300000,null,null,{asOf,lookback:320,topN:200,returnAll:true});
    if(!latestFinancialNormalized){
      const fr=await workerCall("financial-normalize-latest",180000); latestFinancialNormalized=fr.rows;
    }
-   const pr=await workerCall("portfolio-integrated-snapshot",180000,null,null,{stocks,techRows:tech.top,finRows:latestFinancialNormalized});
+   const pr=await workerCall("portfolio-integrated-snapshot",180000,null,null,{stocks,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized});
    const okTech=pr.rows.filter(x=>x.close!=null).length,okFin=pr.rows.filter(x=>x.discDate).length;
+   const techUniverse=(tech.all||tech.top||[]).length;
    const lines=pr.rows.map(x=>`${x.code} ${x.name||x.companyName||""} | ${x.account} | Close ${x.close??"-"} | RSI ${x.rsi14!=null?x.rsi14.toFixed(2):"-"} | TOPIX20D ${x.relativeToTOPIX20D!=null?x.relativeToTOPIX20D.toFixed(2):"-"} | EPS ${x.eps??"-"} | F.EPS ${x.forecastEPS??"-"}`);
    window.__latestPortfolioIntegrated=pr.rows;
-   box("portfolioIntegratedResult",(okTech===pr.count)?"pass":"warn",`統合スナップショット\n銘柄: ${pr.count}\nテクニカル接続: ${okTech}/${pr.count}\n財務接続: ${okFin}/${pr.count}\n\n`+lines.join("\n"));
+   box("portfolioIntegratedResult",(okTech===pr.count)?"pass":"warn",`統合スナップショット\n銘柄: ${pr.count}\nテクニカル計算母集団: ${techUniverse}\nテクニカル接続: ${okTech}/${pr.count}\n財務接続: ${okFin}/${pr.count}\n\n`+lines.join("\n"));
    if($("portfolioExportBtn"))$("portfolioExportBtn").disabled=false;
  }catch(e){box("portfolioIntegratedResult","fail","FAIL\n"+(e?.message||e))}
  finally{btn.disabled=false}
