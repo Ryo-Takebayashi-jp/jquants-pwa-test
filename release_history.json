@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha65c",
+  "current_release": "v7e-alpha66",
   "history": [
     {
-      "release": "v7e-alpha65c",
+      "release": "v7e-alpha66",
       "date": "2026-09-02",
-      "note": "Rebuilt standalone residual financial audit against actual fins_summary schema; no screening logic changes."
+      "note": "Bundled full residual trace across complete scored universe; no data refresh required."
     }
   ]
 }

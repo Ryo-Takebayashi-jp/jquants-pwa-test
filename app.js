@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha65c");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha66");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha65c").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha66").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2129,7 +2129,7 @@ if($("screeningBaseExportBtn")) $("screeningBaseExportBtn").onclick=()=>{
  downloadBlob(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}),`web_screening_base_${($("screeningBaseAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`); box("screeningBaseResult","pass",`母集団CSVを書き出しました\n銘柄: ${latestScreeningBaseRows.length}`);
 };
 
-let latestScreeningCandidates=[];let latestScreeningParityPcRows=[];
+let latestScreeningCandidates=[];let latestScreeningParityPcRows=[];let latestScreeningScoredRows=[];
 function pctRank(rows,key,reverse=false){
  const vals=rows.map((r,i)=>({i,v:Number(r[key])})).filter(x=>Number.isFinite(x.v)).sort((a,b)=>a.v-b.v);
  const out=new Array(rows.length).fill(50); if(vals.length<2)return out;
@@ -2197,8 +2197,10 @@ function buildScreeningStrategies(rows){
  const defs=[["FundamentalPriceGap","GapCompositeScore"],["FundamentalMomentum","FundamentalMomentumScore"],["PostEarningsDrift","PostEarningsDriftScore"],["GrowthAcceleration","GrowthAccelerationScore"],["QualityValueReRating","QualityValueReRatingScore"]];
  const map=new Map();
  for(const [name,key] of defs){
-   const ranked=rr.filter(r=>r[key]!=null&&!r.EarningsReactionPending&&r.FinancialDataFlag!=="WebRequired"&&r.FinancialDataFlag!=="NoLatestFinancial")
-     .sort((a,b)=>Number(b[key])-Number(a[key])||String(a.NormalizedCode).localeCompare(String(b.NormalizedCode))).slice(0,20);
+   const eligible=rr.filter(r=>r[key]!=null&&!r.EarningsReactionPending&&r.FinancialDataFlag!=="WebRequired"&&r.FinancialDataFlag!=="NoLatestFinancial")
+     .sort((a,b)=>Number(b[key])-Number(a[key])||String(a.NormalizedCode).localeCompare(String(b.NormalizedCode)));
+   eligible.forEach((r,i)=>r[name+"UniverseRank"]=i+1);
+   const ranked=eligible.slice(0,20);
    ranked.forEach((r,i)=>{let c=map.get(r.NormalizedCode);if(!c){c={...r,_ranks:{}};map.set(r.NormalizedCode,c)}c._ranks[name]=i+1});
  }
  const pending=rr.filter(r=>r.EarningsReactionPending&&r.FinancialDataFlag!=="WebRequired"&&r.FinancialDataFlag!=="NoLatestFinancial")
@@ -2214,7 +2216,7 @@ function buildScreeningStrategies(rows){
    ||y.StrategyCount-x.StrategyCount||(x.BestStrategyRank??999)-(y.BestStrategyRank??999)
    ||(x.PendingReviewRank??999)-(y.PendingReviewRank??999)||String(x.PrimaryStrategy).localeCompare(String(y.PrimaryStrategy))
    ||String(x.NormalizedCode).localeCompare(String(y.NormalizedCode)));
- return {rows:out,defs};
+ return {rows:out,defs,scored:rr};
 }
 if($("screeningStrategyBtn")) $("screeningStrategyBtn").onclick=async()=>{
  if(!latestScreeningBaseRows.length){box("screeningStrategyResult","warn","先に『Screening母集団を構築』を実行してください。");return}
@@ -2225,7 +2227,7 @@ if($("screeningStrategyBtn")) $("screeningStrategyBtn").onclick=async()=>{
    const ev=await workerCall("screening-event-features",300000,null,null,{asOf,events:latestScreeningBaseRows.map(r=>({code:r.NormalizedCode,disclosureDate:r.LatestDisclosureDate}))});
    const em=new Map((ev.rows||[]).map(x=>[String(x.code),x]));
    const enriched=latestScreeningBaseRows.map(r=>({...r,...(em.get(String(r.NormalizedCode))||{EarningsElapsedTradingDays:null,EarningsReactionPending:false})}));
-   const r=buildScreeningStrategies(enriched);latestScreeningCandidates=r.rows;
+   const r=buildScreeningStrategies(enriched);latestScreeningCandidates=r.rows;latestScreeningScoredRows=r.scored||[];
    const counts=Object.fromEntries(r.defs.map(([n])=>[n,latestScreeningCandidates.filter(x=>x[n+"Rank"]!=null).length]));
    const pending=latestScreeningCandidates.filter(x=>x.CandidateStatus==="ReactionPending").length;
    box("screeningStrategyResult","pass",`Web Screening 5戦略\n母集団: ${enriched.length}\n候補ユニーク: ${latestScreeningCandidates.length}\n${Object.entries(counts).map(([k,v])=>k+": "+v+"/20").join("\n")}\nReactionPending: ${pending}\n\nPEDイベント窓: PC版定義で計算\n次段階: PC版候補とのParity`);
@@ -2324,6 +2326,48 @@ async function runStandaloneResidualFinancialAudit(){
  }
 }
 
+
+function residualFullTrace(pcRows,webSelected,webScored,codes){
+ const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+ const pm=new Map(pcRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const sm=new Map(webSelected.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const um=new Map(webScored.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const qvrOrder=webScored.filter(r=>r.QualityValueReRatingScore!=null&&r.FinancialDataFlag!=="WebRequired"&&r.FinancialDataFlag!=="NoLatestFinancial")
+   .slice().sort((x,y)=>Number(y.QualityValueReRatingScore)-Number(x.QualityValueReRatingScore)||String(x.NormalizedCode).localeCompare(String(y.NormalizedCode)));
+ const fields=[
+  "QualityValueReRatingScore","QVRQualityScore","QVRValueScore","QVRReRatingScore",
+  "QVRQualityMismatchPenalty","QVRCrowdingPenalty","ChasePenalty",
+  "SectorForecastPERValueScore","SectorPBRValueScore","SectorDividendYieldValueScore",
+  "ForecastPER","PBR","ForecastDividendYieldPct","ForecastPrimaryProfitGrowthPct",
+  "ROE","CurrentOperatingMarginPct","OperatingMarginChangePt","LatestAvailableCFO","LatestAvailableFCF","EquityRatioPct",
+  "LatestDisclosureDate","ProfitType","FinancialDataFlag"
+ ];
+ const lines=["【残差フルトレース】","選抜候補だけでなくWeb全スコア母集団まで追跡"];
+ for(const c of codes){
+   const pc=pm.get(c)||{},sel=sm.get(c),q=um.get(c)||{};
+   const side=pm.has(c)&&!sm.has(c)?"PC_ONLY":sm.has(c)&&!pm.has(c)?"WEB_ONLY":"BOTH";
+   lines.push(`--- ${c} ${pc.CompanyName||q.CompanyName||pc.Name||q.Name||""} ${side} ---`);
+   lines.push(`Web母集団=${Object.keys(q).length?"YES":"NO"} / Web選抜=${sel?"YES":"NO"} / QVR Web順位=${q.QualityValueReRatingUniverseRank??"(blank)"} / PC候補順位=${pc.QualityValueReRatingRank??"(blank)"}`);
+   for(const k of fields){
+     const pv=pc[k],wv=q[k],ps=pv==null||String(pv).trim()===""?"(blank)":pv,ws=wv==null||String(wv).trim()===""?"(blank)":wv;
+     if(ps!=="(blank)"||ws!=="(blank)")lines.push(`${k}: PC=${ps} / Web=${ws}`);
+   }
+   const wr=Number(q.QualityValueReRatingUniverseRank);
+   if(Number.isFinite(wr)){
+     const lo=Math.max(0,wr-3),hi=Math.min(qvrOrder.length,wr+2);
+     lines.push("Web QVR順位近傍: "+qvrOrder.slice(lo,hi).map((r,i)=>`${lo+i+1}:${r.NormalizedCode}=${Number(r.QualityValueReRatingScore).toFixed(4)}`).join(" / "));
+   }
+   const diag=!Object.keys(q).length?"A 母集団で欠落"
+     : q.FinancialDataFlag==="WebRequired"||q.FinancialDataFlag==="NoLatestFinancial"?"B 財務フラグで除外"
+     : q.QualityValueReRatingScore==null?"C QVRスコア欠損"
+     : Number(q.QualityValueReRatingUniverseRank)>20?"D QVRは有効だがTop20境界外"
+     : !sel?"E Top20内なのに候補統合で脱落"
+     :"F Web選抜済み（PC側境界差）";
+   lines.push(`自動判定: ${diag}`);
+ }
+ return lines.join("\n");
+}
+
 function residualBoundaryAudit(pcRows,webRows,codes){
  const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
  const pm=new Map(pcRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
@@ -2345,7 +2389,7 @@ function residualBoundaryAudit(pcRows,webRows,codes){
 
 if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=async()=>{try{
  const f=$("screeningStrategyParityFile").files?.[0];if(!f)throw new Error("screening_candidates.csvを選択してください");
- if(!latestScreeningCandidates.length)throw new Error("先にWebの5戦略選抜を実行してください");
+ if(!latestScreeningCandidates.length||!latestScreeningScoredRows.length)throw new Error("先にWebの5戦略選抜を実行してください");
  const pc=parseCsv(await f.text());if(!pc||!Array.isArray(pc.rows))throw new Error("PC CSV解析失敗");
  const pcRows=pc.rows;latestScreeningParityPcRows=pcRows;
  const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
@@ -2355,7 +2399,8 @@ if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=asyn
  for(const c of pmap.keys())if(!wmap.has(c))missing.push(c);
  const exact=missing.length===0&&extra.length===0&&strategy===both,d=screeningBoundaryDiagnostics(pcRows,latestScreeningCandidates);
  const residualCodes=[...new Set([...missing,...extra])];
- const residualAudit=residualBoundaryAudit(pcRows,latestScreeningCandidates,residualCodes);
+ const residualAudit=residualBoundaryAudit(pcRows,latestScreeningScoredRows,residualCodes);
+ const residualTrace=residualFullTrace(pcRows,latestScreeningCandidates,latestScreeningScoredRows,residualCodes);
  // alpha62: pinpoint the first QVR component divergence on common rows.
  const qvrFields=[
   "QualityValueReRatingScore","QVRQualityScore","QVRValueScore","QVRReRatingScore","QVRCrowdingPenalty","QVRQualityMismatchPenalty",
@@ -2393,8 +2438,10 @@ ${d.byStrategy.join("\n")||"なし"}
 【差分銘柄 rank PC/Web】
 ${d.detail.slice(0,40).join("\n")||"なし"}${diff.length?"\n\nPrimary差分:\n"+diff.slice(0,12).join("\n"):""}
 
-【残差銘柄4点 自動監査】
-${residualAudit||"残差なし"}${auditText}`)
+【残差銘柄 自動監査】
+${residualAudit||"残差なし"}
+
+${residualTrace}${auditText}`)
 }catch(e){box("screeningStrategyParityResult","fail","FAIL\n"+(e?.message||e))}};
 
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();

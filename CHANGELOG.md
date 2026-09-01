@@ -1,9 +1,10 @@
 # CHANGELOG
 
-## v7e-alpha65c — 2026-09-02
-- 残差財務監査をalpha64安定版から作り直し。
-- Worker初期化前のDBアクセス、未定義API、誤テーブル名に依存しない構造へ変更。
-- 実DB `/jq_fins_summary_v1.sqlite`、実テーブル `fins_summary`、既存 `execRows()`、SAH Pool DBを使用。
-- Screening候補状態に依存しない「残差財務監査（単独実行）」を追加。
-- ③→④→⑤の再実行なしで6176/3989/7846/4246/2593/3300を監査可能。
-- Screening選抜ロジックは97.8%のalpha64から変更なし。
+## v7e-alpha66 — 2026-09-02
+- 97.8%残差を1回の更新で広く診断する「残差フルトレース」を追加。
+- 5戦略の全スコア母集団を保持し、Top20外にもUniverseRankを付与。
+- PC_ONLY銘柄でもWeb母集団上のQVR/Quality/Value/ReRating/原材料/FinancialDataFlagを確認可能。
+- QVR順位近傍（境界周辺）のコード・スコアを同時表示。
+- 自動判定: 母集団欠落 / 財務フラグ除外 / QVR欠損 / Top20境界外 / 候補統合経路 / PC側境界差。
+- alpha64までの97.8%選抜式は変更していない。
+- データ再取得・財務履歴更新は不要。既存DataLakeから再計算のみ。
