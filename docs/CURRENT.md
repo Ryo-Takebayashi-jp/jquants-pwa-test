@@ -1,5 +1,10 @@
-# Current release
+# v7e-alpha53
 
-v7e-alpha52
+今回の実機テスト:
+1. 5戦略選抜はalpha52でPASS済みなので再実行不要。
+2. screening_candidates.csv を選択。
+3. 「選抜Parityを実行」。
 
-Screening 5-strategy selection + candidate export + PC/Web selection parity.
+狙い:
+- CSV解析エラーなし
+- PC候補/Web候補の実際の一致率・差分を表示
