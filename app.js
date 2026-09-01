@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha36");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha37");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -222,7 +222,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha36").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha37").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1276,7 +1276,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha36",
+   appVersion:"v7e-alpha37",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -2063,7 +2063,17 @@ Web版Core 1を${asOf}で全銘柄計算中…`);
      ["MA25DeviationPct","distMa25",0.02],
      ["MA75DeviationPct","distMa75",0.02],
      ["Return5D","ret5",0.02],
+     ["TOPIXReturn5D","topixRet5",0.02],
+     ["RelativeToTOPIX5D","rel5",0.02],
      ["Return20D","ret20",0.02],
+     ["TOPIXReturn20D","topixRet20",0.02],
+     ["RelativeToTOPIX20D","rel20",0.02],
+     ["Return60D","ret60",0.02],
+     ["TOPIXReturn60D","topixRet60",0.02],
+     ["RelativeToTOPIX60D","rel60",0.02],
+     ["Return120D","ret120",0.02],
+     ["TOPIXReturn120D","topixRet120",0.02],
+     ["RelativeToTOPIX120D","rel120",0.02],
      ["RSI14","rsi14",0.05],
      ["LatestVolumeRatioTo20D","volRatio",0.005],
      ["High20D","high20",0.02],
@@ -2119,6 +2129,7 @@ Web版Core 1を${asOf}で全銘柄計算中…`);
 
    box("parityResult",verdict==="PASS"?"pass":"warn",`${verdict}
 基準日: ${web.asOf}
+TOPIX層: ${web.topixStatus||"unknown"}
 PC版銘柄: ${pc.size}
 Web計算銘柄: ${wm.size}
 比較できた銘柄: ${compared}

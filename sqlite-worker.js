@@ -1270,6 +1270,29 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        }finally{try{if(db)db.close()}catch(_){}}
      }
 
+     stage="04b-topix";
+     let topixReturns={ret5:null,ret20:null,ret60:null,ret120:null}, topixStatus="missing";
+     let tdb=null;
+     try{
+       tdb=new p.OpfsSAHPoolDb("/jq_topix_v1.sqlite","r");
+       const trs=execRows(tdb,"SELECT raw_json FROM topix");
+       const tm=new Map();
+       for(const rr of trs){
+         try{
+           const o=JSON.parse(String(rr.raw_json||"{}"));
+           const d=String(o.Date??o.date??"").slice(0,10);
+           const c=Number(o.C??o.Close??o.c??o.close);
+           if(d&&Number.isFinite(c)&&c>0)tm.set(d,c);
+         }catch(_){}
+       }
+       const tc=chosen.map(d=>tm.get(d));
+       const li=tc.length-1,last=tc[li];
+       const rp=n=>(li>=n&&Number.isFinite(last)&&Number.isFinite(tc[li-n])&&tc[li-n]>0)?((last/tc[li-n])-1)*100:null;
+       topixReturns={ret5:rp(5),ret20:rp(20),ret60:rp(60),ret120:rp(120)};
+       topixStatus=Number.isFinite(topixReturns.ret20)?"ready":"insufficient";
+       tdb.close();tdb=null;
+     }catch(_){try{if(tdb)tdb.close()}catch(__){}}
+
      stage="05-calc";
      const avg=(a)=>a.reduce((x,y)=>x+y,0)/a.length;
      const pct=(a,b)=>b?((a/b)-1)*100:null;
@@ -1300,10 +1323,17 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const pos60=high60>low60?((last.c-low60)/(high60-low60))*100:null;
        const prev5=closes.length>=6?closes[closes.length-6]:null;
        const prev20=closes.length>=21?closes[closes.length-21]:null;
+       const prev60=closes.length>=61?closes[closes.length-61]:null;
+       const prev120=closes.length>=121?closes[closes.length-121]:null;
        const vol20vals=vols.slice(-20).filter(v=>Number.isFinite(v));
        const vol20=vol20vals.length?avg(vol20vals):null;
        const rs=rsi14(closes);
        const ret5=prev5?pct(last.c,prev5):null,ret20=prev20?pct(last.c,prev20):null;
+       const ret60=prev60?pct(last.c,prev60):null,ret120=prev120?pct(last.c,prev120):null;
+       const rel5=(ret5!=null&&topixReturns.ret5!=null)?ret5-topixReturns.ret5:null;
+       const rel20=(ret20!=null&&topixReturns.ret20!=null)?ret20-topixReturns.ret20:null;
+       const rel60=(ret60!=null&&topixReturns.ret60!=null)?ret60-topixReturns.ret60:null;
+       const rel120=(ret120!=null&&topixReturns.ret120!=null)?ret120-topixReturns.ret120:null;
        const volRatio=(Number.isFinite(last.v)&&vol20>0)?last.v/vol20:null;
        // Transparent PoC score: trend + momentum + volume. Not yet the desktop production screener.
        let score=0;
@@ -1312,11 +1342,13 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        if(ret20!=null)score+=Math.max(-2,Math.min(2,ret20/10));
        if(volRatio!=null)score+=Math.max(-1,Math.min(1,(volRatio-1)));
        rows.push({code,date:last.date,close:last.c,ma5,ma25,ma75,distMa25,distMa75,
-         high20,low20,high60,low60,pos20,pos60,rsi14:rs,ret5,ret20,volume:last.v,vol20,volRatio,score});
+         high20,low20,high60,low60,pos20,pos60,rsi14:rs,ret5,ret20,ret60,ret120,
+         topixRet5:topixReturns.ret5,topixRet20:topixReturns.ret20,topixRet60:topixReturns.ret60,topixRet120:topixReturns.ret120,
+         rel5,rel20,rel60,rel120,volume:last.v,vol20,volRatio,score});
      }
      rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);
      self.postMessage({ok:true,type:"result",stage:"PASS",requestedAsOf:asOf,asOf:actualAsOf,
-       from,tradingDates:chosen.length,usedShards,candidates:rows.length,top:rows.slice(0,topN),
+       from,tradingDates:chosen.length,usedShards,topixStatus,topixReturns,candidates:rows.length,top:rows.slice(0,topN),
        all:payload.returnAll?rows:undefined,
        elapsedMs:Math.round(performance.now()-t0)});
      return;

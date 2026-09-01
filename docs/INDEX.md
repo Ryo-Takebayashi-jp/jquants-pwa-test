@@ -1,0 +1,8 @@
+# Documentation
+
+- `README.md` — Web/PWA全体の説明
+- `history/` — 開発途中版のREADMEアーカイブ
+- ルートの `CHANGELOG.md` — 現在までの変更履歴
+- ルートの `release_history.json` — 機械可読リリース履歴
+
+今後、通常の更新でルート直下に `README_alphaXX.md` は増やしません。
