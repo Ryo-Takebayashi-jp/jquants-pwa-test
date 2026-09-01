@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha65b");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha65c");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha65b").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha65c").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2291,41 +2291,37 @@ function sectorRelativeAudit(pcRows,webRows,targetCode="6838"){
 
 
 
-async function residualFinancialJoinAudit(pcRows,webRows){
- const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
- const pcMap=new Map(pcRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
- const webMap=new Map(webRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
- const pcSet=new Set(pcMap.keys()),webSet=new Set(webMap.keys());
- const focus=[...new Set([...pcSet].filter(c=>!webSet.has(c)).concat([...webSet].filter(c=>!pcSet.has(c))))].slice(0,8);
- const lines=["【残差銘柄 財務JOIN監査】",`対象: ${focus.join(", ")||"なし"}`];
- if(!focus.length)return lines.concat("差分なし").join("\n");
- let rawRows=[];
+async function runStandaloneResidualFinancialAudit(){
+ const rawCodes=String($("residualAuditCodes")?.value||"6176,3989,7846,4246,2593,3300");
+ const codes=rawCodes.split(/[\s,、]+/).map(x=>x.trim()).filter(Boolean);
+ const id="residualAuditStandaloneResult";
+ box(id,"run","ローカル財務DBを監査中…");
  try{
-   const res=await workerCall("fins-summary-code-audit",180000,null,null,{codes:focus});
-   rawRows=Array.isArray(res?.rows)?res.rows:Array.isArray(res)?res:[];
- }catch(e){lines.push(`raw監査 ERROR: ${e?.message||e}`);return lines.join("\n")}
- const byCode=new Map();
- for(const r of rawRows){const c=norm(r.code??r.Code);if(!c)continue;if(!byCode.has(c))byCode.set(c,[]);byCode.get(c).push(r)}
- const fields=["ForecastPER","ForecastDividendYieldPct","CurrentOperatingMarginPct","OperatingMarginChangePct","ForecastEPS","EPS","BPS","PBR"];
- for(const c of focus){
-   const p=pcMap.get(c)||{},q=webMap.get(c)||{},rs=byCode.get(c)||[];
-   const latest=rs.slice().sort((x,y)=>String(y.disclosed_date||y.data_date||"").localeCompare(String(x.disclosed_date||x.data_date||"")))[0];
-   lines.push(`--- ${c} ${p.CompanyName||q.CompanyName||p.Name||q.Name||""} ${pcSet.has(c)&&!webSet.has(c)?"PC_ONLY":"WEB_ONLY"} ---`);
-   lines.push(`raw財務DB: ${rs.length}件${latest?` / 最新=${latest.disclosed_date||latest.data_date||"-"}`:""}`);
-   for(const k of fields){
-     const pv=p[k],qv=q[k],ps=pv==null||String(pv).trim()===""?"(blank)":pv,qs=qv==null||String(qv).trim()===""?"(blank)":qv;
-     if(ps!=="(blank)"||qs!=="(blank)")lines.push(`${k}: PC=${ps} / Web=${qs}`);
+   const res=await workerCall("fins-summary-code-audit",180000,null,null,{codes});
+   const rows=Array.isArray(res.rows)?res.rows:[];
+   const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const by=new Map();
+   for(const r of rows){const c=norm(r.code);if(!by.has(c))by.set(c,[]);by.get(c).push(r)}
+   const pick=(o,...ks)=>{for(const k of ks){const v=o?.[k];if(v!=null&&String(v).trim()!=="")return v}return "(blank)"};
+   const lines=["残差銘柄 財務DB単独監査","※③→④→⑤の再実行不要",""];
+   for(const c of codes){
+     const rs=by.get(c)||[];
+     lines.push(`--- ${c} ---`);
+     lines.push(`raw財務DB: ${rs.length}件`);
+     if(!rs.length){lines.push("判定: ① raw財務DB欠落");lines.push("");continue}
+     const latest=rs[0];
+     let o={};try{o=JSON.parse(String(latest.raw_json||"{}"))}catch(_){}
+     lines.push(`最新: data=${latest.data_date||"-"} / disclosed=${latest.disclosed_date||"-"} ${latest.disclosed_time||""}`);
+     lines.push(`DocType=${pick(o,"DocType","TypeOfDocument")} / CurPerType=${pick(o,"CurPerType","CurrentPeriodType")} / CurFYEn=${pick(o,"CurFYEn","CurrentFiscalYearEndDate")}`);
+     lines.push(`Sales=${pick(o,"Sales","NCSales","NetSales")} / OP=${pick(o,"OP","NCOP","OperatingProfit")} / EPS=${pick(o,"EPS","NCEPS","EarningsPerShare")} / BPS=${pick(o,"BPS","NCBPS","BookValuePerShare")}`);
+     lines.push(`F.Sales=${pick(o,"FSales","FNCSales","ForecastSales")} / F.OP=${pick(o,"FOP","FNCOP","ForecastOperatingProfit")} / F.EPS=${pick(o,"FEPS","FNCEPS","ForecastEPS","ForecastEarningsPerShare")}`);
+     lines.push("判定: raw財務DBには存在 → 正規化/最新決算選択/JOIN側を次に監査");
+     lines.push("");
    }
-   if(latest){
-     let obj={};try{obj=JSON.parse(latest.raw_json||"{}")}catch{}
-     const pick=(...ks)=>{for(const k of ks)if(obj[k]!=null&&String(obj[k]).trim()!=="")return obj[k];return "(blank)"};
-     lines.push(`raw latest: Disc=${pick("DiscDate","DisclosedDate","Date")} | Doc=${pick("DocType","TypeOfDocument")} | CurFYEn=${pick("CurFYEn","CurrentFiscalYearEndDate")} | EPS=${pick("EPS","EarningsPerShare")} | F.EPS=${pick("F_EPS","ForecastEPS","ForecastEarningsPerShare")} | BPS=${pick("BPS","BookValuePerShare")} | OP=${pick("OP","OperatingProfit")} | F.OP=${pick("F_OP","ForecastOperatingProfit")}`);
-   }
-   const qMissing=!q||Object.keys(q).length===0;
-   const qFieldsBlank=fields.every(k=>q[k]==null||String(q[k]).trim()==="");
-   lines.push(`判定: ${!rs.length?"① raw財務DB欠落":qMissing?"② Screening母集団JOIN前後で脱落":qFieldsBlank?"③ rawあり→正規化/最新決算選択で欠落":"④ raw/正規化あり→スコア/Top20境界"}`);
+   box(id,"pass",lines.join("\n"));
+ }catch(e){
+   box(id,"fail","FAIL\n"+(e?.message||e));
  }
- return lines.join("\n");
 }
 
 function residualBoundaryAudit(pcRows,webRows,codes){
@@ -2359,7 +2355,7 @@ if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=asyn
  for(const c of pmap.keys())if(!wmap.has(c))missing.push(c);
  const exact=missing.length===0&&extra.length===0&&strategy===both,d=screeningBoundaryDiagnostics(pcRows,latestScreeningCandidates);
  const residualCodes=[...new Set([...missing,...extra])];
- const residualAudit=(residualBoundaryAudit(pcRows,latestScreeningCandidates,residualCodes)+"\n\n"+await residualFinancialJoinAudit(pcRows,latestScreeningCandidates));
+ const residualAudit=residualBoundaryAudit(pcRows,latestScreeningCandidates,residualCodes);
  // alpha62: pinpoint the first QVR component divergence on common rows.
  const qvrFields=[
   "QualityValueReRatingScore","QVRQualityScore","QVRValueScore","QVRReRatingScore","QVRCrowdingPenalty","QVRQualityMismatchPenalty",
@@ -2724,3 +2720,5 @@ if($("screeningDiffExportBtn")) $("screeningDiffExportBtn").onclick=()=>{
  downloadBlob(new Blob(["\uFEFF"+lines.join("\n")],{type:"text/csv;charset=utf-8"}),`screening_parity_diff_${($("screeningBaseAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`);
 };
 
+
+if($("residualAuditStandaloneBtn")) $("residualAuditStandaloneBtn").onclick=runStandaloneResidualFinancialAudit;

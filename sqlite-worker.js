@@ -190,27 +190,38 @@ self.onmessage=async e=>{
  const originalPostMessage=nativePostMessage;
  self.postMessage=(msg,...rest)=>originalPostMessage({...msg,requestId},...rest);
 const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
- 
-if(cmd==="fins-summary-code-audit"){
- const codes=((msg.payload&&msg.payload.codes)||msg.codes||[]).map(x=>String(x||"").trim()).filter(Boolean),rows=[];
- const db=await openDb("/jq_fins_summary_v1.sqlite");
- try{
-   for(const c0 of codes){
-     const variants=[c0,c0.length===4?c0+"0":c0];
-     for(const c of [...new Set(variants)]){
-       const got=db.selectObjects("SELECT data_date,code,disclosed_date,disclosed_time,raw_json FROM fins_summary_raw WHERE code=? ORDER BY COALESCE(disclosed_date,data_date) DESC",[c]);
-       for(const r of got)rows.push(r);
-     }
-   }
- }finally{try{db.close()}catch{}}
- postMessage({ok:true,requestId:msg.requestId,rows});return;
-}
-
-if(cmd==="raw-ping"){
+ if(cmd==="raw-ping"){
    self.postMessage({ok:true,type:"result",pong:true,seq:d.seq||0,elapsedMs:Math.round(performance.now()-t0)});
    return;
  }
  const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
+
+ if(cmd==="fins-summary-code-audit"){
+   const payload=d.payload||{},codes=(payload.codes||[]).map(x=>String(x||"").trim()).filter(Boolean),rows=[];
+   let fdb=null;
+   try{
+     fdb=new p.OpfsSAHPoolDb("/jq_fins_summary_v1.sqlite","r");
+     const tables=execRows(fdb,"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").map(x=>String(x.name));
+     if(!tables.includes("fins_summary")) throw new Error(`fins_summary table missing. tables=${tables.join(",")}`);
+     for(const c0 of codes){
+       const variants=[c0,c0.length===4?c0+"0":c0].filter((x,i,a)=>a.indexOf(x)===i);
+       for(const c of variants){
+         const got=execRows(fdb,`SELECT data_date,code,disclosed_date,disclosed_time,raw_json
+           FROM fins_summary
+           WHERE code=?
+           ORDER BY COALESCE(disclosed_date,data_date) DESC, disclosed_time DESC`,[c]);
+         for(const r of got) rows.push(r);
+       }
+     }
+     fdb.close();fdb=null;
+     self.postMessage({ok:true,type:"result",rows,codes,tables});
+     return;
+   }catch(err){
+     try{if(fdb)fdb.close()}catch(_){}
+     throw new Error(`[fins-summary-code-audit] ${err?.message||err}`);
+   }
+ }
+
 
 
 

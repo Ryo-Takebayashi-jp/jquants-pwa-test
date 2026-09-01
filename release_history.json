@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha65b",
+  "current_release": "v7e-alpha65c",
   "history": [
     {
-      "release": "v7e-alpha65b",
+      "release": "v7e-alpha65c",
       "date": "2026-09-02",
-      "note": "Fix residual financial audit worker call/payload contract; no screening logic changes."
+      "note": "Rebuilt standalone residual financial audit against actual fins_summary schema; no screening logic changes."
     }
   ]
 }
