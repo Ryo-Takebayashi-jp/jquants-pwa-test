@@ -152,6 +152,47 @@ self.onmessage=async e=>{
  const originalPostMessage=self.postMessage.bind(self);
  self.postMessage=(msg,...rest)=>originalPostMessage({...msg,requestId},...rest);
 const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
+ if(cmd==="shard-bootstrap"){
+   status("shard-bootstrap","Catalog + bars_recent を小型DBとして作成");
+   const catalogName="/jq_catalog_v1.sqlite", recentName="/jq_bars_recent_v1.sqlite";
+   let cdb,rdb;
+   try{
+     cdb=new p.OpfsSAHPoolDb(catalogName,"c");
+     cdb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(shard_key TEXT PRIMARY KEY,logical_name TEXT NOT NULL,dataset TEXT NOT NULL,range_start TEXT,range_end TEXT,schema_version TEXT NOT NULL,state TEXT NOT NULL,updated_at TEXT NOT NULL)`);
+     cdb.exec(`CREATE TABLE IF NOT EXISTS catalog_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+     cdb.exec({sql:`INSERT INTO catalog_meta(key,value) VALUES('architecture','catalog-shards-v1') ON CONFLICT(key) DO UPDATE SET value=excluded.value`});
+     rdb=new p.OpfsSAHPoolDb(recentName,"c");
+     rdb.exec(`CREATE TABLE IF NOT EXISTS bars_daily(code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,upper_limit REAL,lower_limit REAL,value REAL,adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,PRIMARY KEY(code,date)) WITHOUT ROWID`);
+     rdb.exec(`CREATE INDEX IF NOT EXISTS idx_bars_recent_date ON bars_daily(date)`);
+     rdb.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+     rdb.exec({sql:`INSERT INTO shard_meta(key,value) VALUES('schema_version','bars-v1') ON CONFLICT(key) DO UPDATE SET value=excluded.value`});
+     rdb.exec({sql:`INSERT INTO shard_meta(key,value) VALUES('role','bars_recent') ON CONFLICT(key) DO UPDATE SET value=excluded.value`});
+     rdb.close();rdb=null;
+     const now=new Date().toISOString();
+     cdb.exec({sql:`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(shard_key) DO UPDATE SET logical_name=excluded.logical_name,dataset=excluded.dataset,schema_version=excluded.schema_version,state=excluded.state,updated_at=excluded.updated_at`,bind:["bars_recent",recentName,"bars_daily",null,null,"bars-v1","ready",now]});
+     const catalogRows=execRows(cdb,"SELECT * FROM shard_catalog ORDER BY shard_key");
+     cdb.close();cdb=null;
+     self.postMessage({ok:true,type:"result",catalogName,recentName,catalogRows,poolFiles:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;
+   }finally{try{if(rdb)rdb.close()}catch(_){} try{if(cdb)cdb.close()}catch(_){}}
+ }
+ if(cmd==="shard-health"){
+   status("shard-health","CatalogからShardを解決して小型DBだけOpen");
+   const catalogName="/jq_catalog_v1.sqlite";let cdb,sdb;
+   try{
+     cdb=new p.OpfsSAHPoolDb(catalogName,"r");
+     const rows=execRows(cdb,"SELECT * FROM shard_catalog ORDER BY shard_key");
+     const recent=rows.find(x=>x.shard_key==="bars_recent");
+     if(!recent)throw new Error("bars_recent is not registered in catalog");
+     cdb.close();cdb=null;
+     const o=performance.now();sdb=new p.OpfsSAHPoolDb(recent.logical_name,"r");const openMs=Math.round(performance.now()-o);
+     const tableOk=Number(scalar(sdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)===1;
+     const count=tableOk?Number(scalar(sdb,"SELECT COUNT(*) FROM bars_daily")||0):0;
+     const meta=execRows(sdb,"SELECT * FROM shard_meta ORDER BY key");
+     sdb.close();sdb=null;
+     self.postMessage({ok:tableOk,type:"result",catalogName,shard:recent,tableOk,count,meta,openMs,poolFiles:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;
+   }finally{try{if(sdb)sdb.close()}catch(_){} try{if(cdb)cdb.close()}catch(_){}}
+ }
+
  const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
  if(cmd==="init"){self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,vfs,poolClass:!!p.OpfsSAHPoolDb,capacity:p.getCapacity(),poolName:"jq-sahpool",poolDirectory:".jq-sahpool-v7c-r5",origin:self.location.origin,files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
  

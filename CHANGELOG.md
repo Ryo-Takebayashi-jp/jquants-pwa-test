@@ -1,5 +1,14 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha1 — CURRENT (2026-09-01)
+- Catalog + Shards architecture bootstrap.
+- Creates small `/jq_catalog_v1.sqlite` and `/jq_bars_recent_v1.sqlite`.
+- Catalog-resolved lazy re-open health test added.
+- New commands do not open, migrate, delete, import, or modify the legacy 1.12GB DataLake.
+- Existing five/legacy Web functions remain available during transition.
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7d-beta5f — CURRENT (2026-08-31)
 
 - Removed the hidden warm-open that beta5e started after step ①. That background open could occupy the serialized Worker while step ② appeared to be frozen.
