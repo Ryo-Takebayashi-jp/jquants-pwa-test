@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha62");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha63");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha62").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha63").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2252,6 +2252,26 @@ function screeningBoundaryDiagnostics(pcRows,webRows){
 }
 
 
+
+
+function qvrMaterialAudit(d){
+ const lin=(v,pts,def=50)=>{v=Number(v);if(!Number.isFinite(v))return def;if(v<=pts[0][0])return pts[0][1];if(v>=pts.at(-1)[0])return pts.at(-1)[1];for(let i=1;i<pts.length;i++){const [x1,y1]=pts[i-1],[x2,y2]=pts[i];if(x1<=v&&v<=x2)return y1+(v-x1)/(x2-x1)*(y2-y1)}return def};
+ const calc=(r)=>{if(!r)return null;const roe=lin(r.ROE,[[0,20],[5,40],[10,60],[15,78],[25,95]]);const opm=String(r.ProfitType||'')==='OperatingProfit'?lin(r.CurrentOperatingMarginPct,[[0,25],[5,45],[10,65],[20,85],[35,95]]):50;const mi=lin(r.OperatingMarginChangePt,[[-5,15],[-1,35],[0,50],[2,70],[5,90]]);const eq=lin(r.EquityRatioPct,[[10,25],[25,45],[40,65],[60,82],[80,90]]);let cf=50;if(r.LatestAvailableCFO!=null&&r.LatestAvailableCFO!==''){cf=Number(r.LatestAvailableCFO)>0?70:20;if(r.LatestAvailableFCF!=null&&r.LatestAvailableFCF!=='')cf+=Number(r.LatestAvailableFCF)>0?15:-15}const q=roe*.25+opm*.20+mi*.20+cf*.20+eq*.15;return {roe,opm,mi,cf,eq,q}};
+ const eq=(a,b)=>{const x=Number(a),y=Number(b);return Number.isFinite(x)&&Number.isFinite(y)?Math.abs(x-y)<=1e-6:String(a??'')===String(b??'')};
+ const rawQuality=['ProfitType','ROE','CurrentOperatingMarginPct','OperatingMarginChangePt','LatestAvailableCFO','LatestAvailableFCF','EquityRatioPct'];
+ const rawValue=['Sector33','ForecastPER','PBR','ForecastDividendYieldPct','ForecastPrimaryProfitGrowthPct'];
+ const codes=[...new Set([...d.onlyPc,...d.onlyWeb,...[...d.pm.keys()].filter(c=>d.wm.has(c))])];
+ const rows=[];const counts={};
+ for(const c of codes){const p=d.pm.get(c),w=d.wm.get(c);if(!p||!w)continue;const pc=calc(p),wc=calc(w);let first='一致';const qdiff=rawQuality.filter(f=>!eq(p[f],w[f])),vdiff=rawValue.filter(f=>!eq(p[f],w[f]));
+   if(qdiff.length)first='Quality原材料:'+qdiff[0]; else if(!eq(pc?.q,wc?.q))first='Quality計算式/欠損処理'; else if(vdiff.length)first='Value原材料:'+vdiff[0]; else if(!eq(p.SectorForecastPERValueScore,w.SectorForecastPERValueScore)||!eq(p.SectorPBRValueScore,w.SectorPBRValueScore)||!eq(p.SectorDividendYieldValueScore,w.SectorDividendYieldValueScore))first='Value sector peer母集団/rank'; else if(!eq(p.QVRValueScore,w.QVRValueScore))first='Value合成/成長Penalty'; else if(!eq(p.QVRReRatingScore,w.QVRReRatingScore))first='ReRating'; else if(!eq(p.QualityValueReRatingScore,w.QualityValueReRatingScore))first='Penalty/最終合成';
+   if(first!=='一致'){counts[first]=(counts[first]||0)+1;rows.push({code:c,name:p.CompanyName||p.Name||w.CompanyName||'',first,p,w,pc,wc,qdiff,vdiff})}
+ }
+ rows.sort((a,b)=>(d.onlyPc.includes(a.code)||d.onlyWeb.includes(a.code)?-1:1)-(d.onlyPc.includes(b.code)||d.onlyWeb.includes(b.code)?-1:1));
+ const fmt=v=>v==null||v===''?'-':(Number.isFinite(Number(v))?Number(v).toFixed(4).replace(/\.0000$/,''):String(v));
+ const text=rows.slice(0,18).map(x=>{const q=x.qdiff.slice(0,4).map(f=>`${f}=${fmt(x.p[f])}/${fmt(x.w[f])}`).join(' | ');const v=x.vdiff.slice(0,4).map(f=>`${f}=${fmt(x.p[f])}/${fmt(x.w[f])}`).join(' | ');return `${x.code} ${x.first}\n  Quality部品score PC/Web: ROE ${fmt(x.pc.roe)}/${fmt(x.wc.roe)} | OPM ${fmt(x.pc.opm)}/${fmt(x.wc.opm)} | Margin改善 ${fmt(x.pc.mi)}/${fmt(x.wc.mi)} | CF ${fmt(x.pc.cf)}/${fmt(x.wc.cf)} | Equity ${fmt(x.pc.eq)}/${fmt(x.wc.eq)}\n  ${q||v||'peer-rank/合成差'}`}).join('\n');
+ return {rows,summary:Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join(' / ')||'原材料差なし',text};
+}
+
 function qvrExactnessDiagnostics(d){
  const fields=[
   "ROE","CurrentOperatingMarginPct","OperatingMarginChangePt","LatestAvailableCFO","LatestAvailableFCF","EquityRatioPct",
@@ -2319,6 +2339,11 @@ ${qx.summary||"差なし"}
 
 【QVR Exactness 診断 PC/Web】
 ${qx.text||"差なし"}
+
+【QVR原材料・正当性監査】
+${qvrMaterialAudit(d).summary}
+
+${qvrMaterialAudit(d).text||"原材料差なし"}
 
 【差分銘柄 rank PC/Web】
 ${d.detail.slice(0,40).join("\n")||"なし"}${diff.length?"\n\nPrimary差分:\n"+diff.slice(0,12).join("\n"):""}`)
