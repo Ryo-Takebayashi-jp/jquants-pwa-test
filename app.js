@@ -18,6 +18,16 @@ const state={env:null,imported:null,smoke:null,opened:null,quick:null};
 function box(id,cls,t){const e=$(id);e.className="result "+cls;e.textContent=t}
 function fmt(n){const u=["B","KB","MB","GB","TB"];let x=n,i=0;while(x>=1024&&i<u.length-1){x/=1024;i++}return `${x.toFixed(i>=2?2:1)} ${u[i]}`}
 function sqliteHeaderOk(bytes){const exp=[83,81,76,105,116,101,32,102,111,114,109,97,116,32,51,0];return exp.every((v,i)=>bytes[i]===v)}
+function parseCsv(text){
+ const src=String(text??"").replace(/^\uFEFF/,""),matrix=[];let row=[],field="",quoted=false;
+ for(let i=0;i<src.length;i++){const ch=src[i];
+  if(quoted){if(ch==='"'&&src[i+1]==='"'){field+='"';i++}else if(ch==='"')quoted=false;else field+=ch}
+  else if(ch==='"')quoted=true;else if(ch===","){row.push(field);field=""}else if(ch==="\n"){row.push(field);matrix.push(row);row=[];field=""}else if(ch!=="\r")field+=ch}
+ if(field!==""||row.length){row.push(field);matrix.push(row)}
+ const m=matrix.filter(r=>r.some(v=>String(v).trim()!==""));if(!m.length)return {headers:[],rows:[]};
+ const headers=m[0].map(x=>String(x).trim());
+ return {headers,rows:m.slice(1).map(v=>Object.fromEntries(headers.map((k,i)=>[k,v[i]??""])))};
+}
 async function root(){if(!navigator.storage?.getDirectory)throw new Error("OPFS未対応");return navigator.storage.getDirectory()}
 
 async function envCheck(){
@@ -73,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha40");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha41");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -222,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha40").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha41").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1287,7 +1297,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha40",
+   appVersion:"v7e-alpha41",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1914,7 +1924,7 @@ if($("supplyDemandAllBtn")) $("supplyDemandAllBtn").onclick=async()=>{
 
 
 if($("workflowBindingStatus")){
- const ids=["finsHistoryBtn","financialNormalizeBtn","supplyDemandSummaryBtn","portfolioIntegratedBtn"];
+ const ids=["finsHistoryBtn","financialNormalizeBtn","financialParityBtn","supplyDemandSummaryBtn","supplyDemandNormalizeBtn","portfolioIntegratedBtn","portfolioExportBtn"];
  const found=ids.filter(id=>$(id)).length;
  box("workflowBindingStatus",found===ids.length?"pass":"fail",`Workflow buttons: ${found}/${ids.length} DOM ready`);
 }
@@ -1933,6 +1943,11 @@ if($("finsHistoryBtn")) $("finsHistoryBtn").onclick=async()=>{
    box("finsHistoryResult","pass",`PASS\nAPI照会: ${got.calls}回 / 0件 ${got.empty}回\nAPI rows: ${got.rows.length}\n保存 rows: ${wr.rows}\nquick_check: ${wr.quickCheck}`);
    latestFinancialNormalized=null;
  }catch(e){box("finsHistoryResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
+};
+if($("supplyDemandNormalizeBtn")) $("supplyDemandNormalizeBtn").onclick=async()=>{
+ const btn=$("supplyDemandNormalizeBtn");btn.disabled=true;box("supplyDemandNormalizeResult","run","需給5種を分析用形式へ正規化中…");
+ try{const r=await workerCall("supply-demand-normalize",180000),x=r.result;const lines=Object.entries(x).map(([k,v])=>`${k}: ${v.error?"NG":`${v.rows} recent rows / code ${v.codeSnapshots} / market ${v.marketSnapshots}`}`);box("supplyDemandNormalizeResult",Object.values(x).every(v=>!v.error)?"pass":"warn","需給正規化: 完了\n"+lines.join("\n"))}
+ catch(e){box("supplyDemandNormalizeResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
 };
 if($("supplyDemandSummaryBtn")) $("supplyDemandSummaryBtn").onclick=async()=>{
  const btn=$("supplyDemandSummaryBtn");btn.disabled=true;box("supplyDemandSummaryResult","run","需給Shardを横断監査中…");
@@ -1955,6 +1970,22 @@ if($("financialNormalizeBtn")) $("financialNormalizeBtn").onclick=async()=>{
  finally{btn.disabled=false}
 };
 
+if($("financialParityBtn")) $("financialParityBtn").onclick=async()=>{
+ const btn=$("financialParityBtn"),file=$("financialParityFile")?.files?.[0];
+ if(!file){box("financialParityResult","warn","PC版 screening_candidates.csv を選択してください");return}
+ btn.disabled=true;box("financialParityResult","run","財務PC/Web Parityを計算中…");
+ try{
+  const pc=parseCsv(await file.text());if(!latestFinancialNormalized){const fr=await workerCall("financial-normalize-latest",180000);latestFinancialNormalized=fr.rows}
+  const fm=new Map(latestFinancialNormalized.map(x=>[String(x.code),x]));
+  const defs=[["Sales",["Sales","LatestSales"],"sales"],["OP",["OP","OperatingProfit","LatestOperatingProfit"],"op"],["NP",["NP","NetProfit","Profit"],"np"],["EPS",["EPS","LatestEPS"],"eps"],["ForecastSales",["ForecastSales","FSales"],"forecastSales"],["ForecastOP",["ForecastOP","FOP","ForecastOperatingProfit"],"forecastOP"],["ForecastNP",["ForecastNP","FNP"],"forecastNP"],["ForecastEPS",["ForecastEPS","FEPS"],"forecastEPS"]];
+  const hs=new Set(pc.headers),specs=defs.map(([l,ns,k])=>[l,ns.find(n=>hs.has(n)),k]).filter(x=>x[1]);
+  let compared=0,perfect=0,missing=0;const st=Object.fromEntries(specs.map(x=>[x[0],{ok:0,n:0,max:0}]));
+  for(const r of pc.rows){let c=String(r.NormalizedCode??r.Code??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);const f=fm.get(c);if(!f){missing++;continue}compared++;let all=true;
+   for(const [l,col,k] of specs){const pv=Number(r[col]),wv=Number(f[k]);if(!Number.isFinite(pv)||!Number.isFinite(wv))continue;const d=Math.abs(pv-wv),tol=Math.max(.01,Math.abs(pv)*1e-9);st[l].n++;st[l].max=Math.max(st[l].max,d);if(d<=tol)st[l].ok++;else all=false}if(all)perfect++}
+  const lines=specs.map(([l])=>`${l}: ${st[l].ok}/${st[l].n}一致 / maxΔ ${st[l].max.toFixed(4)}`);
+  box("financialParityResult",specs.length&&perfect===compared?"pass":"warn",`財務Parity\nPC列検出: ${specs.length}\n比較銘柄: ${compared}\n全比較項目一致: ${perfect}\nWeb財務欠損: ${missing}\n\n${lines.join("\n")||"直接比較可能なPC財務列なし"}`);
+ }catch(e){box("financialParityResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
+};
 if($("portfolioIntegratedBtn")) $("portfolioIntegratedBtn").onclick=async()=>{
  const btn=$("portfolioIntegratedBtn"),file=$("portfolioIntegratedFile")?.files?.[0];
  if(!file){box("portfolioIntegratedResult","warn","PC版 portfolio.csv を選択してください");return}
@@ -1970,11 +2001,18 @@ if($("portfolioIntegratedBtn")) $("portfolioIntegratedBtn").onclick=async()=>{
    const pr=await workerCall("portfolio-integrated-snapshot",180000,null,null,{stocks,techRows:tech.top,finRows:latestFinancialNormalized});
    const okTech=pr.rows.filter(x=>x.close!=null).length,okFin=pr.rows.filter(x=>x.discDate).length;
    const lines=pr.rows.map(x=>`${x.code} ${x.name||x.companyName||""} | ${x.account} | Close ${x.close??"-"} | RSI ${x.rsi14!=null?x.rsi14.toFixed(2):"-"} | TOPIX20D ${x.relativeToTOPIX20D!=null?x.relativeToTOPIX20D.toFixed(2):"-"} | EPS ${x.eps??"-"} | F.EPS ${x.forecastEPS??"-"}`);
+   window.__latestPortfolioIntegrated=pr.rows;
    box("portfolioIntegratedResult",(okTech===pr.count)?"pass":"warn",`統合スナップショット\n銘柄: ${pr.count}\nテクニカル接続: ${okTech}/${pr.count}\n財務接続: ${okFin}/${pr.count}\n\n`+lines.join("\n"));
+   if($("portfolioExportBtn"))$("portfolioExportBtn").disabled=false;
  }catch(e){box("portfolioIntegratedResult","fail","FAIL\n"+(e?.message||e))}
  finally{btn.disabled=false}
 };
 
+if($("portfolioExportBtn")) $("portfolioExportBtn").onclick=()=>{
+ const rows=window.__latestPortfolioIntegrated||[];if(!rows.length)return;const headers=Object.keys(rows[0]),esc=v=>{const x=v==null?"":String(v);return /[",\n]/.test(x)?`"${x.replaceAll('"','""')}"`:x};
+ const csv="\uFEFF"+headers.join(",")+"\n"+rows.map(r=>headers.map(k=>esc(r[k])).join(",")).join("\n"),blob=new Blob([csv],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),el=document.createElement("a");
+ el.href=url;el.download=`web_portfolio_integrated_${new Date().toISOString().slice(0,10).replaceAll("-","")}.csv`;el.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();
 if($("technicalScreeningBtn")) $("technicalScreeningBtn").onclick=async()=>{
  const asOf=$("screeningAsOf").value;

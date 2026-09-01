@@ -43,7 +43,7 @@ async function initSqlite(){
        if(!probe.ok) throw new Error(`SQLite module probe HTTP ${probe.status}: ${await probe.text()}`);
        const ct=probe.headers.get("content-type")||"";
        if(!/javascript|ecmascript|module/i.test(ct)) throw new Error(`SQLite module Content-Type invalid: ${ct||"(none)"}`);
-       mod=await import(`/sqlite/index.mjs?v=v7e-alpha40-${attempt}`);
+       mod=await import(`/sqlite/index.mjs?v=v7e-alpha41-${attempt}`);
      }catch(e){
        lastErr=e; status("import-retry",`attempt ${attempt}/3: ${e?.message||e}`);
        if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));
@@ -1288,6 +1288,13 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){try{if(db)db.close()}catch(_){} throw err}
  }
 
+ if(cmd==="supply-demand-normalize"){
+ const defs=[["/jq_margin_interest_v1.sqlite","margin_interest","marginInterest"],["/jq_margin_alert_v1.sqlite","margin_alert","marginAlert"],["/jq_short_ratio_v1.sqlite","short_ratio","shortRatio"],["/jq_short_sale_report_v1.sqlite","short_sale_report","shortSaleReport"],["/jq_investor_types_v1.sqlite","investor_types","investorTypes"]],result={};
+ for(const [dbName,table,key] of defs){let db=null;try{db=new p.OpfsSAHPoolDb(dbName,"r");const rs=execRows(db,`SELECT data_date,raw_json FROM ${table} ORDER BY data_date DESC LIMIT 5000`),byCode=new Map(),market=[];
+  for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}let c=String(o.Code??o.code??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);const x={date:String(rr.data_date??o.Date??""),raw:o};if(c&&!byCode.has(c))byCode.set(c,x);else if(!c&&market.length<50)market.push(x)}
+  result[key]={rows:rs.length,codeSnapshots:byCode.size,marketSnapshots:market.length};db.close();db=null}catch(e){try{if(db)db.close()}catch(_){}result[key]={rows:0,error:String(e?.message||e)}}}
+ self.postMessage({ok:true,type:"result",result});return;
+ }
  if(cmd==="portfolio-integrated-snapshot"){
    const payload=d.payload||{}, stocks=payload.stocks||[], techRows=payload.techRows||[], finRows=payload.finRows||[];
    const tmap=new Map(techRows.map(x=>[String(x.code),x]));
