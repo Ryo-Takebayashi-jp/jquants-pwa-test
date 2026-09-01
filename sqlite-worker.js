@@ -895,16 +895,21 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          const n=String(s.logical_name||"");
          db=new p.OpfsSAHPoolDb(n.startsWith("/")?n:"/"+n,"r");
          const ph=wanted.map(()=>"?").join(",");
-         const rs=execRows(db,`SELECT code,date,COALESCE(adj_c,c) AS c,COALESCE(adj_volume,volume) AS volume
+         const rs=execRows(db,`SELECT code,date,
+                  COALESCE(adj_h,h,adj_c,c) AS h,
+                  COALESCE(adj_l,l,adj_c,c) AS l,
+                  COALESCE(adj_c,c) AS c,
+                  COALESCE(adj_volume,volume) AS volume
            FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph})
            AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,actualAsOf,...wanted]);
          usedShards.push(String(s.shard_key));
          for(const r of rs){
            const d=String(r.date);if(!chosenSet.has(d))continue;
-           const code=String(r.code),c=Number(r.c),v=Number(r.volume||0);
+           const code=String(r.code),c=Number(r.c),v=Number(r.volume||0),
+                 h=Number(r.h),l=Number(r.l);
            if(!Number.isFinite(c)||c<=0)continue;
            if(!byCode.has(code))byCode.set(code,[]);
-           byCode.get(code).push({date:d,c,v});
+           byCode.get(code).push({date:d,c,v,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c});
          }
        }finally{try{if(db)db.close()}catch(_){}}
      }
@@ -933,13 +938,13 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      for(const [jq,a0] of byCode){
        const a=a0.sort((x,y)=>x.date.localeCompare(y.date));
        if(a.length<75||a[a.length-1].date!==actualAsOf)continue;
-       const closes=a.map(x=>x.c),vols=a.map(x=>x.v),last=a[a.length-1];
+       const closes=a.map(x=>x.c),vols=a.map(x=>x.v),highs=a.map(x=>x.h),lows=a.map(x=>x.l),last=a[a.length-1];
        const ma5=avg(closes.slice(-5)),ma25=avg(closes.slice(-25)),ma75=avg(closes.slice(-75));
        const ret5=closes.length>=6?pct(last.c,closes[closes.length-6]):null;
        const ret20=closes.length>=21?pct(last.c,closes[closes.length-21]):null;
        const vol20=avg(vols.slice(-20)),volRatio=vol20>0?last.v/vol20:null;
-       const high20=Math.max(...closes.slice(-20)),low20=Math.min(...closes.slice(-20));
-       const high60=Math.max(...closes.slice(-60)),low60=Math.min(...closes.slice(-60));
+       const high20=Math.max(...highs.slice(-20)),low20=Math.min(...lows.slice(-20));
+       const high60=Math.max(...highs.slice(-60)),low60=Math.min(...lows.slice(-60));
        metrics.set(norm(jq),{
          close:last.c,ma5,ma25,ma75,
          distMa25:pct(last.c,ma25),distMa75:pct(last.c,ma75),
@@ -1015,15 +1020,20 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        try{
          const name=String(s.logical_name||"");
          db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
-         const rs=execRows(db,`SELECT code,date,COALESCE(adj_c,c) AS c,COALESCE(adj_volume,volume) AS volume FROM bars_daily
+         const rs=execRows(db,`SELECT code,date,
+                  COALESCE(adj_h,h,adj_c,c) AS h,
+                  COALESCE(adj_l,l,adj_c,c) AS l,
+                  COALESCE(adj_c,c) AS c,
+                  COALESCE(adj_volume,volume) AS volume FROM bars_daily
            WHERE date>=? AND date<=? AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,actualAsOf]);
          usedShards.push(String(s.shard_key));
          for(const r of rs){
            const d=String(r.date); if(!chosenSet.has(d))continue;
-           const code=String(r.code), c=Number(r.c),v=Number(r.volume||0);
+           const code=String(r.code), c=Number(r.c),v=Number(r.volume||0),
+                 h=Number(r.h),l=Number(r.l);
            if(!Number.isFinite(c)||c<=0)continue;
            if(!byCode.has(code))byCode.set(code,[]);
-           byCode.get(code).push({date:d,c,v});
+           byCode.get(code).push({date:d,c,v,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c});
          }
        }finally{try{if(db)db.close()}catch(_){}}
      }
@@ -1032,20 +1042,26 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      const avg=(a)=>a.reduce((x,y)=>x+y,0)/a.length;
      const pct=(a,b)=>b?((a/b)-1)*100:null;
      function rsi14(xs){
-       if(xs.length<15)return null; let g=0,l=0;
-       const z=xs.slice(-15);
-       for(let i=1;i<z.length;i++){const d=z[i]-z[i-1];if(d>0)g+=d;else l-=d}
-       if(l===0)return 100; const rs=(g/14)/(l/14); return 100-(100/(1+rs));
+       if(xs.length<15)return null;
+       let g=0,l=0;
+       for(let i=1;i<=14;i++){const d=xs[i]-xs[i-1];if(d>0)g+=d;else l-=d}
+       let ag=g/14,al=l/14;
+       for(let i=15;i<xs.length;i++){
+         const d=xs[i]-xs[i-1],gg=d>0?d:0,ll=d<0?-d:0;
+         ag=((ag*13)+gg)/14; al=((al*13)+ll)/14;
+       }
+       if(al===0)return 100;
+       return 100-(100/(1+(ag/al)));
      }
      const rows=[];
      for(const [code,a0] of byCode){
        const a=a0.sort((x,y)=>x.date.localeCompare(y.date));
        if(a.length<75)continue;
-       const closes=a.map(x=>x.c), vols=a.map(x=>x.v), last=a[a.length-1];
+       const closes=a.map(x=>x.c), vols=a.map(x=>x.v), highs=a.map(x=>x.h), lows=a.map(x=>x.l), last=a[a.length-1];
        if(last.date!==actualAsOf)continue;
        const ma5=avg(closes.slice(-5)),ma25=avg(closes.slice(-25)),ma75=avg(closes.slice(-75));
-       const high20=Math.max(...closes.slice(-20)), low20=Math.min(...closes.slice(-20));
-       const high60=Math.max(...closes.slice(-60)), low60=Math.min(...closes.slice(-60));
+       const high20=Math.max(...highs.slice(-20)), low20=Math.min(...lows.slice(-20));
+       const high60=Math.max(...highs.slice(-60)), low60=Math.min(...lows.slice(-60));
        const distMa25=pct(last.c,ma25), distMa75=pct(last.c,ma75);
        const pos20=high20>low20?((last.c-low20)/(high20-low20))*100:null;
        const pos60=high60>low60?((last.c-low60)/(high60-low60))*100:null;

@@ -613,8 +613,13 @@
       ]
     }
   ],
-  "current_release": "v7e-alpha27",
+  "current_release": "v7e-alpha28",
   "history": [
+    {
+      "release": "v7e-alpha28",
+      "date": "2026-09-01",
+      "note": "Fix RSI14 and calculate 20D/60D highs/lows from adjusted intraday high/low."
+    },
     {
       "release": "v7e-alpha27",
       "date": "2026-09-01",

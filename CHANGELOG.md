@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha28 — CURRENT (2026-09-01)
+- All-market Screening Coreに残っていた旧RSI14実装を修正。
+- RSI14をWilder smoothingへ統一。
+- High/Low 20D・60Dを調整後日中高値/安値ベースへ修正。
+- My Stocks / Screening Core双方で同一定義を使用。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha27 — CURRENT (2026-09-01)
 - マイ銘柄Parityと新規発掘Screening計算値ParityをUI/用途とも分離。
 - technical_snapshot.csvによる保有銘柄PC/Web突合を追加。
