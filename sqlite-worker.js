@@ -723,6 +723,55 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
 
+
+ if(cmd==="gap-repair-date-write"){
+   const payload=e.data.payload||{}, date=String(payload.date||""), rows=payload.rows||[];
+   let db=null,cdb=null,stage="01-validate";
+   try{
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("invalid date");
+     if(!Array.isArray(rows)||!rows.length) throw new Error("rows empty");
+     const year=Number(date.slice(0,4)), name=`/jq_bars_${year}_v1.sqlite`;
+     const aliases={
+       date:["Date","date"],code:["Code","code"],o:["O","o","Open","open"],h:["H","h","High","high"],
+       l:["L","l","Low","low"],c:["C","c","Close","close"],upper_limit:["UL","UpperLimit","upper_limit"],
+       lower_limit:["LL","LowerLimit","lower_limit"],volume:["Vo","Volume","volume"],
+       value:["Va","Value","TurnoverValue","value","turnover_value"],adj_factor:["AdjFactor","AdjustmentFactor","adj_factor","adjustment_factor"],
+       adj_o:["AdjO","AdjustmentOpen","adj_o","adjustment_open"],adj_h:["AdjH","AdjustmentHigh","adj_h","adjustment_high"],
+       adj_l:["AdjL","AdjustmentLow","adj_l","adjustment_low"],adj_c:["AdjC","AdjustmentClose","adj_c","adjustment_close"],
+       adj_volume:["AdjVo","AdjustmentVolume","adj_volume","adjustment_volume"],turnover_value:["Va","TurnoverValue","turnover_value"],
+       raw_json:["__RAW_JSON__"]
+     };
+     function pick(obj,c){if(c==="raw_json")return JSON.stringify(obj);for(const k of (aliases[c]||[c]))if(Object.prototype.hasOwnProperty.call(obj,k))return obj[k];return null}
+     stage="02-open"; db=new p.OpfsSAHPoolDb(name,"c");
+     db.exec(`CREATE TABLE IF NOT EXISTS bars_daily(
+       code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,upper_limit REAL,lower_limit REAL,value REAL,
+       adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,
+       PRIMARY KEY(code,date)) WITHOUT ROWID`);
+     db.exec(`CREATE INDEX IF NOT EXISTS idx_bars_date ON bars_daily(date)`);
+     const cols=tableInfo(db,"bars_daily").map(x=>x.name);
+     const ins=cols.filter(c=>pick(rows[0],c)!==null||["date","code"].includes(c));
+     const upd=ins.filter(c=>!["code","date"].includes(c)).map(c=>`${qident(c)}=excluded.${qident(c)}`).join(",");
+     const st=db.prepare(`INSERT INTO bars_daily(${ins.map(qident).join(",")}) VALUES(${ins.map(()=>"?").join(",")})
+       ON CONFLICT(code,date) DO UPDATE SET ${upd}`);
+     stage="03-write";
+     try{db.exec("BEGIN");for(const r of rows)st.bind(ins.map(c=>pick(r,c))).stepReset();db.exec("COMMIT")}
+     catch(err){try{db.exec("ROLLBACK")}catch(_){}throw err}finally{st.finalize()}
+     stage="04-verify";
+     const cnt=Number(scalarBind(db,"SELECT COUNT(*) FROM bars_daily WHERE date=?",[date])||0);
+     const qc=String(scalar(db,"PRAGMA quick_check")||"");
+     if(cnt!==rows.length)throw new Error(`verify mismatch API=${rows.length} shard=${cnt}`);
+     if(qc!=="ok")throw new Error(`quick_check=${qc}`);
+     const mn=String(scalar(db,"SELECT MIN(date) FROM bars_daily")||""),mx=String(scalar(db,"SELECT MAX(date) FROM bars_daily")||"");
+     db.close();db=null;
+     stage="05-catalog";cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+     const at=new Date().toISOString().replace(/'/g,"''");
+     cdb.exec(`UPDATE shard_catalog SET range_start='${mn}',range_end='${mx}',state='ready',updated_at='${at}' WHERE shard_key='bars_${year}'`);
+     cdb.close();cdb=null;
+     self.postMessage({ok:true,type:"result",stage:"PASS",date,year,rows:cnt,quickCheck:qc,minDate:mn,maxDate:mx,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}
+   finally{try{if(cdb)cdb.close()}catch(_){}try{if(db)db.close()}catch(_){}}
+ }
  if(cmd==="catalog-coverage-audit"){
    let cdb=null,stage="01-catalog-open";
    try{

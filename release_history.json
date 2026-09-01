@@ -613,8 +613,18 @@
       ]
     }
   ],
-  "current_release": "v7e-alpha20",
+  "current_release": "v7e-alpha21b",
   "history": [
+    {
+      "release": "v7e-alpha21b",
+      "date": "2026-09-01",
+      "note": "Simplified production UI: only gap repair, final audit and daily update visible; advanced tools moved under developer diagnostics; version labels unified."
+    },
+    {
+      "release": "v7e-alpha21",
+      "date": "2026-09-01",
+      "note": "Automatic J-Quants V2 gap repair into canonical yearly bars shards."
+    },
     {
       "release": "v7e-alpha20",
       "date": "2026-09-01",

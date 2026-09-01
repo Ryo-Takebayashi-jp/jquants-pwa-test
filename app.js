@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha20");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha21b");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1129,7 +1129,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha20",
+   appVersion:"v7e-alpha21b",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1426,4 +1426,136 @@ ${sample.join("\n")||"なし"}
 判定: Catalog → Shard自動ルーティング PASS`);
  }catch(e){box("catalogReadResult","fail",`FAIL
 ${e.stage?`stage: ${e.stage}\n`:""}${e.message||String(e)}`)}
+};
+
+async function runGapRepair(from,to,token,resultId){
+ const el=$(resultId),start=new Date(from+"T12:00:00"),end=new Date(to+"T12:00:00");
+ let checked=0,trading=0,zero=0,saved=0,doneYears=new Set(),last="-",t0=performance.now();
+ try{
+   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
+     const dow=d.getDay(); if(dow===0||dow===6)continue;
+     const iso=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+     last=iso;checked++;
+     box(resultId,"run",`Gap補完中…
+対象: ${from} ～ ${to}
+現在: ${iso}
+API確認日: ${checked}
+取引日: ${trading}
+0件日: ${zero}
+保存行数: ${saved.toLocaleString()}
+完了年: ${[...doneYears].sort().join(", ")||"まだなし"}
+経過: ${((performance.now()-t0)/1000).toFixed(1)}秒
+
+※画面を閉じた場合は同じ範囲を再実行できます（UPSERT）。`);
+     let x;
+     try{x=await jqFetchDaily(iso,token)}catch(e){
+       // J-Quants may report no data differently; only accept explicit no-data-like errors as zero.
+       const msg=String(e.message||e);
+       if(/0 rows|no data|not found|404/i.test(msg)){zero++;continue}
+       throw e;
+     }
+     if(!x.rows.length){zero++;continue}
+     trading++;
+     const wr=await workerCall("gap-repair-date-write",600000,null,null,{date:iso,rows:x.rows});
+     saved+=Number(wr.rows||0);doneYears.add(wr.year);
+   }
+   box(resultId,"pass",`PASS
+対象: ${from} ～ ${to}
+API確認日: ${checked}
+取引日: ${trading}
+0件日（祝日等）: ${zero}
+Shard保存行数: ${saved.toLocaleString()}
+更新年: ${[...doneYears].sort().join(", ")||"-"}
+最終日: ${last}
+処理時間: ${((performance.now()-t0)/1000).toFixed(1)}秒
+
+各取引日: 行数一致＋quick_check ok
+Legacy DataLake: 未使用
+再実行: UPSERTなので安全
+
+次: Catalog収録範囲監査を再実行`);
+ }catch(e){
+   box(resultId,"fail",`FAIL
+対象: ${from} ～ ${to}
+停止日: ${last}
+API確認日: ${checked}
+取引日: ${trading}
+保存行数: ${saved.toLocaleString()}
+${e.stage?`stage: ${e.stage}\n`:""}${e.message||String(e)}
+
+保存済み日まではCommit済みです。同じ範囲で再実行すれば続行できます。`);
+ }
+}
+if($("gapRepairBtn"))$("gapRepairBtn").onclick=async()=>{
+ const token=$("gapToken").value.trim(),from=$("gapFrom").value,to=$("gapTo").value;
+ if(!from||!to||from>to){box("gapRepairResult","warn","開始日・終了日を確認してください。");return}
+ $("gapRepairBtn").disabled=true;try{await runGapRepair(from,to,token,"gapRepairResult")}finally{$("gapRepairBtn").disabled=false}
+};
+if($("gapRepair2026Btn"))$("gapRepair2026Btn").onclick=async()=>{
+ const token=$("gapToken").value.trim();
+ $("gapRepair2026Btn").disabled=true;try{await runGapRepair("2025-12-31","2026-05-31",token,"gapRepair2026Result")}finally{$("gapRepair2026Btn").disabled=false}
+};
+
+if($("simpleDailyDate")&&!$("simpleDailyDate").value) $("simpleDailyDate").value=todayIsoLocal();
+
+function copyTokenToAdvanced(){
+ const t=$("simpleGapToken")?.value?.trim()||"";
+ if($("gapToken")) $("gapToken").value=t;
+ if($("prodDailyToken")) $("prodDailyToken").value=t;
+ return t;
+}
+async function simpleAudit(){
+ box("simpleAuditResult","run","DataLakeを監査中…");
+ try{
+   const r=await workerCall("catalog-coverage-audit",300000);
+   const gaps=r.gaps||[];
+   if(!gaps.length){
+     box("simpleAuditResult","pass",`PASS
+長期Gap: なし
+年別Shard: ${r.yearShards.length}
+収録範囲: ${r.coverageStart||"-"} ～ ${r.coverageEnd||"-"}
+
+判定: 日足DataLakeの長期欠損なし`);
+   }else{
+     box("simpleAuditResult","warn",`要確認
+長期Gap: ${gaps.length}件
+${gaps.map(g=>`${g.after} → ${g.before}: ${g.prevEnd} ～ ${g.nextStart}`).join("\n")}
+
+①②がPASS済みなら、この結果を見せてください。`);
+   }
+ }catch(e){box("simpleAuditResult","fail","FAIL\n"+(e.message||e))}
+}
+if($("simpleRepair2019Btn")) $("simpleRepair2019Btn").onclick=async()=>{
+ const token=copyTokenToAdvanced();
+ $("simpleRepair2019Btn").disabled=true;
+ try{await runGapRepair("2019-08-31","2020-01-05",token,"simpleRepair2019Result")}
+ finally{$("simpleRepair2019Btn").disabled=false}
+};
+if($("simpleRepair2026Btn")) $("simpleRepair2026Btn").onclick=async()=>{
+ const token=copyTokenToAdvanced();
+ $("simpleRepair2026Btn").disabled=true;
+ try{await runGapRepair("2025-12-31","2026-05-31",token,"simpleRepair2026Result")}
+ finally{$("simpleRepair2026Btn").disabled=false}
+};
+if($("simpleAuditBtn")) $("simpleAuditBtn").onclick=simpleAudit;
+
+if($("simpleDailyBtn")) $("simpleDailyBtn").onclick=async()=>{
+ const token=copyTokenToAdvanced(),date=$("simpleDailyDate").value;
+ if(!date){box("simpleDailyResult","warn","更新日を選択してください。");return}
+ $("simpleDailyBtn").disabled=true;
+ try{
+   box("simpleDailyResult","run",`${date} を取得してShardへ保存中…`);
+   const x=await jqFetchDaily(date,token);
+   if(!x.rows.length) throw new Error("API rows 0。休場日または未配信の可能性があります。");
+   const wr=await workerCall("shard-native-daily-write",600000,null,null,{date,rows:x.rows});
+   box("simpleDailyResult","pass",`PASS
+Date: ${wr.date}
+Rows: ${Number(wr.apiRows).toLocaleString()}
+bars_recent: quick_check ${wr.recentQuickCheck}
+bars_${wr.year}: quick_check ${wr.yearQuickCheck}
+Catalog: 更新済み
+Legacy DataLake: 未使用
+処理時間: ${(wr.elapsedMs/1000).toFixed(1)}秒`);
+ }catch(e){box("simpleDailyResult","fail","FAIL\n"+(e.message||e))}
+ finally{$("simpleDailyBtn").disabled=false}
 };

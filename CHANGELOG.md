@@ -1,5 +1,21 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha21b — CURRENT (2026-09-01)
+- 通常利用UIを大幅簡素化。「今やること」だけを前面表示。
+- 2019 Gap補完、2026 Gap補完、最終監査、通常日次更新を4操作に集約。
+- Catalog詳細、手動Gap、バックアップ、移行・診断系を開発者診断へ収納。
+- 画面/JS/Worker/Service Workerのバージョン表記をalpha21bへ統一。
+
+# J-Quants Project Changelog
+
+## Web/PWA v7e-alpha21 — CURRENT (2026-09-01)
+- Catalog監査で検出した日足長期GapのJ-Quants V2直接補完を追加。
+- 1日単位の年別Shard UPSERT、行数検証、quick_check、Catalog range更新。
+- 日次Commit＋冪等UPSERTにより中断後の再実行を安全化。
+- 旧巨大DataLakeは未使用。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha20 — CURRENT (2026-09-01)
 - Catalog + Shardsの本番読み取りルーターを追加。
 - from/toをCatalogへ渡し、必要な年別bars_YYYYだけを自動選択して読み取り。

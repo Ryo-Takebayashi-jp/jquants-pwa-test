@@ -1,23 +1,20 @@
-# J-Quants Local-first PWA v7e-alpha20
+# v7e-alpha21b — Simple UI
 
-## Catalog read router
-Catalog + Shardsの「読む側」を追加。
+## UI方針変更
+通常利用者が触る機能を前面に限定しました。
 
-### 新機能
-- Catalog収録範囲監査
-- 年別Shard間に14日超の境界Gapがあれば警告
-- from/to + 任意codeを指定してCatalog経由で読み取り
-- 必要な `bars_YYYY` だけを自動open
-- 複数年をまたぐrangeも1クエリとして扱う
-- canonical year shardを優先し、bars_recentは年Shard欠損時のみfallback
-- Shardごとの件数、期間、総件数、sampleを返す
+前面:
+1. 2019年後半Gap補完
+2. 2026年前半Gap補完
+3. DataLake最終監査
+4. 通常の日次更新
 
-### 実機確認
-1. ① Catalog収録範囲を監査
-2. Gap警告が出た場合は内容を保存（欠損補完対象）
-3. 直近10日で②読み取りテスト
-4. その後、年をまたぐ範囲でも②をテスト
+開発者診断内:
+- Catalog詳細読取
+- Shard-native詳細更新
+- Gap範囲手動指定
+- バックアップ/復元
+- 移行/診断系
 
-## 既存
-- alpha19 Shard-native本番日次更新
-- 正式複数SQLite外部バックアップ/復元
+## バージョン
+画面表示・JS・Worker・Service Workerの表記を v7e-alpha21b に統一。
