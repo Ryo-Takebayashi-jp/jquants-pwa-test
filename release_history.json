@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha39",
+  "current_release": "v7e-alpha40",
   "history": [
     {
-      "release": "v7e-alpha39",
+      "release": "v7e-alpha40",
       "date": "2026-09-01",
-      "note": "Integrated runtime diagnostics, financial history/normalization, supply-demand audit, and portfolio integration."
+      "note": "Fix lower workflow button event binding by moving app.js to end of body; regroup financial/supply-demand/portfolio tests near top."
     }
   ]
 }

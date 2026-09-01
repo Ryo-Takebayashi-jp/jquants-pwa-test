@@ -43,7 +43,7 @@ async function initSqlite(){
        if(!probe.ok) throw new Error(`SQLite module probe HTTP ${probe.status}: ${await probe.text()}`);
        const ct=probe.headers.get("content-type")||"";
        if(!/javascript|ecmascript|module/i.test(ct)) throw new Error(`SQLite module Content-Type invalid: ${ct||"(none)"}`);
-       mod=await import(`/sqlite/index.mjs?v=v7e-alpha39-${attempt}`);
+       mod=await import(`/sqlite/index.mjs?v=v7e-alpha40-${attempt}`);
      }catch(e){
        lastErr=e; status("import-retry",`attempt ${attempt}/3: ${e?.message||e}`);
        if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));

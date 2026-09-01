@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha39");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha40");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -222,7 +222,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha39").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha40").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1287,7 +1287,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha39",
+   appVersion:"v7e-alpha40",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1913,6 +1913,11 @@ if($("supplyDemandAllBtn")) $("supplyDemandAllBtn").onclick=async()=>{
 };
 
 
+if($("workflowBindingStatus")){
+ const ids=["finsHistoryBtn","financialNormalizeBtn","supplyDemandSummaryBtn","portfolioIntegratedBtn"];
+ const found=ids.filter(id=>$(id)).length;
+ box("workflowBindingStatus",found===ids.length?"pass":"fail",`Workflow buttons: ${found}/${ids.length} DOM ready`);
+}
 if($("runtimeSelfTestBtn")) $("runtimeSelfTestBtn").onclick=async()=>{
  const btn=$("runtimeSelfTestBtn");btn.disabled=true;box("runtimeSelfTestResult","run","SQLite runtime / SAH Pool を確認中…");
  try{const r=await workerCall("catalog-list",120000);box("runtimeSelfTestResult","pass",`PASS\nSQLite Worker: OK\nCatalog: OK\n登録Shard: ${r.rows?.length??0}`)}

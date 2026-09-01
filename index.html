@@ -21,8 +21,8 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha39</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
-<section class="card"><h2>今回の実機テスト</h2><p>まずSQLite基盤を確認。その後、財務・需給・Portfolioをまとめてテストします。</p><button id="runtimeSelfTestBtn">A. SQLite基盤セルフテスト</button><pre id="runtimeSelfTestResult" class="result">未実行</pre><p class="small">AがPASSなら、下の「財務履歴 → 財務正規化 → 需給監査 → Portfolio統合」へ進んでください。</p></section>
+<header><h1>J-Quants Local-first PWA v7e-alpha40</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<section class="card"><h2>今回の実機テスト</h2><p>まずSQLite基盤を確認。その後、財務・需給・Portfolioをまとめてテストします。</p><button id="runtimeSelfTestBtn">A. SQLite基盤セルフテスト</button><pre id="runtimeSelfTestResult" class="result">未実行</pre><p class="small">AがPASSなら、すぐ下の統合テスト欄を上から順番に進めてください。</p></section>
 
 <section class="card" id="apiKeyCard">
   <h2>J-Quants APIキー</h2>
@@ -30,10 +30,28 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
   <input id="globalToken" type="password" autocomplete="off" placeholder="J-Quants V2 APIキーをここに貼り付け">
   <pre id="globalTokenStatus" class="result">未入力</pre>
 </section>
+<section class="card" id="integratedWorkflowCard">
+  <h2>今回の統合テスト手順</h2>
+  <p>更新後はここだけ見ればOKです。上から順番に実行してください。</p>
+  <div class="result pass">A. SQLite基盤セルフテスト → 財務履歴 → 財務正規化 → 需給監査 → Portfolio統合</div><pre id="workflowBindingStatus" class="result">JavaScript待機中</pre>
+</section>
+<section class="card"><h2>財務履歴バックフィル</h2><p>Financial Summaryを日付単位で蓄積。API制限を守るため約1.1秒間隔です。初回は直近3か月。</p><label>From <input id="finsHistoryFrom" type="date" value="2026-06-01"></label><label>To <input id="finsHistoryTo" type="date" value="2026-09-01"></label><button id="finsHistoryBtn">財務履歴を取得・保存</button><pre id="finsHistoryResult" class="result">未実行</pre></section><section class="card"><h2>需給統合監査</h2><p>取得済み5つの需給Shardの件数・期間・実フィールドを横断確認します。</p><button id="supplyDemandSummaryBtn">需給5種を横断監査</button><pre id="supplyDemandSummaryResult" class="result">未実行</pre></section><section class="card">
+  <h2>⑧ 財務正規化レイヤー</h2>
+  <p>取得済み `/jq_fins_summary_v1.sqlite` のraw JSONを、PC版Screening/JQPで使う財務分析向けの共通列へ変換します。</p>
+  <button id="financialNormalizeBtn">財務データを正規化</button>
+  <pre id="financialNormalizeResult" class="result">未実行</pre>
+</section><section class="card">
+  <h2>⑨ Portfolio統合スナップショット</h2>
+  <p>PC版 `portfolio.csv` を読み込み、Web DataLakeのMaster・株価・テクニカル・TOPIX相対強度・財務を1銘柄1行へ統合します。JQP Web化の中核テストです。</p>
+  <input id="portfolioIntegratedFile" type="file" accept=".csv,text/csv">
+  <button id="portfolioIntegratedBtn">Portfolio統合を実行</button>
+  <pre id="portfolioIntegratedResult" class="result">未実行</pre>
+</section>
+
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha39 起動確認</h2>
+<h2>v7e-alpha40 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -324,7 +342,7 @@ Legacy DataLakeは未使用・未変更。
 
 
 <section class="card" id="fastBackfillCard">
-<h2>高速バックフィル v7e-alpha39</h2>
+<h2>高速バックフィル v7e-alpha40</h2>
 <div class="desc">
 書込みを1行ごとの db.exec から prepared statement 再利用へ変更しました。
 祝日ではなく「実際に株価データがある欠損営業日」を自動で探し、API取得＋SQLite書込みを1日分実測してから大量穴埋めを開始します。
@@ -439,7 +457,7 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </div>
 
 <section class="card" id="autoBackfillCard">
-<h2>自動連続バックフィル v7e-alpha39</h2>
+<h2>自動連続バックフィル v7e-alpha40</h2>
 <p>穴を再検出しながら連続処理。日付単位Commitなので安全停止・再開できます。Safariは前面表示のままにしてください。</p>
 <label>1バッチ日数 <input id="continuousBatch" type="number" min="5" max="120" value="40"></label>
 <button id="continuousStartBtn">▶ 自動連続バックフィル開始</button>
@@ -497,14 +515,14 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>7. v7e-alpha39総合判定</h2>
+<h2>7. v7e-alpha40総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 
 <section class="card">
-<h2>v7e-alpha39 実運用同期エンジン前段テスト</h2>
+<h2>v7e-alpha40 実運用同期エンジン前段テスト</h2>
 <div class="desc">
 既存1.12GB DataLakeの実スキーマを検査し、日付単位Transaction → Commit → Checkpoint →
 Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM展開・db.export()は使いません。
@@ -519,7 +537,7 @@ Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM
 
 
 <section class="card">
-<h2>v7e-alpha39 J-Quants 実データ同期</h2>
+<h2>v7e-alpha40 J-Quants 実データ同期</h2>
 <div class="desc">
 J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付単位で直接Commitします。
 認証情報はこの画面のメモリ内だけで使用し、SQLite・localStorage・GitHubには保存しません。
@@ -538,7 +556,7 @@ J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付
 
 
 <section class="card">
-<h2>v7e-alpha39 自動Catch-up Sync</h2>
+<h2>v7e-alpha40 自動Catch-up Sync</h2>
 <div class="desc">
 DataLakeの最終取得日と専用Checkpointを自動判定し、その翌日から指定日まで順番に同期します。
 土日はAPI呼出しを省略。祝日などAPIが0件の日も「確認済み」としてCheckpointを進めます。
@@ -560,17 +578,15 @@ iPhoneでは前景実行のため、このカードの同期中はSafariを閉�
 <h2>10. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7e-alpha39
+<div id="historyResult" class="result">Version: v7e-alpha40
 Build date: 2026-09-01
 Schema version: catalog-shards-v1
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7e-alpha39 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
+<footer>Version v7e-alpha40 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
 通常運用は上部カードだけを使用。旧PoCテストは「開発者診断」に隔離しています。</footer>
 </main>
-<script src="./app.js?v=v7e-alpha39"></script>
-
 <script>
 document.addEventListener("DOMContentLoaded",()=>{
   const host=document.getElementById("legacyDiagnosticsHost");
@@ -688,7 +704,7 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </div>
 
 <section class="card" id="autoBackfillCard">
-<h2>自動連続バックフィル v7e-alpha39</h2>
+<h2>自動連続バックフィル v7e-alpha40</h2>
 <p>穴を再検出しながら連続処理。日付単位Commitなので安全停止・再開できます。Safariは前面表示のままにしてください。</p>
 <label>1バッチ日数 <input id="continuousBatch" type="number" min="5" max="120" value="40"></label>
 <button id="continuousStartBtn">▶ 自動連続バックフィル開始</button>
@@ -746,14 +762,14 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </section>
 
 <section class="card">
-<h2>7. v7e-alpha39総合判定</h2>
+<h2>7. v7e-alpha40総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 
 <section class="card">
-<h2>v7e-alpha39 実運用同期エンジン前段テスト</h2>
+<h2>v7e-alpha40 実運用同期エンジン前段テスト</h2>
 <div class="desc">
 既存1.12GB DataLakeの実スキーマを検査し、日付単位Transaction → Commit → Checkpoint →
 Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM展開・db.export()は使いません。
@@ -768,7 +784,7 @@ Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM
 
 
 <section class="card">
-<h2>v7e-alpha39 J-Quants 実データ同期</h2>
+<h2>v7e-alpha40 J-Quants 実データ同期</h2>
 <div class="desc">
 J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付単位で直接Commitします。
 認証情報はこの画面のメモリ内だけで使用し、SQLite・localStorage・GitHubには保存しません。
@@ -787,7 +803,7 @@ J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付
 
 
 <section class="card">
-<h2>v7e-alpha39 自動Catch-up Sync</h2>
+<h2>v7e-alpha40 自動Catch-up Sync</h2>
 <div class="desc">
 DataLakeの最終取得日と専用Checkpointを自動判定し、その翌日から指定日まで順番に同期します。
 土日はAPI呼出しを省略。祝日などAPIが0件の日も「確認済み」としてCheckpointを進めます。
@@ -806,34 +822,23 @@ iPhoneでは前景実行のため、このカードの同期中はSafariを閉�
 </section>
 
 
-<section class="card"><h2>財務履歴バックフィル</h2><p>Financial Summaryを日付単位で蓄積。API制限を守るため約1.1秒間隔です。初回は直近3か月。</p><label>From <input id="finsHistoryFrom" type="date" value="2026-06-01"></label><label>To <input id="finsHistoryTo" type="date" value="2026-09-01"></label><button id="finsHistoryBtn">財務履歴を取得・保存</button><pre id="finsHistoryResult" class="result">未実行</pre></section>
-<section class="card"><h2>需給統合監査</h2><p>取得済み5つの需給Shardの件数・期間・実フィールドを横断確認します。</p><button id="supplyDemandSummaryBtn">需給5種を横断監査</button><pre id="supplyDemandSummaryResult" class="result">未実行</pre></section>
-<section class="card">
-  <h2>⑧ 財務正規化レイヤー</h2>
-  <p>取得済み `/jq_fins_summary_v1.sqlite` のraw JSONを、PC版Screening/JQPで使う財務分析向けの共通列へ変換します。</p>
-  <button id="financialNormalizeBtn">財務データを正規化</button>
-  <pre id="financialNormalizeResult" class="result">未実行</pre>
-</section>
 
-<section class="card">
-  <h2>⑨ Portfolio統合スナップショット</h2>
-  <p>PC版 `portfolio.csv` を読み込み、Web DataLakeのMaster・株価・テクニカル・TOPIX相対強度・財務を1銘柄1行へ統合します。JQP Web化の中核テストです。</p>
-  <input id="portfolioIntegratedFile" type="file" accept=".csv,text/csv">
-  <button id="portfolioIntegratedBtn">Portfolio統合を実行</button>
-  <pre id="portfolioIntegratedResult" class="result">未実行</pre>
-</section>
+
+
+
+
 
 <section class="card">
 <h2>10. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7e-alpha39
+<div id="historyResult" class="result">Version: v7e-alpha40
 Build date: 2026-09-01
 Schema version: catalog-shards-v1
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7e-alpha39 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
+<footer>Version v7e-alpha40 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
 通常運用は上部カードだけを使用。旧PoCテストは「開発者診断」に隔離しています。</footer>
 </main>
 
@@ -852,5 +857,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   }
 });
 </script>
+
+<script src="./app.js?v=v7e-alpha40"></script>
 </body>
 </html>
