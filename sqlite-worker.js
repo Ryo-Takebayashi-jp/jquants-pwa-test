@@ -719,6 +719,131 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      return;
    }finally{try{if(rdb)rdb.close()}catch(_){}}
  }
+
+ if(cmd==="shard-native-daily-write"){
+   const payload=e.data.payload||{}, date=String(payload.date||""), rows=payload.rows||[];
+   let recentDb=null,yearDb=null,catDb=null,stage="01-validate";
+   try{
+     if(!/^\d{4}-?\d{2}-?\d{2}$/.test(date)) throw new Error("invalid date");
+     const iso=date.includes("-")?date:`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`;
+     const year=Number(iso.slice(0,4));
+     if(!Array.isArray(rows)||!rows.length) throw new Error("API rows empty");
+
+     const aliases={
+       date:["Date","date"],code:["Code","code"],
+       o:["O","o","Open","open"],h:["H","h","High","high"],l:["L","l","Low","low"],c:["C","c","Close","close"],
+       upper_limit:["UL","UpperLimit","upper_limit"],lower_limit:["LL","LowerLimit","lower_limit"],
+       volume:["Vo","Volume","volume"],value:["Va","Value","TurnoverValue","value","turnover_value"],
+       adj_factor:["AdjFactor","AdjustmentFactor","adj_factor","adjustment_factor"],
+       adj_o:["AdjO","AdjustmentOpen","adj_o","adjustment_open"],
+       adj_h:["AdjH","AdjustmentHigh","adj_h","adjustment_high"],
+       adj_l:["AdjL","AdjustmentLow","adj_l","adjustment_low"],
+       adj_c:["AdjC","AdjustmentClose","adj_c","adjustment_close"],
+       adj_volume:["AdjVo","AdjustmentVolume","adj_volume","adjustment_volume"],
+       turnover_value:["Va","TurnoverValue","turnover_value"],raw_json:["__RAW_JSON__"]
+     };
+     function pick(obj,c){
+       if(c==="raw_json") return JSON.stringify(obj);
+       for(const k of (aliases[c]||[c])) if(Object.prototype.hasOwnProperty.call(obj,k)) return obj[k];
+       return null;
+     }
+     function ensureBars(db){
+       db.exec(`CREATE TABLE IF NOT EXISTS bars_daily(
+         code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,
+         upper_limit REAL,lower_limit REAL,value REAL,
+         adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,
+         adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,
+         PRIMARY KEY(code,date)
+       ) WITHOUT ROWID`);
+       db.exec(`CREATE INDEX IF NOT EXISTS idx_bars_date ON bars_daily(date)`);
+       db.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+     }
+     function writeRows(db){
+       ensureBars(db);
+       const cols=tableInfo(db,"bars_daily").map(x=>x.name);
+       const insertCols=cols.filter(c=>pick(rows[0],c)!==null||["date","code"].includes(c));
+       const updates=insertCols.filter(c=>!["code","date"].includes(c))
+         .map(c=>`${qident(c)}=excluded.${qident(c)}`).join(",");
+       const sql=`INSERT INTO bars_daily(${insertCols.map(qident).join(",")})
+         VALUES(${insertCols.map(()=>"?").join(",")})
+         ON CONFLICT(code,date) DO UPDATE SET ${updates}`;
+       const stmt=db.prepare(sql);
+       try{
+         db.exec("BEGIN");
+         for(const r of rows) stmt.bind(insertCols.map(c=>pick(r,c))).stepReset();
+         db.exec("COMMIT");
+       }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
+       finally{stmt.finalize()}
+     }
+
+     stage="02-open-recent";
+     recentDb=new p.OpfsSAHPoolDb("/jq_bars_recent_v1.sqlite","c");
+     stage="03-write-recent"; writeRows(recentDb);
+
+     // keep recent to most recent 30 distinct trading dates
+     stage="04-trim-recent";
+     recentDb.exec(`DELETE FROM bars_daily
+       WHERE date < (
+         SELECT MIN(date) FROM (
+           SELECT DISTINCT date FROM bars_daily ORDER BY date DESC LIMIT 30
+         )
+       )`);
+
+     stage="05-open-year";
+     const yearName=`/jq_bars_${year}_v1.sqlite`;
+     yearDb=new p.OpfsSAHPoolDb(yearName,"c");
+     stage="06-write-year"; writeRows(yearDb);
+
+     stage="07-verify";
+     const esc=iso.replace(/'/g,"''");
+     const recentCount=Number(scalar(recentDb,`SELECT COUNT(*) FROM bars_daily WHERE date='${esc}'`)||0);
+     const yearCount=Number(scalar(yearDb,`SELECT COUNT(*) FROM bars_daily WHERE date='${esc}'`)||0);
+     const recentQc=String(scalar(recentDb,"PRAGMA quick_check")||"");
+     const yearQc=String(scalar(yearDb,"PRAGMA quick_check")||"");
+     if(recentCount!==rows.length||yearCount!==rows.length)
+       throw new Error(`verify mismatch API=${rows.length} recent=${recentCount} year=${yearCount}`);
+     if(recentQc!=="ok"||yearQc!=="ok")
+       throw new Error(`quick_check recent=${recentQc} year=${yearQc}`);
+
+     const recentMin=String(scalar(recentDb,"SELECT MIN(date) FROM bars_daily")||"");
+     const recentMax=String(scalar(recentDb,"SELECT MAX(date) FROM bars_daily")||"");
+     const yearMin=String(scalar(yearDb,"SELECT MIN(date) FROM bars_daily")||"");
+     const yearMax=String(scalar(yearDb,"SELECT MAX(date) FROM bars_daily")||"");
+     const at=new Date().toISOString().replace(/'/g,"''");
+
+     recentDb.close(); recentDb=null;
+     yearDb.close(); yearDb=null;
+
+     stage="08-catalog";
+     catDb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+     catDb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+       shard_key TEXT PRIMARY KEY,logical_name TEXT NOT NULL,dataset TEXT NOT NULL,
+       range_start TEXT,range_end TEXT,schema_version TEXT NOT NULL,state TEXT NOT NULL,updated_at TEXT NOT NULL)`);
+     for(const x of [
+       {k:"bars_recent",n:"/jq_bars_recent_v1.sqlite",a:recentMin,b:recentMax},
+       {k:`bars_${year}`,n:`/jq_bars_${year}_v1.sqlite`,a:yearMin,b:yearMax}
+     ]){
+       catDb.exec(`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at)
+         VALUES('${x.k}','${x.n}','bars_daily','${x.a}','${x.b}','bars-v1','ready','${at}')
+         ON CONFLICT(shard_key) DO UPDATE SET logical_name='${x.n}',dataset='bars_daily',
+         range_start='${x.a}',range_end='${x.b}',schema_version='bars-v1',state='ready',updated_at='${at}'`);
+     }
+     catDb.close();catDb=null;
+
+     self.postMessage({ok:true,type:"result",stage:"PASS",date:iso,year,apiRows:rows.length,
+       recentRows:recentCount,yearRows:yearCount,recentMin,recentMax,yearMin,yearMax,
+       recentQuickCheck:recentQc,yearQuickCheck:yearQc,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{
+     try{if(catDb)catDb.close()}catch(_){}
+     try{if(yearDb)yearDb.close()}catch(_){}
+     try{if(recentDb)recentDb.close()}catch(_){}
+   }
+ }
  if(cmd==="shard-write-api-date"){
    const payload=e.data.payload||{}, date=String(payload.date||""), rows=payload.rows||[];
    let db=null,stage="01-validate";

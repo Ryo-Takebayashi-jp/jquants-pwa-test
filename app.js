@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha18");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha19");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1129,7 +1129,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha18",
+   appVersion:"v7e-alpha19",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1309,8 +1309,66 @@ ${lines.join("\n")}
  }catch(e){box("shardRestoreAuditResult","fail","FAIL\n"+(e.message||String(e)))}
 };
 
-let jqbInventory=null;
-if($("jqbInspectBtn"))$("jqbInspectBtn").onclick=async()=>{box("jqbInspectResult","run","Catalog＋全Shardを監査中…");try{let r=await workerCall("shard-backup-inventory",300000,s=>box("jqbInspectResult","run",`${s.stage||""}\n${s.detail||""}`));jqbInventory=r;box("jqbInspectResult",r.allOk?"pass":"fail",`${r.allOk?"PASS":"FAIL"}\n対象DB: ${r.items.length}\n合計: ${fmt(r.totalBytes)}\nquick_check: ${r.allOk?"ALL ok":"要確認"}\n\n${r.items.map((x,i)=>`${i+1}. ${x.fileName} / ${fmt(x.bytes)} / ${x.quickCheck}`).join("\n")}\n\n1ファイルStreaming保存: ${window.showSaveFilePicker?"利用可能":"Safari未対応"}`);$("jqbCreateBtn").disabled=!r.allOk}catch(e){box("jqbInspectResult","fail","FAIL\n"+(e.message||e))}};
-if($("jqbCreateBtn"))$("jqbCreateBtn").onclick=async()=>{if(!jqbInventory?.allOk)return;if(!window.showSaveFilePicker){box("jqbCreateResult","fail","このSafariでは3GB級バックアップを安全に1ファイルへ逐次保存するAPIが利用できません。\n\n全3GBをRAMへ載せる危険な方式にはしません。現時点ではalpha17の複数SQLite外部バックアップを保持してください。");return}box("jqbCreateResult","run","JQB作成準備中…");try{let handle=await showSaveFilePicker({suggestedName:`JQuants_Backup_${new Date().toISOString().slice(0,10).replaceAll("-","")}.jqb`,types:[{description:"J-Quants Backup",accept:{"application/octet-stream":[".jqb"]}}]}),wr=await handle.createWritable(),items=jqbInventory.items;await wr.write(jqbLine({magic:JQB_MAGIC,version:1,createdAt:new Date().toISOString(),fileCount:items.length,totalBytes:jqbInventory.totalBytes}));let done=0;for(let x of items){box("jqbCreateResult","run",`1ファイル作成中…\n${done+1} / ${items.length}\n現在: ${x.fileName}`);let r=await workerCall("shard-backup-export",900000,null,null,{name:x.name});await wr.write(jqbLine({type:"sqlite",name:x.fileName,bytes:r.bytes,sha256:r.sha256||null}));await wr.write(new Uint8Array(r.buffer));await wr.write(te.encode("\n"));done++}await wr.close();box("jqbCreateResult","pass",`PASS\nJQB: 1ファイル\nDB: ${items.length}\nSQLite合計: ${fmt(jqbInventory.totalBytes)}\n外部保存完了`)}catch(e){box("jqbCreateResult","fail","FAIL\n"+(e.message||e))}};
-if($("jqbRestoreBtn"))$("jqbRestoreBtn").onclick=async()=>{let f=$("jqbRestoreFile").files?.[0];if(!f){box("jqbRestoreResult","warn",".jqbを選択してください");return}let o=0,done=0,total=0;try{let h=await jqbReadLine(f,o);o=h.next;let root=JSON.parse(h.text);if(root.magic!==JQB_MAGIC||root.version!==1)throw new Error("JQB v1ではありません");for(let i=0;i<root.fileCount;i++){h=await jqbReadLine(f,o);o=h.next;let e=JSON.parse(h.text),end=o+Number(e.bytes);if(e.type!=="sqlite"||end>f.size)throw new Error("JQB entry不正");box("jqbRestoreResult","run",`復元中… ${i+1}/${root.fileCount}\n${e.name}`);let slice=f.slice(o,end,"application/vnd.sqlite3"),r=await workerCall("shard-restore-import",1800000,null,slice,{name:"/"+e.name});if(r.quickCheck!=="ok")throw new Error(`${e.name}: quick_check=${r.quickCheck}`);done++;total+=e.bytes;o=end+1}box("jqbRestoreResult","pass",`PASS\n復元DB: ${done}\n容量: ${fmt(total)}\nquick_check: ALL ok`)}catch(e){box("jqbRestoreResult","fail",`FAIL\n復元済み: ${done}\n${e.message||e}`)}};
-if($("jqbAuditBtn"))$("jqbAuditBtn").onclick=async()=>{box("jqbAuditResult","run","全Shard監査中…");try{let r=await workerCall("shard-backup-inventory",300000);box("jqbAuditResult",r.allOk?"pass":"fail",`${r.allOk?"PASS":"FAIL"}\nDB: ${r.items.length}\n合計: ${fmt(r.totalBytes)}\nquick_check: ${r.allOk?"ALL ok":"異常あり"}`)}catch(e){box("jqbAuditResult","fail","FAIL\n"+(e.message||e))}};
+
+let prodDailyCache=null;
+function todayIsoLocal(){
+ const d=new Date(),y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),dd=String(d.getDate()).padStart(2,"0");
+ return `${y}-${m}-${dd}`;
+}
+if($("prodDailyDate")&&!$("prodDailyDate").value) $("prodDailyDate").value=todayIsoLocal();
+
+if($("prodDailyFetchBtn")) $("prodDailyFetchBtn").onclick=async()=>{
+ const date=$("prodDailyDate").value,token=$("prodDailyToken").value.trim();
+ if(!date){box("prodDailyFetchResult","warn","更新日を選択してください。");return}
+ box("prodDailyFetchResult","run",`${date} をJ-Quants V2から取得中…\nDB書込なし`);
+ try{
+   const r=await jqFetchDaily(date,token);
+   prodDailyCache={date,rows:r.rows,pages:r.pages};
+   if(!r.rows.length) throw new Error("API rows 0。休場日またはデータ未配信の可能性があります。");
+   box("prodDailyFetchResult","pass",`PASS
+Date: ${date}
+Rows: ${r.rows.length.toLocaleString()}
+Pages: ${r.pages}
+DB書込: なし
+次: ②でbars_recent＋当年Shardへ保存`);
+ }catch(e){prodDailyCache=null;box("prodDailyFetchResult","fail","FAIL\n"+(e.message||String(e)))}
+};
+
+if($("prodDailyWriteBtn")) $("prodDailyWriteBtn").onclick=async()=>{
+ const date=$("prodDailyDate").value,token=$("prodDailyToken").value.trim();
+ if(!date){box("prodDailyWriteResult","warn","更新日を選択してください。");return}
+ $("prodDailyWriteBtn").disabled=true;
+ try{
+   let r=prodDailyCache;
+   if(!r||r.date!==date){
+     box("prodDailyWriteResult","run",`${date} API取得中…`);
+     const x=await jqFetchDaily(date,token);
+     r={date,rows:x.rows,pages:x.pages};
+   }
+   if(!r.rows.length) throw new Error("API rows 0。休場日またはデータ未配信の可能性があります。");
+   box("prodDailyWriteResult","run",`${date}
+API rows: ${r.rows.length.toLocaleString()}
+bars_recent＋当年Shardへ同時保存中…`);
+   const wr=await workerCall("shard-native-daily-write",600000,
+     s=>box("prodDailyWriteResult","run",`${date}
+${s.stage||"-"} ${s.detail||""}`),null,{date,rows:r.rows});
+   box("prodDailyWriteResult","pass",`PASS
+Date: ${wr.date}
+API rows: ${Number(wr.apiRows).toLocaleString()}
+bars_recent: ${Number(wr.recentRows).toLocaleString()}行 / quick_check ${wr.recentQuickCheck}
+bars_${wr.year}: ${Number(wr.yearRows).toLocaleString()}行 / quick_check ${wr.yearQuickCheck}
+
+recent range: ${wr.recentMin} ～ ${wr.recentMax}
+year range: ${wr.yearMin} ～ ${wr.yearMax}
+Catalog: bars_recent + bars_${wr.year} ready更新
+Legacy DataLake: 未使用
+処理時間: ${(wr.elapsedMs/1000).toFixed(1)}秒
+
+判定: Shard-native日次更新 PASS`);
+   prodDailyCache=null;
+ }catch(e){
+   box("prodDailyWriteResult","fail",`FAIL
+${e.stage?`stage: ${e.stage}\n`:""}${e.message||String(e)}
+Legacy DataLake: 未使用`);
+ }finally{$("prodDailyWriteBtn").disabled=false}
+};

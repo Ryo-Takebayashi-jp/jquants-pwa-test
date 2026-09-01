@@ -1,5 +1,17 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha19 — CURRENT (2026-09-01)
+- Catalog + Shardsを本番日次更新の書込先へ変更。
+- 1日のJ-Quants V2 barsをbars_recent＋当年bars_YYYYへ同時UPSERT。
+- bars_recentは直近30取引日に自動トリム。
+- 両Shardの日次行数・quick_checkを検証後Catalog rangeを更新。
+- Legacy巨大DataLakeを本番日次更新で使用しない。
+- 本番日次更新UIと正式バックアップ/復元UIを開発者診断の外へ移動。
+- iPhone Safari未対応だったJQB 1ファイル作成UIを正式導線から撤去。
+- 複数SQLite外部バックアップを正式仕様として維持。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha18 — CURRENT (2026-09-01)
 - 正式バックアップUIを開発者診断外へ移動。
 - JQB v1単一ファイルコンテナと1DBずつの復元を追加。

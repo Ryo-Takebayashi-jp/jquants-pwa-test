@@ -21,16 +21,79 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha18</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha19</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha18 起動確認</h2>
+<h2>v7e-alpha19 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
 
 <section class="card production-card">
 <h2>Web版 DataLake</h2>
+
+
+<section class="card" id="shardNativeDailyCard">
+<h2>本番 日次更新</h2>
+<p>J-Quants V2の日足を取得し、<b>bars_recent＋当年Shardへ同時保存</b>します。旧巨大DataLakeは使いません。</p>
+<label>J-Quants V2 APIキー（セッションのみ）</label>
+<input id="prodDailyToken" type="password" autocomplete="off" placeholder="APIキー">
+<label>更新日</label>
+<input id="prodDailyDate" type="date">
+<button id="prodDailyFetchBtn">① API取得だけ確認</button>
+<div id="prodDailyFetchResult" class="result">未実行</div>
+<button id="prodDailyWriteBtn">② Shardへ本番日次更新</button>
+<div id="prodDailyWriteResult" class="result">未実行</div>
+<p class="desc">保存先: jq_bars_recent_v1.sqlite（直近30取引日）＋ jq_bars_YYYY_v1.sqlite。両方を検証後Catalogを更新します。</p>
+</section>
+
+<section class="card" id="backupCard">
+<h2>正式バックアップ / 復元</h2>
+<p>
+Catalog＋年別Shardを<b>iPhoneのFilesなどブラウザ外へ保存</b>します。
+SAH Pool内だけのコピーではなく、Safariのサイトデータ消失にも備える正式バックアップです。
+</p>
+<div class="warnbox">
+長時間バックフィル実行中はバックアップしないでください。2020〜2025の補完がPASSしてから実行してください。
+</div>
+
+<button id="shardBackupInventoryBtn">① バックアップ対象を確認</button>
+<div id="shardBackupInventoryResult" class="result">未実行</div>
+
+<button id="shardBackupManifestBtn" disabled>② バックアップManifestを保存</button>
+<div id="shardBackupManifestResult" class="result">未実行</div>
+
+<button id="shardBackupAllBtn" disabled>③ 全DBを順番に外部保存</button>
+<div id="shardBackupAllResult" class="result">未実行</div>
+
+<div class="desc" style="margin-top:10px">
+Safariが複数ダウンロードを止める場合は、下の選択式で1ファイルずつ保存できます。
+</div>
+<select id="shardBackupSelect" style="width:100%;padding:10px;margin:8px 0"></select>
+<button id="shardBackupOneBtn" disabled>④ 選択DBを1ファイル保存</button>
+<div id="shardBackupOneResult" class="result">未実行</div>
+
+<hr>
+<h3>外部バックアップから復元</h3>
+<p>
+保存した <code>jq_catalog_v1.sqlite</code> / <code>jq_bars_YYYY_v1.sqlite</code> 等を複数選択できます。
+各ファイルはStreaming Import後に <code>quick_check</code> を実行します。
+</p>
+<input id="shardRestoreFiles" type="file" multiple accept=".sqlite,application/vnd.sqlite3,application/octet-stream">
+<button id="shardRestoreBtn">⑤ 選択したDBを復元</button>
+<div id="shardRestoreResult" class="result">未実行</div>
+
+<button id="shardRestoreAuditBtn">⑥ 復元後の全Shard監査</button>
+<div id="shardRestoreAuditResult" class="result">未実行</div>
+
+<details style="margin-top:14px">
+<summary>旧・同一ブラウザ内スナップショット</summary>
+<p>Legacy巨大DataLake向けの旧機能です。外部バックアップの代わりにはなりません。</p>
+<button id="backupEstimateBtn">旧① バックアップ可能容量を確認</button><div id="backupEstimateResult" class="result">未実行</div>
+<button id="backupCreateBtn">旧② ローカル完全スナップショット作成</button><div id="backupCreateResult" class="result">未実行</div>
+</details>
+</section>
+
 <div class="desc">
 現在の本番DataLake導線です。Catalog + Shards方式で、必要な小型DBだけを使います。旧巨大DataLake操作は開発者診断へ移しました。
 </div>
@@ -137,7 +200,7 @@ Legacy DataLakeは未使用・未変更。
 
 
 <section class="card" id="fastBackfillCard">
-<h2>高速バックフィル v7e-alpha18</h2>
+<h2>高速バックフィル v7e-alpha19</h2>
 <div class="desc">
 書込みを1行ごとの db.exec から prepared statement 再利用へ変更しました。
 祝日ではなく「実際に株価データがある欠損営業日」を自動で探し、API取得＋SQLite書込みを1日分実測してから大量穴埋めを開始します。
@@ -150,14 +213,7 @@ Legacy DataLakeは未使用・未変更。
 <div id="fastGapFillResult" class="result">未実行</div>
 </section>
 
-<section class="card" id="singleBackupCard"><h2>正式バックアップ</h2>
-<p>内部はCatalog＋Shardsのまま、外部では<b>1個の .jqb</b> にまとめます。</p>
-<button id="jqbInspectBtn">① バックアップ対象を監査</button><div id="jqbInspectResult" class="result">未実行</div>
-<button id="jqbCreateBtn" disabled>② 1ファイル (.jqb) を作成</button><div id="jqbCreateResult" class="result">未実行</div>
-<hr><h3>1ファイルから復元</h3><input id="jqbRestoreFile" type="file" accept=".jqb,application/octet-stream">
-<button id="jqbRestoreBtn">③ .jqb から全Shardを復元</button><div id="jqbRestoreResult" class="result">未実行</div>
-<button id="jqbAuditBtn">④ 復元後を全監査</button><div id="jqbAuditResult" class="result">未実行</div>
-<p class="desc">3GB全体をRAMへ載せず、1DBずつ処理する設計です。iPhone Safariで安全な外部Streaming書込APIが使えない場合は、危険な巨大Blob化を行わず既存の複数DBバックアップを使います。</p></section><details class="card">
+<details class="card">
 <summary><strong>開発者診断（通常は開かなくてOK）</strong></summary>
 
 
@@ -175,59 +231,14 @@ GitHub Pages側の元DBや、Filesに保存したレスキューSQLiteは変更�
 </div>
 
 <section class="card" id="autoBackfillCard">
-<h2>自動連続バックフィル v7e-alpha18</h2>
+<h2>自動連続バックフィル v7e-alpha19</h2>
 <p>穴を再検出しながら連続処理。日付単位Commitなので安全停止・再開できます。Safariは前面表示のままにしてください。</p>
 <label>1バッチ日数 <input id="continuousBatch" type="number" min="5" max="120" value="40"></label>
 <button id="continuousStartBtn">▶ 自動連続バックフィル開始</button>
 <button id="continuousStopBtn" class="secondary">■ 安全停止</button>
 <div id="continuousResult" class="result">未実行</div>
 </section>
-<section class="card" id="backupCard">
-<h2>DataLake 外部バックアップ / 復元</h2>
-<p>
-Catalog＋年別Shardを<b>iPhoneのFilesなどブラウザ外へ保存</b>します。
-SAH Pool内だけのコピーではなく、Safariのサイトデータ消失にも備える正式バックアップです。
-</p>
-<div class="warnbox">
-長時間バックフィル実行中はバックアップしないでください。2020〜2025の補完がPASSしてから実行してください。
-</div>
 
-<button id="shardBackupInventoryBtn">① バックアップ対象を確認</button>
-<div id="shardBackupInventoryResult" class="result">未実行</div>
-
-<button id="shardBackupManifestBtn" disabled>② バックアップManifestを保存</button>
-<div id="shardBackupManifestResult" class="result">未実行</div>
-
-<button id="shardBackupAllBtn" disabled>③ 全DBを順番に外部保存</button>
-<div id="shardBackupAllResult" class="result">未実行</div>
-
-<div class="desc" style="margin-top:10px">
-Safariが複数ダウンロードを止める場合は、下の選択式で1ファイルずつ保存できます。
-</div>
-<select id="shardBackupSelect" style="width:100%;padding:10px;margin:8px 0"></select>
-<button id="shardBackupOneBtn" disabled>④ 選択DBを1ファイル保存</button>
-<div id="shardBackupOneResult" class="result">未実行</div>
-
-<hr>
-<h3>外部バックアップから復元</h3>
-<p>
-保存した <code>jq_catalog_v1.sqlite</code> / <code>jq_bars_YYYY_v1.sqlite</code> 等を複数選択できます。
-各ファイルはStreaming Import後に <code>quick_check</code> を実行します。
-</p>
-<input id="shardRestoreFiles" type="file" multiple accept=".sqlite,application/vnd.sqlite3,application/octet-stream">
-<button id="shardRestoreBtn">⑤ 選択したDBを復元</button>
-<div id="shardRestoreResult" class="result">未実行</div>
-
-<button id="shardRestoreAuditBtn">⑥ 復元後の全Shard監査</button>
-<div id="shardRestoreAuditResult" class="result">未実行</div>
-
-<details style="margin-top:14px">
-<summary>旧・同一ブラウザ内スナップショット</summary>
-<p>Legacy巨大DataLake向けの旧機能です。外部バックアップの代わりにはなりません。</p>
-<button id="backupEstimateBtn">旧① バックアップ可能容量を確認</button><div id="backupEstimateResult" class="result">未実行</div>
-<button id="backupCreateBtn">旧② ローカル完全スナップショット作成</button><div id="backupCreateResult" class="result">未実行</div>
-</details>
-</section>
 <section class="card">
 <h2>1. v7c前提チェック</h2>
 <div class="desc">Cloudflare配信条件とOPFS容量見積りを確認します。</div>
@@ -278,14 +289,14 @@ Safariが複数ダウンロードを止める場合は、下の選択式で1フ�
 </section>
 
 <section class="card">
-<h2>7. v7e-alpha18総合判定</h2>
+<h2>7. v7e-alpha19総合判定</h2>
 <button id="summaryBtn" class="secondary">総合判定</button>
 <div id="summaryResult" class="result">未判定</div>
 </section>
 
 
 <section class="card">
-<h2>v7e-alpha18 実運用同期エンジン前段テスト</h2>
+<h2>v7e-alpha19 実運用同期エンジン前段テスト</h2>
 <div class="desc">
 既存1.12GB DataLakeの実スキーマを検査し、日付単位Transaction → Commit → Checkpoint →
 Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM展開・db.export()は使いません。
@@ -300,7 +311,7 @@ Worker再起動後Resumeを同じSQLiteへ直接書き込みます。DB全体RAM
 
 
 <section class="card">
-<h2>v7e-alpha18 J-Quants 実データ同期</h2>
+<h2>v7e-alpha19 J-Quants 実データ同期</h2>
 <div class="desc">
 J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付単位で直接Commitします。
 認証情報はこの画面のメモリ内だけで使用し、SQLite・localStorage・GitHubには保存しません。
@@ -319,7 +330,7 @@ J-Quantsの日足をブラウザから取得し、既存1.12GB DataLakeへ日付
 
 
 <section class="card">
-<h2>v7e-alpha18 自動Catch-up Sync</h2>
+<h2>v7e-alpha19 自動Catch-up Sync</h2>
 <div class="desc">
 DataLakeの最終取得日と専用Checkpointを自動判定し、その翌日から指定日まで順番に同期します。
 土日はAPI呼出しを省略。祝日などAPIが0件の日も「確認済み」としてCheckpointを進めます。
@@ -341,16 +352,15 @@ iPhoneでは前景実行のため、このカードの同期中はSafariを閉�
 <h2>10. 更新履歴 / Build情報</h2>
 <div class="desc">正式な更新履歴は CHANGELOG.md / release_history.json / このUIの3層で管理します。</div>
 <button id="historyBtn" class="secondary">更新履歴を表示</button>
-<div id="historyResult" class="result">Version: v7e-alpha18
+<div id="historyResult" class="result">Version: v7e-alpha19
 Build date: 2026-09-01
 Schema version: catalog-shards-v1
 Migration version: history-4</div>
 </section>
 
-<footer>Version v7e-alpha18 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
+<footer>Version v7e-alpha19 / Build 2026-09-01 / Schema catalog-shards-v1 / Migration history-8<br>
 通常運用は上部カードだけを使用。旧PoCテストは「開発者診断」に隔離しています。</footer>
 </main>
-<script src="./jqb.js?v=v7e-alpha18"></script>
 <script src="./app.js"></script>
 
 <script>
