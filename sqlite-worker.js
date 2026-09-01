@@ -154,6 +154,34 @@ self.onmessage=async e=>{
 const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
  const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
 
+
+ if(cmd==="shard-lifecycle"){
+   const testName="/jq_lifecycle_probe_v1.sqlite";
+   let tdb=null,stage="start";
+   const mark=(s,detail="")=>{stage=s;status(s,detail)};
+   try{
+     mark("01-create-open","probe create/open");
+     tdb=new p.OpfsSAHPoolDb(testName,"c");
+     mark("02-schema","probe schema/write");
+     tdb.exec(`CREATE TABLE IF NOT EXISTS probe(id INTEGER PRIMARY KEY,value TEXT)`);
+     tdb.exec(`INSERT OR REPLACE INTO probe(id,value) VALUES(1,'ok')`);
+     mark("03-close","probe close");
+     tdb.close();tdb=null;
+     mark("04-reopen","probe reopen in SAME worker command");
+     const o=performance.now();
+     tdb=new p.OpfsSAHPoolDb(testName,"c");
+     const reopenMs=Math.round(performance.now()-o);
+     mark("05-read","probe readback");
+     const value=scalar(tdb,"SELECT value FROM probe WHERE id=1");
+     mark("06-final-close","probe final close");
+     tdb.close();tdb=null;
+     self.postMessage({ok:value==="ok",type:"result",stage:"PASS",value,reopenMs,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err&&err.message?err.message:err),stack:String(err&&err.stack?err.stack:""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(tdb)tdb.close()}catch(_){}}
+ }
  if(cmd==="shard-bootstrap"){
    const catalogName="/jq_catalog_v1.sqlite", recentName="/jq_bars_recent_v1.sqlite";
    let cdb=null,rdb=null,stage="start";

@@ -1,5 +1,13 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha5 — CURRENT (2026-09-01)
+- `r`→`c`変更でも別コマンド再Openが停止したため、モード原因仮説を後退。
+- 同一Workerコマンド内で create → write → close → reopen → read → close を行う lifecycle probe を追加。
+- これにより「DB reopenそのもの」と「Workerメッセージを跨いだSAH Pool状態」のどちらが原因かを切り分ける。
+- 既存1.12GB DataLakeは新診断から触らない。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha4 — CURRENT (2026-09-01)
 - alpha3で小型Catalog作成が0.45秒でPASS。
 - 再Openが `01-catalog-open` で停止したため、SAH Poolのread-only `r` モードを切り分け。

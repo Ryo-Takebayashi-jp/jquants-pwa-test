@@ -739,3 +739,20 @@ message: ${x.message||String(e)}
 stack: ${x.stack||"-"}`);
  }
 };
+
+if($("shardLifecycleBtn")) $("shardLifecycleBtn").onclick=async()=>{
+ box("shardLifecycleResult","run","開始…");
+ try{
+   const r=await workerCall("shard-lifecycle",60000,s=>box("shardLifecycleResult","run",`進行中: ${s.stage||"-"}\n${s.detail||""}`));
+   box("shardLifecycleResult",r.ok?"pass":"fail",`${r.ok?"PASS":"FAIL"}
+same-command reopen: ${(r.reopenMs/1000).toFixed(3)}秒
+readback: ${r.value||"-"}
+total: ${(r.elapsedMs/1000).toFixed(2)}秒`);
+ }catch(e){
+   const x=e&&typeof e==="object"?e:{message:String(e)};
+   box("shardLifecycleResult","fail",`FAIL
+stage: ${x.stage||"unknown"}
+message: ${x.message||String(e)}
+stack: ${x.stack||"-"}`);
+ }
+};

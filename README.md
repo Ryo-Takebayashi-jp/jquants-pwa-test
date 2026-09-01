@@ -1,16 +1,10 @@
-# J-Quants Local-first PWA v7e-alpha4
+# J-Quants Local-first PWA v7e-alpha5
 
-## 今回の切り分け
-alpha3ではCatalog + bars_recent作成が0.45秒でPASSしました。
-一方、②再Openは `01-catalog-open` で停止。
+## 今回のテスト
+まず新しい「⓪ 同一Worker内 create→close→reOpen」だけ押してください。
 
-今回は再Open時だけ `OpfsSAHPoolDb(..., "r")` を `"c"` に変更し、
-iPhone/Safari + SAH Poolでread-onlyモードが停止要因かを確認します。
+- ⓪ PASS: reopen自体は可能。別ボタン/別Workerメッセージを跨ぐSAH Pool状態管理が主因候補。
+- ⓪ が 04-reopen で停止: SAH Poolのclose→reopen lifecycle自体がiPhoneで不安定。
+- ⓪ がそれ以前で失敗: 表示stageを基にさらに下層を修正。
 
-## テスト
-Cloudflare Pagesへ配置後、
-1. ① Catalog + bars_recent を作成（再作成でもOK）
-2. ② Catalog経由で bars_recent を再Open
-3. ②の結果とShard Open時間を確認
-
-既存1.12GB DataLakeは新Catalog機能から触りません。
+既存1.12GB DataLakeには触れません。
