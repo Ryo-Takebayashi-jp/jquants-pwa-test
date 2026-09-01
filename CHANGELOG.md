@@ -1,5 +1,14 @@
 # J-Quants Project Changelog
 
+## Web/PWA v7e-alpha24 — CURRENT (2026-09-01)
+- Web ScreeningをPoCから正式移植準備のCore 1へ進行。
+- 日足Shard由来のMA5/25/75、MA乖離率、5D/20D騰落率、RSI14、出来高20日比をCore指標化。
+- 20日/60日レンジ位置を追加。
+- Catalogによる必要Shard限定読み取りを継続。
+- 仮ランキングは表示検証専用と明記し、正式銘柄選定ロジックとは分離。
+
+# J-Quants Project Changelog
+
 ## Web/PWA v7e-alpha23 — CURRENT (2026-09-01)
 - Catalog + year Shardsを直接利用するWebテクニカルScreening PoCを追加。
 - 直近100取引日からMA5/25/75、5D/20D騰落率、RSI14、出来高20日比を計算。

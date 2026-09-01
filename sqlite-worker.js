@@ -847,6 +847,11 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const closes=a.map(x=>x.c), vols=a.map(x=>x.v), last=a[a.length-1];
        if(last.date!==actualAsOf)continue;
        const ma5=avg(closes.slice(-5)),ma25=avg(closes.slice(-25)),ma75=avg(closes.slice(-75));
+       const high20=Math.max(...closes.slice(-20)), low20=Math.min(...closes.slice(-20));
+       const high60=Math.max(...closes.slice(-60)), low60=Math.min(...closes.slice(-60));
+       const distMa25=pct(last.c,ma25), distMa75=pct(last.c,ma75);
+       const pos20=high20>low20?((last.c-low20)/(high20-low20))*100:null;
+       const pos60=high60>low60?((last.c-low60)/(high60-low60))*100:null;
        const prev5=closes.length>=6?closes[closes.length-6]:null;
        const prev20=closes.length>=21?closes[closes.length-21]:null;
        const vol20=avg(vols.slice(-20));
@@ -859,7 +864,8 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        if(ma25>ma75)score+=1;
        if(ret20!=null)score+=Math.max(-2,Math.min(2,ret20/10));
        if(volRatio!=null)score+=Math.max(-1,Math.min(1,(volRatio-1)));
-       rows.push({code,date:last.date,close:last.c,ma5,ma25,ma75,rsi14:rs,ret5,ret20,volume:last.v,vol20,volRatio,score});
+       rows.push({code,date:last.date,close:last.c,ma5,ma25,ma75,distMa25,distMa75,
+         high20,low20,high60,low60,pos20,pos60,rsi14:rs,ret5,ret20,volume:last.v,vol20,volRatio,score});
      }
      rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);
      self.postMessage({ok:true,type:"result",stage:"PASS",requestedAsOf:asOf,asOf:actualAsOf,

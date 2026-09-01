@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha23");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha24");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -1129,7 +1129,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha23",
+   appVersion:"v7e-alpha24",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1653,12 +1653,12 @@ ${s.stage||"-"} ${s.detail||""}`),null,{asOf,lookback:100,topN:50});
 75日以上データ有: ${r.candidates.toLocaleString()}銘柄
 処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒
 
-判定: Catalog → Shard → テクニカル計算 PASS`);
+判定: Catalog → Shard → Screening Core 1 PASS`);
    const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
    const n=(x,d=1)=>Number.isFinite(Number(x))?Number(x).toFixed(d):"-";
    let h=`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
-   <thead><tr><th>#</th><th>Code</th><th>Close</th><th>MA5</th><th>MA25</th><th>MA75</th><th>5D%</th><th>20D%</th><th>RSI</th><th>Vol比</th></tr></thead><tbody>`;
-   r.top.forEach((x,i)=>{h+=`<tr><td>${i+1}</td><td>${esc(x.code)}</td><td>${n(x.close,1)}</td><td>${n(x.ma5,1)}</td><td>${n(x.ma25,1)}</td><td>${n(x.ma75,1)}</td><td>${n(x.ret5,1)}</td><td>${n(x.ret20,1)}</td><td>${n(x.rsi14,1)}</td><td>${n(x.volRatio,2)}</td></tr>`});
+   <thead><tr><th>#</th><th>Code</th><th>Close</th><th>MA5</th><th>MA25</th><th>MA75</th><th>25乖離%</th><th>75乖離%</th><th>5D%</th><th>20D%</th><th>RSI</th><th>Vol比</th><th>20日位置%</th><th>60日位置%</th></tr></thead><tbody>`;
+   r.top.forEach((x,i)=>{h+=`<tr><td>${i+1}</td><td>${esc(x.code)}</td><td>${n(x.close,1)}</td><td>${n(x.ma5,1)}</td><td>${n(x.ma25,1)}</td><td>${n(x.ma75,1)}</td><td>${n(x.distMa25,1)}</td><td>${n(x.distMa75,1)}</td><td>${n(x.ret5,1)}</td><td>${n(x.ret20,1)}</td><td>${n(x.rsi14,1)}</td><td>${n(x.volRatio,2)}</td><td>${n(x.pos20,1)}</td><td>${n(x.pos60,1)}</td></tr>`});
    h+="</tbody></table></div>";
    $("technicalScreeningTable").innerHTML=h;
  }catch(e){box("technicalScreeningResult","fail",`FAIL
