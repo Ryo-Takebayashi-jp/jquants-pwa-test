@@ -1,7 +1,6 @@
-# alpha65 — QVR Quality / Value residual audit
+# v7e-alpha61
 
-- QVRの残差をQualityとValueに分離して一覧化。
-- Qualityは OPM raw / ProfitType / ROE / Margin change / CFO / FCF / Equity ratio をPC/Webで同時表示。
-- Valueは ForecastPER / PBR / ForecastDividendYield と各Sector33 peer-rank、会社予想利益成長率をPC/Webで同時表示。
-- PC版を正解扱いせず、どちらの原材料・peer rank・欠損処理が正しいか判定するための監査を強化。
-- 選抜式そのものはalpha64から変更しない。90.2%が据え置きでも正常。
+- Screening選抜ParityにQVR差分の自動監査を追加。
+- 6838を優先サンプルとして、Quality/Value/ReRatingとその原材料をPC/Webで直接比較。
+- 最初にズレる原材料を画面内に短く表示し、長い診断ログを追わずに原因特定できるよう改善。
+- 選抜ロジック自体はalpha60から変更せず、診断専用リリース。
