@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha54");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha55");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha54").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha55").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1958,6 +1958,31 @@ if($("supplyDemandSummaryBtn")) $("supplyDemandSummaryBtn").onclick=async()=>{
  }catch(e){box("supplyDemandSummaryResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
 };
 
+if($("screeningFinsCatchupBtn")) $("screeningFinsCatchupBtn").onclick=async()=>{
+ const btn=$("screeningFinsCatchupBtn"),token=prodTokenValue(),from=$("screeningFinsCatchupFrom").value,to=$("screeningFinsCatchupTo").value;
+ if(!token){box("screeningFinsCatchupResult","warn","ページ最上部のAPIキーを入力してください");return}
+ btn.disabled=true;
+ try{
+   const cov=await workerCall("fins-summary-covered-dates",120000),have=new Set(cov.dates||[]),dates=isoWeekdays(from,to).filter(d=>!have.has(d));
+   if(!dates.length){box("screeningFinsCatchupResult","pass","必要期間は取得済みです");return}
+   let all=[],empty=0;
+   for(let i=0;i<dates.length;i++){
+     const d=dates[i],r=await jqFetchV2Rows("/fins/summary",{date:d.replaceAll("-","")},token);
+     if(!r.rows.length)empty++;all.push(...r.rows);
+     box("screeningFinsCatchupResult","run",`Screening財務履歴を補完中…\nAPI照会 ${i+1}/${dates.length}\n取得 rows ${all.length}`);
+     if(i<dates.length-1)await sleep(1100);
+   }
+   // write grouped by query date so coverage is preserved correctly
+   const groups=new Map();for(const d of dates)groups.set(d,[]);
+   for(const r of all){const d=String(r.DiscDate??r.Date??"").slice(0,10);if(groups.has(d))groups.get(d).push(r)}
+   let saved=0;
+   for(const [d,rows] of groups){const wr=await workerCall("fins-summary-write",300000,null,null,{date:d,rows});saved=wr.rows}
+   latestFinancialNormalized=null;
+   box("screeningFinsCatchupResult","pass",`PASS\n不足日照会: ${dates.length}\n0件日: ${empty}\n取得 rows: ${all.length}\nDB総rows: ${saved}\n次: 財務データを正規化`);
+ }catch(e){box("screeningFinsCatchupResult","fail","FAIL\n"+(e?.message||e))}
+ finally{btn.disabled=false}
+};
+
 let latestFinancialNormalized=null;
 if($("financialNormalizeBtn")) $("financialNormalizeBtn").onclick=async()=>{
  const btn=$("financialNormalizeBtn");btn.disabled=true;box("financialNormalizeResult","run","財務raw_jsonを正規化中…");
@@ -2113,35 +2138,51 @@ function pctRank(rows,key,reverse=false){
 function clip100(x){return Math.max(0,Math.min(100,Number(x)||0))}
 function buildScreeningStrategies(rows){
  const rr=rows.map(x=>({...x}));
- const lin=(v,pts)=>{v=Number(v);if(!Number.isFinite(v))return 50;if(v<=pts[0][0])return pts[0][1];for(let i=1;i<pts.length;i++){if(v<=pts[i][0]){const [x0,y0]=pts[i-1],[x1,y1]=pts[i];return y0+(v-x0)/(x1-x0)*(y1-y0)}}return pts.at(-1)[1]};
- const weighted=(r,defs,neutral=50)=>{let s=0,w=0;for(const [k,wt] of defs){const v=Number(r[k]);s+=(Number.isFinite(v)?v:neutral)*wt;w+=wt}return w?s/w:neutral};
- const rank=(field,out,reverse=false)=>{const vals=rr.map((r,i)=>({i,v:Number(r[field])})).filter(x=>Number.isFinite(x.v)).sort((x,y)=>x.v-y.v);if(vals.length<2){rr.forEach(r=>r[out]=50);return}let j=0;while(j<vals.length){let k=j;while(k+1<vals.length&&vals[k+1].v===vals[j].v)k++;let q=((j+k)/2)/(vals.length-1)*100;if(reverse)q=100-q;for(let z=j;z<=k;z++)rr[vals[z].i][out]=q;j=k+1}};
- for(const [f,o] of [["SalesYoY","SalesGrowthScore"],["PrimaryProfitYoY","ProfitGrowthScore"],["OperatingMarginChangePt","MarginQualityScore"],["RelativeToTOPIX20D","Relative20Score"],["RelativeToTOPIX60D","Relative60Score"],["RelativeToTOPIX120D","Relative120Score"],["MA75DeviationPct","MA75StretchScore"],["Return5D","ShortMomentumScore"],["VolumeRatio5To20","VolumePickupScore"],["MA25DeviationPct","MA25PositionScore"]])rank(f,o);
+ const lin=(v,pts,def=50)=>{v=Number(v);if(!Number.isFinite(v))return def;if(v<=pts[0][0])return pts[0][1];if(v>=pts.at(-1)[0])return pts.at(-1)[1];for(let i=1;i<pts.length;i++){const [x1,y1]=pts[i-1],[x2,y2]=pts[i];if(x1<=v&&v<=x2)return y1+(v-x1)/(x2-x1)*(y2-y1)}return def};
+ const weighted=(r,defs,neutral=50)=>{let total=0,w=0;for(const [k,wt] of defs){const v=r[k];total+=(v==null?neutral:Number(v))*wt;w+=wt}return w?total/w:neutral};
+ const rank=(field,out,reverse=false,groupField=null)=>{const assign=(items)=>{items.sort((a,b)=>a.v-b.v);const n=items.length;if(!n)return;let s=0;while(s<n){let e=s+1;while(e<n&&items[e].v===items[s].v)e++;const p=(((s+e-1)/2)+1)/n*100,q=reverse?100-p:p;for(let i=s;i<e;i++)rr[items[i].i][out]=q;s=e}};
+   rr.forEach(r=>r[out]=null);
+   if(groupField){const gs=new Map();rr.forEach((r,i)=>{const v=Number(r[field]),g=String(r[groupField]||"").trim();if(Number.isFinite(v)&&g){if(!gs.has(g))gs.set(g,[]);gs.get(g).push({i,v})}});for(const items of gs.values())if(items.length>=5)assign(items)}
+   else assign(rr.map((r,i)=>({i,v:Number(r[field])})).filter(x=>Number.isFinite(x.v)));
+ };
+ for(const [f,o] of [["SalesYoY","SalesGrowthScore"],["PrimaryProfitYoY","ProfitGrowthScore"],["OperatingMarginChangePt","MarginQualityScore"],["RelativeToTOPIX20D","Relative20Score"],["RelativeToTOPIX60D","Relative60Score"],["RelativeToTOPIX120D","Relative120Score"],["MA75DeviationPct","MA75StretchScore"],["PositionVs60DHighPct","HighPositionScore"],["Return5D","ShortMomentumScore"],["VolumeRatio5To20","VolumePickupScore"],["MA25DeviationPct","MA25PositionScore"]])rank(f,o);
+ rank("ForecastPER","SectorForecastPERValueScore",true,"Sector33");rank("PBR","SectorPBRValueScore",true,"Sector33");rank("ForecastDividendYieldPct","SectorDividendYieldValueScore",false,"Sector33");
+ rank("MACDHistogramChange5D","MACDHistogramImprovementScore");rank("MA25Slope5DPct","MA25SlopeScore");rank("MA75Slope20DPct","MA75SlopeScore");
  rr.forEach(r=>{
-   r.GuidanceDirectionScore=lin(r.ForecastSalesGrowthPct,[[-20,10],[-5,30],[0,50],[10,70],[30,90]])*.5+lin(r.ForecastPrimaryProfitGrowthPct,[[-30,10],[-10,30],[0,50],[15,70],[50,90]])*.5;
-   r.CFOQualityScore=r.LatestAvailableCFO==null?50:(Number(r.LatestAvailableCFO)>=0?70:25);
-   r.FundamentalScore=weighted(r,[["SalesGrowthScore",.25],["ProfitGrowthScore",.30],["MarginQualityScore",.20],["GuidanceDirectionScore",.15],["CFOQualityScore",.10]]);
-   r.PriceRecognitionScore=weighted(r,[["Relative20Score",.20],["Relative60Score",.30],["Relative120Score",.25],["MA75StretchScore",.15]],50);
-   r.FundamentalPriceGap=r.FundamentalScore-r.PriceRecognitionScore;
-   r.ReRatingScore=weighted(r,[["ShortMomentumScore",.35],["VolumePickupScore",.30],["MA25PositionScore",.35]]);
-   let chase=0;if(Number(r.Return5D)>10)chase+=Math.min((Number(r.Return5D)-10)*1.5,20);if(Number(r.Return20D)>25)chase+=Math.min((Number(r.Return20D)-25)*.8,20);if(Number(r.MA25DeviationPct)>12)chase+=Math.min(Number(r.MA25DeviationPct)-12,15);r.ChasePenalty=chase;
+  r.GuidanceDirectionScore=lin(r.ForecastSalesGrowthPct,[[-20,10],[-5,30],[0,50],[10,70],[30,90]])*.5+lin(r.ForecastPrimaryProfitGrowthPct,[[-30,10],[-10,30],[0,50],[15,70],[50,90]])*.5;
+  r.CFOQualityScore=r.CFO==null?50:(Number(r.CFO)>=0?70:25);
+  r.FundamentalScore=weighted(r,[["SalesGrowthScore",.25],["ProfitGrowthScore",.30],["MarginQualityScore",.20],["GuidanceDirectionScore",.15],["CFOQualityScore",.10]]);
+  r.PriceRecognitionScore=weighted(r,[["Relative20Score",.20],["Relative60Score",.30],["Relative120Score",.25],["MA75StretchScore",.15],["HighPositionScore",.10]]);
+  r.FundamentalPriceGap=r.FundamentalScore-r.PriceRecognitionScore;
+  r.ReRatingScore=weighted(r,[["ShortMomentumScore",.35],["VolumePickupScore",.30],["MA25PositionScore",.35]]);
+  const opm=r.ProfitType==="OperatingProfit"?lin(r.CurrentOperatingMarginPct,[[0,25],[5,45],[10,65],[20,85],[35,95]]):50;
+  const mi=lin(r.OperatingMarginChangePt,[[-5,15],[-1,35],[0,50],[2,70],[5,90]]),roe=lin(r.ROE,[[0,20],[5,40],[10,60],[15,78],[25,95]]),eq=lin(r.EquityRatioPct,[[10,25],[25,45],[40,65],[60,82],[80,90]]);
+  let cf=50;if(r.LatestAvailableCFO!=null){cf=Number(r.LatestAvailableCFO)>0?70:20;if(r.LatestAvailableFCF!=null)cf+=Number(r.LatestAvailableFCF)>0?15:-15}
+  r.QVRQualityScore=Math.max(0,Math.min(100,roe*.25+opm*.20+mi*.20+cf*.20+eq*.15));
  });
- rank("FundamentalPriceGap","GapPercentile");
+ // QVR value requires peer ranks, calculated above.
  rr.forEach(r=>{
-   r.GapCompositeScore=(r.GapPercentile||0)*.65+(r.ReRatingScore||50)*.35-(r.ChasePenalty||0);
-   r.FundamentalMomentumScore=r.FundamentalScore*.55+r.ReRatingScore*.45-(r.ChasePenalty||0);
-   r.GrowthAccelerationScore=r.FundamentalScore;
-   // PED/QVR remain provisional until event-window and sector-value layers are fully ported.
-   const elapsed=r.LatestDisclosureDate?Math.floor((new Date((rr[0].Date||"")+"T00:00:00")-new Date(r.LatestDisclosureDate+"T00:00:00"))/86400000):null;
-   r.PostEarningsDriftScore=(elapsed!=null&&elapsed>=3&&elapsed<=28)?r.FundamentalScore*.55+r.ReRatingScore*.45:null;
-   const value=Number(r.ForecastEPS)>0&&Number(r.Close)>0?100-Math.min(100,(Number(r.Close)/Number(r.ForecastEPS))*2):50;
-   const quality=lin(r.ROE,[[0,20],[5,40],[10,60],[15,78],[25,95]])*.35+lin(r.EquityRatioPct,[[10,25],[25,45],[40,65],[60,82],[80,90]])*.25+(Number(r.LatestAvailableCFO)>0?75:50)*.40;
-   r.QualityValueReRatingScore=clip100(quality*.36+value*.28+r.ReRatingScore*.36-Math.min(r.ChasePenalty||0,15));
+   const av=[["SectorForecastPERValueScore",.45],["SectorPBRValueScore",.30],["SectorDividendYieldValueScore",.25]].filter(([k])=>r[k]!=null);
+   if(!av.length)r.QVRValueScore=null;else{let v=av.reduce((s,[k,w])=>s+Number(r[k])*w,0)/av.reduce((s,[,w])=>s+w,0);if(r.ForecastPrimaryProfitGrowthPct!=null&&r.ForecastPrimaryProfitGrowthPct<-20)v-=Math.min(20,Math.abs(r.ForecastPrimaryProfitGrowthPct+20)*.5);r.QVRValueScore=Math.max(0,Math.min(100,v))}
+   const rsi=lin(r.RSI14,[[20,25],[35,50],[50,78],[65,85],[75,60],[90,25]]),early=lin(r.DistanceFrom52WLowPct,[[0,55],[10,75],[30,88],[60,72],[120,35],[250,15]]);
+   const mb={GoldenCross:90,AboveSignal:72,OnSignal:50,BelowSignal:35,DeadCross:20}[r.MACDState]??50;
+   const base=weighted(r,[["Relative20Score",.17],["Relative60Score",.13],["MA25SlopeScore",.14],["MA75SlopeScore",.10],["MACDHistogramImprovementScore",.12],["VolumePickupScore",.10]],50);
+   r.QVRReRatingScore=Math.max(0,Math.min(100,base*.76+rsi*.09+early*.08+mb*.07));
+   let mismatch=0;if(r.PrimaryProfitYoY>20&&r.LatestAvailableCFO<0)mismatch+=10;if(Math.abs(Number(r.PrimaryProfitYoY))>300)mismatch+=8;if(Number(r.AverageTradingValue20D)<100000000)mismatch+=5;
+   r.QVRCrowdingPenalty=0; // active once supply-change fields are normalized
+   r.QVRQualityMismatchPenalty=mismatch;
+   r.QualityValueReRatingScore=r.QVRValueScore==null?null:Math.max(0,Math.min(100,r.QVRQualityScore*.36+r.QVRValueScore*.28+r.QVRReRatingScore*.36-r.QVRCrowdingPenalty-mismatch));
+   let chase=0;if(r.Return5D>10)chase+=Math.min((r.Return5D-10)*1.5,20);if(r.Return20D>25)chase+=Math.min((r.Return20D-25)*.8,20);if(r.MA25DeviationPct>12)chase+=Math.min(r.MA25DeviationPct-12,15);r.ChasePenalty=chase;
+   if(r.QualityValueReRatingScore!=null)r.QualityValueReRatingScore=Math.max(0,Math.min(100,r.QualityValueReRatingScore-Math.min(chase,15)));
+   // No fake PED score: until true event-return window is available, leave blank exactly rather than inventing a proxy.
+   r.PostEarningsDriftScore=null;
  });
+ rank("FundamentalPriceGap","GapPercentile");rank("FundamentalScore","FundamentalPercentile");rank("ReRatingScore","ReRatingPercentile");rank("QualityValueReRatingScore","QVRPercentile");
+ rr.forEach(r=>{r.GapCompositeScore=(r.GapPercentile||0)*.65+(r.ReRatingScore||50)*.35-(r.ChasePenalty||0);r.FundamentalMomentumScore=r.FundamentalScore*.55+r.ReRatingScore*.45-(r.ChasePenalty||0);r.GrowthAccelerationScore=r.FundamentalScore});
  const defs=[["FundamentalPriceGap","GapCompositeScore"],["FundamentalMomentum","FundamentalMomentumScore"],["PostEarningsDrift","PostEarningsDriftScore"],["GrowthAcceleration","GrowthAccelerationScore"],["QualityValueReRating","QualityValueReRatingScore"]];
  const map=new Map();
- for(const [name,key] of defs){const ranked=rr.filter(r=>Number.isFinite(Number(r[key]))).sort((a,b)=>Number(b[key])-Number(a[key])||String(a.NormalizedCode).localeCompare(String(b.NormalizedCode))).slice(0,20);ranked.forEach((r,idx)=>{let c=map.get(r.NormalizedCode);if(!c){c={...r,_ranks:{}};map.set(r.NormalizedCode,c)}c._ranks[name]=idx+1})}
- const out=[...map.values()].map(r=>{const names=Object.keys(r._ranks).sort((x,y)=>r._ranks[x]-r._ranks[y]||defs.findIndex(z=>z[0]===x)-defs.findIndex(z=>z[0]===y));r.SelectedByStrategies=names.join(";");r.StrategyCount=names.length;r.BestStrategyRank=Math.min(...names.map(n=>r._ranks[n]));r.PrimaryStrategy=names[0];for(const [n] of defs)r[n+"Rank"]=r._ranks[n]??null;delete r._ranks;return r}).sort((x,y)=>y.StrategyCount-x.StrategyCount||x.BestStrategyRank-y.BestStrategyRank||String(x.NormalizedCode).localeCompare(String(y.NormalizedCode)));
+ for(const [name,key] of defs){const ranked=rr.filter(r=>r[key]!=null&&r.FinancialDataFlag!=="WebRequired"&&r.FinancialDataFlag!=="NoLatestFinancial").sort((a,b)=>Number(b[key])-Number(a[key])||String(a.NormalizedCode).localeCompare(String(b.NormalizedCode))).slice(0,20);ranked.forEach((r,i)=>{let c=map.get(r.NormalizedCode);if(!c){c={...r,_ranks:{}};map.set(r.NormalizedCode,c)}c._ranks[name]=i+1})}
+ const order=defs.map(x=>x[0]),out=[...map.values()].map(r=>{const sel=Object.keys(r._ranks).sort((x,y)=>r._ranks[x]-r._ranks[y]||order.indexOf(x)-order.indexOf(y));r.SelectedByStrategies=sel.join(";");r.StrategyCount=sel.length;r.BestStrategyRank=Math.min(...sel.map(n=>r._ranks[n]));r.PrimaryStrategy=sel[0];for(const n of order)r[n+"Rank"]=r._ranks[n]??null;delete r._ranks;return r}).sort((x,y)=>y.StrategyCount-x.StrategyCount||x.BestStrategyRank-y.BestStrategyRank||String(x.PrimaryStrategy).localeCompare(String(y.PrimaryStrategy))||String(x.NormalizedCode).localeCompare(String(y.NormalizedCode)));
  return {rows:out,defs};
 }
 if($("screeningStrategyBtn")) $("screeningStrategyBtn").onclick=()=>{

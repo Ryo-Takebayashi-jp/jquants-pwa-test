@@ -922,7 +922,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
                  h=Number(r.h),l=Number(r.l);
            if(!Number.isFinite(c)||c<=0)continue;
            if(!byCode.has(code))byCode.set(code,[]);
-           byCode.get(code).push({date:d,c,v,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c});
+           byCode.get(code).push({date:d,c,v,tv:Number.isFinite(tv)?tv:null,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c});
          }
        }finally{try{if(db)db.close()}catch(_){}}
      }
@@ -1110,6 +1110,9 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){try{if(db)db.close()}catch(_){} throw err}
  }
 
+ if(cmd==="fins-summary-covered-dates"){
+   let db=null;try{db=new p.OpfsSAHPoolDb("/jq_fins_summary_v1.sqlite","r");const rows=execRows(db,"SELECT DISTINCT data_date FROM fins_summary ORDER BY data_date");db.close();db=null;self.postMessage({ok:true,type:"result",dates:rows.map(x=>String(x.data_date))});return}catch(e){try{if(db)db.close()}catch(_){}self.postMessage({ok:true,type:"result",dates:[]});return}
+ }
  if(cmd==="fins-summary-write" || cmd==="earnings-calendar-write"){
    const payload=d.payload||{}, rows=payload.rows||[], requestedDate=String(payload.date||"");
    const isFins=cmd==="fins-summary-write";
@@ -1257,74 +1260,72 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      db=new p.OpfsSAHPoolDb("/jq_fins_summary_v1.sqlite","r");
      const rs=execRows(db,"SELECT raw_json FROM fins_summary");
      const byCode=new Map();
-     const num=(o,...ks)=>{for(const k of ks){const v=o?.[k];if(v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)))return Number(v)}return null};
-     const str=(o,...ks)=>{for(const k of ks){const v=o?.[k];if(v!==null&&v!==undefined&&String(v).trim())return String(v).trim()}return null};
-     const pct=(cur,prev)=>Number.isFinite(cur)&&Number.isFinite(prev)&&Math.abs(prev)>1e-9?(cur/prev-1)*100:null;
-     const margin=(profit,sales)=>Number.isFinite(profit)&&Number.isFinite(sales)&&Math.abs(sales)>1e-9?profit/sales*100:null;
+     const n=(o,...ks)=>{for(const k of ks){const v=o?.[k];if(v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)))return Number(v)}return null};
+     const s=(o,...ks)=>{for(const k of ks){const v=o?.[k];if(v!==null&&v!==undefined&&String(v).trim())return String(v).trim()}return ""};
+     const pct=(x,y)=>Number.isFinite(x)&&Number.isFinite(y)&&y!==0?(x/y-1)*100:null;
+     const ratio=(x,y)=>Number.isFinite(x)&&Number.isFinite(y)&&y!==0?x/y*100:null;
+     const primary=o=>{const op=n(o,"OP","NCOP");if(op!=null)return [op,"OperatingProfit"];const od=n(o,"OdP","NCOdP");if(od!=null)return [od,"OrdinaryProfit"];return n(o,"NP","NCNP")!=null?[null,"NetProfitOnly"]:[null,"Unavailable"]};
+     const fprimary=o=>n(o,"FOP","FNCOP")??n(o,"FOdP","FNCOdP");
      for(const rr of rs){
-       let o={}; try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}
-       let code=str(o,"Code","code"); if(!code)continue;if(code.length===5&&code.endsWith("0"))code=code.slice(0,4);
-       const rec={
-         code,discDate:str(o,"DiscDate","DisclosedDate","Date","date")||"",discTime:str(o,"DiscTime","DisclosedTime")||"",
-         docType:str(o,"DocType","TypeOfDocument"),curPerType:str(o,"CurPerType","CurrentPeriodType")||"",
-         curPerStart:str(o,"CurPerSt","CurrentPeriodStartDate")||"",curPerEnd:str(o,"CurPerEn","CurrentPeriodEndDate")||"",
-         curFYStart:str(o,"CurFYSt","CurrentFiscalYearStartDate")||"",curFYEnd:str(o,"CurFYEn","CurrentFiscalYearEndDate")||"",
-         sales:num(o,"Sales","NetSales"),op:num(o,"OP","OperatingProfit"),odp:num(o,"OdP","OrdinaryProfit"),
-         np:num(o,"NP","Profit","NetIncome"),eps:num(o,"EPS","EarningsPerShare"),bps:num(o,"BPS","BookValuePerShare"),
-         equity:num(o,"Eq","Equity"),totalAssets:num(o,"TA","TotalAssets"),cashEq:num(o,"CashEq","CashAndEquivalents"),
-         cfo:num(o,"CFO","CashFlowsFromOperatingActivities"),cfi:num(o,"CFI","CashFlowsFromInvestingActivities"),cff:num(o,"CFF","CashFlowsFromFinancingActivities"),
-         forecastSales:num(o,"FSales","ForecastSales","ForecastNetSales"),forecastOP:num(o,"FOP","ForecastOP","ForecastOperatingProfit"),
-         forecastOdP:num(o,"FOdP","ForecastOdP","ForecastOrdinaryProfit"),forecastNP:num(o,"FNP","ForecastNP","ForecastProfit","ForecastNetIncome"),
-         forecastEPS:num(o,"FEPS","ForecastEPS","ForecastEarningsPerShare")
-       };
-       rec._stamp=rec.discDate+" "+rec.discTime;
-       if(!byCode.has(code))byCode.set(code,[]);
-       byCode.get(code).push(rec);
+       let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}
+       let code=s(o,"Code","code");if(!code)continue;if(code.length===5&&code.endsWith("0"))code=code.slice(0,4);
+       if(!byCode.has(code))byCode.set(code,[]);byCode.get(code).push(o);
      }
      db.close();db=null;
      const rows=[];
-     for(const [code,hist0] of byCode){
-       const hist=hist0.sort((x,y)=>x._stamp.localeCompare(y._stamp));
-       const latest=hist[hist.length-1];
-       // Comparable prior period: same period type, preferably ~1 year earlier.
-       const candidates=hist.slice(0,-1).filter(x=>x.curPerType===latest.curPerType);
-       let prior=null;
-       if(candidates.length){
-         const target=latest.curPerEnd?new Date(latest.curPerEnd+"T00:00:00").getTime()-365.25*86400000:null;
-         prior=candidates.reduce((best,x)=>{
-           if(!target||!x.curPerEnd)return x;
-           const d=Math.abs(new Date(x.curPerEnd+"T00:00:00").getTime()-target);
-           if(!best)return x;
-           const bd=best.curPerEnd?Math.abs(new Date(best.curPerEnd+"T00:00:00").getTime()-target):1e99;
-           return d<bd?x:best;
-         },null);
-       }
-       const primary=(x)=>Number.isFinite(x?.op)?x.op:Number.isFinite(x?.odp)?x.odp:x?.np;
-       const curPrimary=primary(latest),prevPrimary=primary(prior);
-       const curMargin=margin(latest.op,latest.sales),prevMargin=margin(prior?.op,prior?.sales);
-       const latestCfo=[...hist].reverse().find(x=>Number.isFinite(x.cfo));
-       const fcf=latestCfo&&Number.isFinite(latestCfo.cfo)&&Number.isFinite(latestCfo.cfi)?latestCfo.cfo+latestCfo.cfi:null;
-       const forecastPrimary=Number.isFinite(latest.forecastOP)?latest.forecastOP:Number.isFinite(latest.forecastOdP)?latest.forecastOdP:latest.forecastNP;
-       rows.push({...latest,
-         SalesYoY:pct(latest.sales,prior?.sales),PrimaryProfitYoY:pct(curPrimary,prevPrimary),
-         CurrentPrimaryProfit:curPrimary,PreviousPrimaryProfit:prevPrimary,
-         CurrentOperatingMarginPct:curMargin,PreviousOperatingMarginPct:prevMargin,
-         OperatingMarginChangePt:Number.isFinite(curMargin)&&Number.isFinite(prevMargin)?curMargin-prevMargin:null,
-         ForecastPrimaryProfit:forecastPrimary,
-         ForecastSalesGrowthPct:pct(latest.forecastSales,latest.sales),
-         ForecastPrimaryProfitGrowthPct:pct(forecastPrimary,curPrimary),
-         ROE:Number.isFinite(latest.np)&&Number.isFinite(latest.equity)&&latest.equity!==0?latest.np/latest.equity*100:null,
-         EquityRatioPct:Number.isFinite(latest.equity)&&Number.isFinite(latest.totalAssets)&&latest.totalAssets!==0?latest.equity/latest.totalAssets*100:null,
-         LatestAvailableCFO:latestCfo?.cfo??null,LatestAvailableFCF:fcf,
-         FinancialHistoryCount:hist.length,ComparablePriorFound:!!prior
+     for(const [code,hist] of byCode){
+       const disc=o=>s(o,"DiscDate","Date"), perEnd=o=>s(o,"CurPerEn","CurFYEn"), fyEnd=o=>s(o,"CurFYEn","CurPerEn");
+       const actual=hist.filter(o=>["Sales","OP","OdP","NP","NCSales","NCOP","NCOdP","NCNP"].some(k=>n(o,k)!=null));
+       if(!actual.length)continue;
+       actual.sort((a,b)=>(perEnd(a)+"|"+disc(a)+"|"+s(a,"DiscNo")).localeCompare(perEnd(b)+"|"+disc(b)+"|"+s(b,"DiscNo")));
+       const cur=actual.at(-1),curType=s(cur,"CurPerType").toUpperCase(),curEnd=perEnd(cur),curDt=Date.parse(curEnd||"1970-01-01");
+       let prev=null,best=1e99;
+       for(const x of hist){if(x===cur||s(x,"CurPerType").toUpperCase()!==curType)continue;const pe=perEnd(x);if(!pe)continue;const dd=(curDt-Date.parse(pe))/86400000;if(dd>=330&&dd<=400&&Math.abs(dd-365)<best){best=Math.abs(dd-365);prev=x}}
+       const [cp,ptype]=primary(cur),[pp]=primary(prev||{});
+       const sales=n(cur,"Sales","NCSales"),psales=n(prev||{},"Sales","NCSales"),margin=ratio(cp,sales),pmargin=ratio(pp,psales);
+       const currentFY=s(cur,"CurFYEn","CurPerEn"),expectedFY=(curType==="FY"?s(cur,"NxtFYEn"):"")||currentFY||s(cur,"NxtFYEn");
+       const forecasts=hist.filter(x=>disc(x)&&["FSales","FOP","FOdP","FNP","FNCSales","FNCOP","FNCOdP","FNCNP"].some(k=>n(x,k)!=null));
+       const forecastFY=x=>{const t=s(x,"CurPerType").toUpperCase();return t==="FY"&&s(x,"NxtFYEn")?s(x,"NxtFYEn"):s(x,"CurFYEn","NxtFYEn")};
+       const fcands=expectedFY?forecasts.filter(x=>forecastFY(x)===expectedFY):forecasts;
+       fcands.sort((a,b)=>(disc(a)+"|"+s(a,"DiscTime")+"|"+s(a,"DiscNo")).localeCompare(disc(b)+"|"+s(b,"DiscTime")+"|"+s(b,"DiscNo")));
+       const fc=fcands.at(-1)||null,fp=fprimary(fc||{}),fs=n(fc||{},"FSales","FNCSales");
+       let prevFY=null,pfbest=1e99;
+       const targetFY=expectedFY||forecastFY(fc||{});
+       if(targetFY){const td=Date.parse(targetFY);for(const x of hist){if(s(x,"CurPerType").toUpperCase()!=="FY")continue;const fe=fyEnd(x);if(!fe)continue;const dd=(td-Date.parse(fe))/86400000;if(dd>=300&&dd<=430&&Math.abs(dd-365)<pfbest){pfbest=Math.abs(dd-365);prevFY=x}}}
+       const [prevFYp]=primary(prevFY||{}),prevFYs=n(prevFY||{},"Sales","NCSales");
+       const fyRows=hist.filter(x=>s(x,"CurPerType").toUpperCase()==="FY"&&disc(x));
+       fyRows.sort((a,b)=>(fyEnd(a)+"|"+disc(a)).localeCompare(fyEnd(b)+"|"+disc(b)));
+       const latestFY=fyRows.at(-1)||cur;
+       const actualEPS=n(latestFY,"EPS","NCEPS"),forecastEPS=n(fc||{},"FEPS","FNCEPS"),bps=n(latestFY,"BPS","NCBPS");
+       const eq=n(latestFY,"Eq","NCEq"),ta=n(latestFY,"TA","NCTA"),fyNP=n(latestFY,"NP","NCNP");
+       let roe=n(latestFY,"ROE","NCROE");if(roe!=null&&Math.abs(roe)<=1.5)roe*=100;
+       if(roe==null&&eq){let priorEq=null;const idx=fyRows.indexOf(latestFY);if(idx>0)priorEq=n(fyRows[idx-1],"Eq","NCEq");roe=ratio(fyNP,priorEq?((eq+priorEq)/2):eq)}
+       let eqRatio=n(latestFY,"EqAR","NCEqAR");if(eqRatio!=null&&Math.abs(eqRatio)<=1.5)eqRatio*=100;
+       const cfo=n(cur,"CFO"),cfi=n(cur,"CFI"),cff=n(cur,"CFF");
+       let lacfo=cfo,lacfi=cfi,lacff=cff,cfDate=disc(cur);
+       if(lacfo==null&&lacfi==null&&lacff==null&&latestFY){lacfo=n(latestFY,"CFO");lacfi=n(latestFY,"CFI");lacff=n(latestFY,"CFF");cfDate=disc(latestFY)}
+       const shares=n(latestFY,"ShOutFY"),treasury=n(latestFY,"TrShFY")||0,effectiveShares=shares!=null?shares-treasury:null;
+       const fdiv=n(fc||{},"FDivAnn","FDivTotalAnn"),adiv=n(latestFY,"DivAnn","DivTotalAnn");
+       rows.push({code,discDate:disc(cur),curPerType:curType,ProfitType:ptype,
+         sales,op:n(cur,"OP","NCOP"),odp:n(cur,"OdP","NCOdP"),np:n(cur,"NP","NCNP"),
+         eps:actualEPS,bps,equity:eq,totalAssets:ta,cfo,cfi,cff,
+         forecastSales:fs,forecastOP:n(fc||{},"FOP","FNCOP"),forecastOdP:n(fc||{},"FOdP","FNCOdP"),forecastNP:n(fc||{},"FNP","FNCNP"),forecastEPS,
+         SalesYoY:pct(sales,psales),PrimaryProfitYoY:(cp>0&&pp>0)?pct(cp,pp):null,
+         CurrentOperatingMarginPct:ptype==="OperatingProfit"?margin:null,PreviousOperatingMarginPct:ptype==="OperatingProfit"?pmargin:null,
+         OperatingMarginChangePt:(margin!=null&&pmargin!=null)?margin-pmargin:null,
+         ForecastSalesGrowthPct:pct(fs,prevFYs),ForecastPrimaryProfitGrowthPct:(fp>0&&prevFYp>0)?pct(fp,prevFYp):null,
+         CurrentPrimaryProfit:cp,ForecastPrimaryProfit:fp,ActualEPS:actualEPS,ForecastEPS:forecastEPS,BPS:bps,ROE:roe,EquityRatioPct:eqRatio,
+         CFO:cfo,CFI:cfi,CFF:cff,LatestAvailableCFO:lacfo,LatestAvailableCFI:lacfi,LatestAvailableCFF:lacff,
+         LatestAvailableFCF:(lacfo!=null&&lacfi!=null)?lacfo+lacfi:null,CashFlowReferenceDate:cfDate,
+         EffectiveShares:effectiveShares,ActualAnnualDividend:adiv,ForecastAnnualDividend:fdiv,
+         FinancialDataFlag:(["OperatingProfit","OrdinaryProfit"].includes(ptype)&&prev)?"":(ptype==="NetProfitOnly"?"WebRequired":"HistoryInsufficient"),
+         FinancialHistoryCount:hist.length,ComparablePriorFound:!!prev
        });
      }
-     rows.sort((x,y)=>x.code.localeCompare(y.code));
-     self.postMessage({ok:true,type:"result",rows,count:rows.length,
-       comparablePrior:rows.filter(x=>x.ComparablePriorFound).length,
-       yoyReady:rows.filter(x=>x.SalesYoY!=null||x.PrimaryProfitYoY!=null).length});
+     rows.sort((a,b)=>a.code.localeCompare(b.code));
+     self.postMessage({ok:true,type:"result",rows,count:rows.length,comparablePrior:rows.filter(x=>x.ComparablePriorFound).length,yoyReady:rows.filter(x=>x.SalesYoY!=null||x.PrimaryProfitYoY!=null).length});
      return;
-   }catch(err){try{if(db)db.close()}catch(_){} throw err}
+   }catch(err){try{if(db)db.close()}catch(_){}throw err}
  }
  if(cmd==="supply-demand-normalize"){
  const defs=[["/jq_margin_interest_v1.sqlite","margin_interest","marginInterest"],["/jq_margin_alert_v1.sqlite","margin_alert","marginAlert"],["/jq_short_ratio_v1.sqlite","short_ratio","shortRatio"],["/jq_short_sale_report_v1.sqlite","short_sale_report","shortSaleReport"],["/jq_investor_types_v1.sqlite","investor_types","investorTypes"]],result={};
@@ -1389,17 +1390,27 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
    const fmap=new Map(finRows.map(x=>[norm(x.code),x]));
    const mmap=new Map(); let mdb=null;
-   try{mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");for(const r of execRows(mdb,"SELECT code,company_name,market_name AS market,sector17_name AS sector17,sector33_name AS sector33,margin_name AS margin_category FROM equities_master")){mmap.set(norm(r.code),r)}mdb.close();mdb=null}catch(e){try{if(mdb)mdb.close()}catch(_){}}
+   try{mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");for(const r of execRows(mdb,"SELECT code,company_name,market_name AS market,sector17_name AS sector17,sector33_name AS sector33,margin_name AS margin_category,product_category FROM equities_master")){mmap.set(norm(r.code),r)}mdb.close();mdb=null}catch(e){try{if(mdb)mdb.close()}catch(_){}}
    let master=0,financial=0,forecast=0;
    const rows=techRows.map(t=>{const code=norm(t.code),m=mmap.get(code)||{},f=fmap.get(code)||{};if(m.company_name)master++;if(f.discDate)financial++;if(f.forecastEPS!=null||f.forecastSales!=null||f.forecastOP!=null)forecast++;return {
-     Date:payload.asOf||t.date||null,NormalizedCode:code,CompanyName:m.company_name||null,Market:m.market||null,Sector17:m.sector17||null,Sector33:m.sector33||null,MarginCategory:m.margin_category||null,
-     Close:t.close??null,MA5:t.ma5??null,MA25:t.ma25??null,MA75:t.ma75??null,MA200:t.ma200??null,RSI14:t.rsi14??null,Return5D:t.ret5??null,Return20D:t.ret20??null,Return60D:t.ret60??null,Return120D:t.ret120??null,
+     Date:payload.asOf||t.date||null,NormalizedCode:code,CompanyName:m.company_name||null,Market:m.market||null,Sector17:m.sector17||null,Sector33:m.sector33||null,MarginCategory:m.margin_category||null,ProductCategory:m.product_category||null,
+     Close:t.close??null,PriceHistoryDays:t.historyDays??null,AverageTradingValue20D:t.averageTradingValue20D??null,VolumeRatio5To20:t.volumeRatio5To20??null,
+     MA5:t.ma5??null,MA25:t.ma25??null,MA75:t.ma75??null,MA200:t.ma200??null,RSI14:t.rsi14??null,Return5D:t.ret5??null,Return20D:t.ret20??null,Return60D:t.ret60??null,Return120D:t.ret120??null,
      RelativeToTOPIX5D:t.rel5??null,RelativeToTOPIX20D:t.rel20??null,RelativeToTOPIX60D:t.rel60??null,RelativeToTOPIX120D:t.rel120??null,ATR14Pct:t.atr14Pct??null,High20D:t.high20??null,Low20D:t.low20??null,High60D:t.high60??null,Low60D:t.low60??null,High52Week:t.high52??null,Low52Week:t.low52??null,
-     MA25DeviationPct:t.distMa25??null,MA75DeviationPct:t.distMa75??null,MA25Slope5DPct:t.slope25??null,MA75Slope20DPct:t.slope75??null,MACDHistogram:t.macdHistogram??null,TrendState:t.trendState??null,
+     MA25DeviationPct:t.distMa25??null,MA75DeviationPct:t.distMa75??null,MA25Slope5DPct:t.slope25??null,MA75Slope20DPct:t.slope75??null,
+     MACDHistogram:t.macdHistogram??null,MACDHistogramChange5D:t.macdHistogramChange5D??null,MACDState:t.macdState??null,
+     PositionVs60DHighPct:t.positionVs60DHighPct??null,DistanceFrom52WLowPct:t.low52?((t.close/t.low52-1)*100):null,TrendState:t.trendState??null,
      DiscDate:f.discDate??null,LatestDisclosureDate:f.discDate??null,LatestPeriodType:f.curPerType??null,Sales:f.sales??null,OperatingProfit:f.op??null,OrdinaryProfit:f.odp??null,NetProfit:f.np??null,EPS:f.eps??null,BPS:f.bps??null,Equity:f.equity??null,TotalAssets:f.totalAssets??null,CFO:f.cfo??null,CFI:f.cfi??null,CFF:f.cff??null,ForecastSales:f.forecastSales??null,ForecastOperatingProfit:f.forecastOP??null,ForecastOrdinaryProfit:f.forecastOdP??null,ForecastNetProfit:f.forecastNP??null,ForecastEPS:f.forecastEPS??null,
-     SalesYoY:f.SalesYoY??null,PrimaryProfitYoY:f.PrimaryProfitYoY??null,CurrentOperatingMarginPct:f.CurrentOperatingMarginPct??null,PreviousOperatingMarginPct:f.PreviousOperatingMarginPct??null,OperatingMarginChangePt:f.OperatingMarginChangePt??null,ForecastSalesGrowthPct:f.ForecastSalesGrowthPct??null,ForecastPrimaryProfitGrowthPct:f.ForecastPrimaryProfitGrowthPct??null,ROE:f.ROE??null,EquityRatioPct:f.EquityRatioPct??null,LatestAvailableCFO:f.LatestAvailableCFO??null,LatestAvailableFCF:f.LatestAvailableFCF??null,FinancialHistoryCount:f.FinancialHistoryCount??0,ComparablePriorFound:!!f.ComparablePriorFound
+     SalesYoY:f.SalesYoY??null,PrimaryProfitYoY:f.PrimaryProfitYoY??null,CurrentOperatingMarginPct:f.CurrentOperatingMarginPct??null,PreviousOperatingMarginPct:f.PreviousOperatingMarginPct??null,OperatingMarginChangePt:f.OperatingMarginChangePt??null,ForecastSalesGrowthPct:f.ForecastSalesGrowthPct??null,ForecastPrimaryProfitGrowthPct:f.ForecastPrimaryProfitGrowthPct??null,ROE:f.ROE??null,EquityRatioPct:f.EquityRatioPct??null,CFO:f.CFO??f.cfo??null,LatestAvailableCFO:f.LatestAvailableCFO??null,LatestAvailableFCF:f.LatestAvailableFCF??null,
+     EffectiveShares:f.EffectiveShares??null,ActualAnnualDividend:f.ActualAnnualDividend??null,ForecastAnnualDividend:f.ForecastAnnualDividend??null,
+     ActualEPS:f.ActualEPS??f.eps??null,FinancialDataFlag:f.FinancialDataFlag??"",
+     ActualPER:(t.close!=null&&f.ActualEPS>0)?t.close/f.ActualEPS:null,ForecastPER:(t.close!=null&&f.ForecastEPS>0)?t.close/f.ForecastEPS:null,
+     PBR:(t.close!=null&&f.BPS>0)?t.close/f.BPS:null,
+     ForecastDividendYieldPct:(t.close!=null&&f.ForecastAnnualDividend!=null)?f.ForecastAnnualDividend/t.close*100:null,
+     FinancialHistoryCount:f.FinancialHistoryCount??0,ComparablePriorFound:!!f.ComparablePriorFound
    }});
-   self.postMessage({ok:true,type:"result",rows,count:rows.length,coverage:{technical:techRows.length,master,financial,forecast}});return;
+   const filtered=rows.filter(r=>["プライム","スタンダード","グロース"].includes(String(r.Market||""))&&String(r.ProductCategory||"")==="011"&&Number(r.AverageTradingValue20D)>=50000000&&Number(r.Close)>=100&&Number(r.PriceHistoryDays)>=60);
+   self.postMessage({ok:true,type:"result",rows:filtered,count:filtered.length,coverage:{technical:techRows.length,master,financial,forecast,screened:filtered.length}});return;
  }
 
  if(cmd==="portfolio-integrated-snapshot"){
@@ -1514,12 +1525,14 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
                   COALESCE(adj_h,h,adj_c,c) AS h,
                   COALESCE(adj_l,l,adj_c,c) AS l,
                   COALESCE(adj_c,c) AS c,
-                  volume AS volume FROM bars_daily
+                  volume AS volume,
+                  COALESCE(turnover_value,value) AS turnover_value FROM bars_daily
            WHERE date>=? AND date<=? AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,actualAsOf]);
          usedShards.push(String(s.shard_key));
          for(const r of rs){
            const d=String(r.date); if(!chosenSet.has(d))continue;
            const code=String(r.code), c=Number(r.c),v=(r.volume==null||r.volume==="")?null:Number(r.volume),
+                 tv=(r.turnover_value==null||r.turnover_value==="")?null:Number(r.turnover_value),
                  h=Number(r.h),l=Number(r.l);
            if(!Number.isFinite(c)||c<=0)continue;
            if(!byCode.has(code))byCode.set(code,[]);
@@ -1623,6 +1636,14 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          const pd=macs.at(-2)-sigs.at(-2),cd=macs.at(-1)-sigs.at(-1);
          macdState=pd<=0&&cd>0?"GoldenCross":pd>=0&&cd<0?"DeadCross":cd>0?"AboveSignal":cd<0?"BelowSignal":"OnSignal";
        }
+       const recent5v=arr.slice(-5).map(x=>x.v).filter(Number.isFinite),recent20v=arr.slice(-20).map(x=>x.v).filter(Number.isFinite);
+       const volumeRatio5To20=(recent5v.length&&recent20v.length&&recent20v.reduce((p,c)=>p+c,0)!==0)
+         ?(recent5v.reduce((p,c)=>p+c,0)/recent5v.length)/(recent20v.reduce((p,c)=>p+c,0)/recent20v.length):null;
+       const recentTV=arr.slice(-20).map(x=>x.tv).filter(Number.isFinite);
+       const averageTradingValue20D=recentTV.length?recentTV.reduce((p,c)=>p+c,0)/recentTV.length:null;
+       const positionVs60DHighPct=closes.length>=60?last.c/Math.max(...closes.slice(-60))*100:null;
+       const macdHist5Ago=(macs.length>=6&&sigs.length>=6)?macs.at(-6)-sigs.at(-6):null;
+       const macdHistogramChange5D=(macdHistogram!=null&&macdHist5Ago!=null)?macdHistogram-macdHist5Ago:null;
        const ichi=ichimoku(highs,lows,closes);
        const maAlignment=alignment(ma5,ma25,ma75,ma200);
        const trend=trendState(last.c,ma5,ma25,ma75,ma200,slope25,slope75,slope200);
@@ -1646,7 +1667,9 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          aboveMA5:ma5!=null?(last.c>ma5?"1":"0"):"",aboveMA25:ma25!=null?(last.c>ma25?"1":"0"):"",
          aboveMA75:ma75!=null?(last.c>ma75?"1":"0"):"",aboveMA200:ma200!=null?(last.c>ma200?"1":"0"):"",
          maAlignment,trendState:trend,ret5,ret20,ret60,ret120,topixRet5:topixReturns.ret5,topixRet20:topixReturns.ret20,
-         topixRet60:topixReturns.ret60,topixRet120:topixReturns.ret120,rel5,rel20,rel60,rel120,volume:last.v,vol20,volRatio,score});
+         topixRet60:topixReturns.ret60,topixRet120:topixReturns.ret120,rel5,rel20,rel60,rel120,
+         volume:last.v,vol20,volRatio,volumeRatio5To20,averageTradingValue20D,positionVs60DHighPct,
+         macdHistogramChange5D,historyDays:arr.length,score});
      }
      rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);
      self.postMessage({ok:true,type:"result",stage:"PASS",requestedAsOf:asOf,asOf:actualAsOf,
