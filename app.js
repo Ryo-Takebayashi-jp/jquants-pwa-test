@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha59");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha60");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha59").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha60").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2129,7 +2129,7 @@ if($("screeningBaseExportBtn")) $("screeningBaseExportBtn").onclick=()=>{
  downloadBlob(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}),`web_screening_base_${($("screeningBaseAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`); box("screeningBaseResult","pass",`母集団CSVを書き出しました\n銘柄: ${latestScreeningBaseRows.length}`);
 };
 
-let latestScreeningCandidates=[];
+let latestScreeningCandidates=[];let latestScreeningParityPcRows=[];
 function pctRank(rows,key,reverse=false){
  const vals=rows.map((r,i)=>({i,v:Number(r[key])})).filter(x=>Number.isFinite(x.v)).sort((a,b)=>a.v-b.v);
  const out=new Array(rows.length).fill(50); if(vals.length<2)return out;
@@ -2223,7 +2223,59 @@ if($("screeningStrategyBtn")) $("screeningStrategyBtn").onclick=async()=>{
  finally{btn.disabled=false}
 };
 if($("screeningCandidatesExportBtn")) $("screeningCandidatesExportBtn").onclick=()=>{if(!latestScreeningCandidates.length)return;const keys=[...new Set(latestScreeningCandidates.flatMap(Object.keys))],esc=v=>'"'+String(v??'').replaceAll('"','""')+'"',csv=[keys.join(','),...latestScreeningCandidates.map(r=>keys.map(k=>esc(r[k])).join(','))].join('\n');downloadBlob(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}),`web_screening_candidates_${($("screeningBaseAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};
-if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=async()=>{try{const f=$("screeningStrategyParityFile").files?.[0];if(!f)throw new Error("screening_candidates.csvを選択してください");if(!latestScreeningCandidates.length)throw new Error("先にWebの5戦略選抜を実行してください");const pc=parseCsv(await f.text());if(!pc||!Array.isArray(pc.rows))throw new Error("PC CSV解析失敗");const pcRows=pc.rows,pmap=new Map(pcRows.map(r=>[String(r.NormalizedCode||r.Code||"").trim(),r])),wmap=new Map(latestScreeningCandidates.map(r=>[String(r.NormalizedCode),r]));let both=0,strategy=0;const missing=[],extra=[],diff=[];for(const [c,w] of wmap){const p=pmap.get(c);if(!p){extra.push(c);continue}both++;if(String(p.PrimaryStrategy||"")===String(w.PrimaryStrategy||""))strategy++;else diff.push(`${c}: PC=${p.PrimaryStrategy||"-"} / Web=${w.PrimaryStrategy||"-"}`)}for(const c of pmap.keys())if(!wmap.has(c))missing.push(c);const exact=missing.length===0&&extra.length===0&&strategy===both;box("screeningStrategyParityResult",exact?"pass":"warn",`Screening 選抜Parity\nPC CSV行数: ${pcRows.length}\nPC候補: ${pmap.size}\nWeb候補: ${wmap.size}\n共通: ${both}\nPrimaryStrategy一致: ${strategy}/${both}\nPCのみ: ${missing.length}\nWebのみ: ${extra.length}\n共通率: ${(both/Math.max(1,pmap.size)*100).toFixed(1)}%\n\n${exact?"完全一致 PASS":"選抜ロジック調整対象"}\nPCのみ例: ${missing.slice(0,12).join(", ")||"-"}\nWebのみ例: ${extra.slice(0,12).join(", ")||"-"}${diff.length?"\n\nPrimary差分:\n"+diff.slice(0,12).join("\n"):""}`)}catch(e){box("screeningStrategyParityResult","fail","FAIL\n"+(e?.message||e))}};
+
+function screeningBoundaryDiagnostics(pcRows,webRows){
+ const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+ const sts=["FundamentalPriceGap","FundamentalMomentum","PostEarningsDrift","GrowthAcceleration","QualityValueReRating"];
+ const pm=new Map(pcRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const wm=new Map(webRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const onlyPc=[...pm.keys()].filter(c=>!wm.has(c)),onlyWeb=[...wm.keys()].filter(c=>!pm.has(c));
+ const byStrategy=[];
+ for(const st of sts){
+   const rk=st+"Rank";
+   const ps=new Set([...pm].filter(([,r])=>Number(r[rk])>=1&&Number(r[rk])<=20).map(([c])=>c));
+   const ws=new Set([...wm].filter(([,r])=>Number(r[rk])>=1&&Number(r[rk])<=20).map(([c])=>c));
+   const po=[...ps].filter(c=>!ws.has(c)),wo=[...ws].filter(c=>!ps.has(c));
+   if(po.length||wo.length)byStrategy.push(`${st}: PCのみ ${po.join(",")||"-"} / Webのみ ${wo.join(",")||"-"}`);
+ }
+ const detail=[...new Set([...onlyPc,...onlyWeb])].sort().map(c=>{
+   const p=pm.get(c),q=wm.get(c),r=p||q||{},side=p&&!q?"PC_ONLY":"WEB_ONLY";
+   const ranks=sts.map(st=>`${st}:${p?.[st+"Rank"]??"-"}/${q?.[st+"Rank"]??"-"}`).join(" | ");
+   return `${c} ${r.CompanyName??r.Name??""} ${side} | ${ranks}`;
+ });
+ return {onlyPc,onlyWeb,byStrategy,detail,pm,wm,sts};
+}
+
+if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=async()=>{try{
+ const f=$("screeningStrategyParityFile").files?.[0];if(!f)throw new Error("screening_candidates.csvを選択してください");
+ if(!latestScreeningCandidates.length)throw new Error("先にWebの5戦略選抜を実行してください");
+ const pc=parseCsv(await f.text());if(!pc||!Array.isArray(pc.rows))throw new Error("PC CSV解析失敗");
+ const pcRows=pc.rows;latestScreeningParityPcRows=pcRows;
+ const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+ const pmap=new Map(pcRows.map(r=>[norm(r.NormalizedCode||r.Code||""),r])),wmap=new Map(latestScreeningCandidates.map(r=>[norm(r.NormalizedCode),r]));
+ let both=0,strategy=0;const missing=[],extra=[],diff=[];
+ for(const [c,w] of wmap){const p=pmap.get(c);if(!p){extra.push(c);continue}both++;if(String(p.PrimaryStrategy||"")===String(w.PrimaryStrategy||""))strategy++;else diff.push(`${c}: PC=${p.PrimaryStrategy||"-"} / Web=${w.PrimaryStrategy||"-"}`)}
+ for(const c of pmap.keys())if(!wmap.has(c))missing.push(c);
+ const exact=missing.length===0&&extra.length===0&&strategy===both,d=screeningBoundaryDiagnostics(pcRows,latestScreeningCandidates);
+ $("screeningDiffExportBtn").disabled=false;
+ box("screeningStrategyParityResult",exact?"pass":"warn",`Screening 選抜Parity
+PC CSV行数: ${pcRows.length}
+PC候補: ${pmap.size}
+Web候補: ${wmap.size}
+共通: ${both}
+PrimaryStrategy一致: ${strategy}/${both}
+PCのみ: ${missing.length}
+Webのみ: ${extra.length}
+共通率: ${(both/Math.max(1,pmap.size)*100).toFixed(1)}%
+
+${exact?"完全一致 PASS":"選抜ロジック調整対象"}
+
+【戦略別Top20境界差】
+${d.byStrategy.join("\n")||"なし"}
+
+【差分銘柄 rank PC/Web】
+${d.detail.slice(0,40).join("\n")||"なし"}${diff.length?"\n\nPrimary差分:\n"+diff.slice(0,12).join("\n"):""}`)
+}catch(e){box("screeningStrategyParityResult","fail","FAIL\n"+(e?.message||e))}};
 
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();
 if($("technicalScreeningBtn")) $("technicalScreeningBtn").onclick=async()=>{
@@ -2534,3 +2586,17 @@ PC側にないWeb銘柄: ${missingPc}
  }catch(e){box("holdParityResult","fail","FAIL\n"+(e.message||e))}
  finally{$("holdParityBtn").disabled=false}
 };
+
+if($("screeningDiffExportBtn")) $("screeningDiffExportBtn").onclick=()=>{
+ if(!latestScreeningParityPcRows.length||!latestScreeningCandidates.length)return;
+ const d=screeningBoundaryDiagnostics(latestScreeningParityPcRows,latestScreeningCandidates),codes=[...new Set([...d.onlyPc,...d.onlyWeb])].sort();
+ const esc=v=>'"'+String(v??"").replaceAll('"','""')+'"';
+ const hdr=["Code","Side","CompanyName","PC_Primary","Web_Primary",...d.sts.flatMap(st=>["PC_"+st+"Rank","Web_"+st+"Rank","Web_"+st+"Score"])];
+ const lines=[hdr.map(esc).join(",")];
+ for(const c of codes){const p=d.pm.get(c),q=d.wm.get(c),vals=[c,p&&!q?"PC_ONLY":"WEB_ONLY",p?.CompanyName??p?.Name??q?.CompanyName??"",p?.PrimaryStrategy??"",q?.PrimaryStrategy??""];
+   for(const st of d.sts)vals.push(p?.[st+"Rank"]??"",q?.[st+"Rank"]??"",q?.[st+"Score"]??"");
+   lines.push(vals.map(esc).join(","));
+ }
+ downloadBlob(new Blob(["\uFEFF"+lines.join("\n")],{type:"text/csv;charset=utf-8"}),`screening_parity_diff_${($("screeningBaseAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`);
+};
+
