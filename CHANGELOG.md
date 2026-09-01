@@ -1,10 +1,10 @@
 # CHANGELOG
 
-## v7e-alpha32 — 2026-09-01
-- 日足テクニカルParity PASS後の次工程として、J-Quants V2 銘柄マスター層を追加。
-- `/v2/equities/master` を基準日指定で取得するクライアントを追加。
-- `/jq_equities_master_v1.sqlite` Shardを新設。
-- Code / Date / Company / Market / Sector17 / Sector33 / Scale / Margin / ProductCategory / BasePrice と raw_json を保存。
-- Catalogへ equities_master shard のcoverage/stateを登録。
-- APIキーは従来どおりセッション入力のみ。DB/localStorageへ保存しない。
-- alpha31の日足テクニカル完全Parityを維持。
+## v7e-alpha32b — 2026-09-01
+- 銘柄マスターShardのAPIキー入力導線を修正。
+- Masterカード内に専用APIキー欄を追加。
+- 既存の複数APIキー欄をセッションメモリ上で同期し、どの欄へ入力してもMaster取得で利用可能にした。
+- APIキーはlocalStorage/SQLiteへ保存しない。
+- Master取得ボタンを処理中のみdisabled、成功/失敗にかかわらずfinallyで必ず再有効化。
+- APIキー未入力時はMasterカードの入力欄へfocusし、再試行可能。
+- v7e-alpha32bへ表示・Service Worker cache-bust更新。

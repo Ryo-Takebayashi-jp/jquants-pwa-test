@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha32",
+  "current_release": "v7e-alpha32b",
   "history": [
     {
-      "release": "v7e-alpha32",
+      "release": "v7e-alpha32b",
       "date": "2026-09-01",
-      "note": "Add J-Quants V2 equities/master shard and Catalog registration after daily technical parity completion."
+      "note": "Fix equities master API token routing on iPhone and guarantee retryable master fetch button lifecycle."
     }
   ]
 }

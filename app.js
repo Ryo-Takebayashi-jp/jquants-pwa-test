@@ -73,7 +73,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha32");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha32b");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -438,7 +438,33 @@ if($("recentRepairBtn")) $("recentRepairBtn").onclick=async()=>{
 
 
 let lastGapPlan=[];
-function prodTokenValue(){return $("prodToken")?.value.trim()||$("jqToken")?.value.trim()||""}
+let sessionJqToken="";
+const JQ_TOKEN_INPUT_IDS=["masterToken","prodToken","jqToken","simpleGapToken","shardApiToken","prodDailyToken","gapToken"];
+function prodTokenValue(){
+  for(const id of JQ_TOKEN_INPUT_IDS){
+    const el=$(id), v=el?.value?.trim?.()||"";
+    if(v){ sessionJqToken=v; return v; }
+  }
+  return sessionJqToken;
+}
+function bindSessionTokenInputs(){
+  for(const id of JQ_TOKEN_INPUT_IDS){
+    const el=$(id); if(!el||el.dataset.tokenBound==="1") continue;
+    el.dataset.tokenBound="1";
+    const sync=()=>{
+      const v=el.value.trim();
+      if(!v) return;
+      sessionJqToken=v;
+      for(const otherId of JQ_TOKEN_INPUT_IDS){
+        const other=$(otherId);
+        if(other && other!==el && !other.value) other.value=v;
+      }
+    };
+    el.addEventListener("input",sync);
+    el.addEventListener("change",sync);
+  }
+}
+bindSessionTokenInputs();
 function localTodayIso(){return new Date().toLocaleDateString("sv-SE")}
 async function runDailyCatchupTo(target,token,maxDays=20){
   const st=await getAutoState(), s=st.stats||{}, cp=(st.checkpoint||[])[0], jq=(st.jqcheckpoint||[])[0];
@@ -1155,7 +1181,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-alpha32",
+   appVersion:"v7e-alpha32b",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -1662,15 +1688,27 @@ ${e.message||e}
 
 
 if($("masterFetchBtn")) $("masterFetchBtn").onclick=async()=>{
+ const btn=$("masterFetchBtn");
  const date=$("masterDate").value||localTodayIso();
- const token=prodTokenValue(); if(!token){box("masterResult","fail","APIキーを入力してください");return}
+ const token=($("masterToken")?.value?.trim?.()||prodTokenValue());
+ if(!token){
+   box("masterResult","fail","APIキーを入力してください。\n※このカードのAPIキー欄、または上部のDataLake更新欄のどちらでも使えます。");
+   $("masterToken")?.focus();
+   return;
+ }
+ sessionJqToken=token;
+ btn.disabled=true;
  box("masterResult","run",`銘柄マスター取得中…\n基準日: ${date}`);
  try{
    const got=await jqFetchEquitiesMaster(date,token);
    const wr=await workerCall("equities-master-write",300000,null,null,{date,rows:got.rows});
    box("masterResult","pass",
      `PASS\nEndpoint: ${got.endpoint}\n基準日: ${date}\nAPI rows: ${got.rows.length}\n保存 rows: ${wr.rows}\nDB: ${wr.dbName}\nquick_check: ${wr.quickCheck}\n適用日: ${wr.minDate||"-"} ～ ${wr.maxDate||"-"}`);
- }catch(e){box("masterResult","fail","FAIL\n"+e)}
+ }catch(e){
+   box("masterResult","fail","FAIL\n"+(e?.message||e));
+ }finally{
+   btn.disabled=false;
+ }
 };
 
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();
