@@ -1,8 +1,8 @@
 {
-  "current_release": "v7e-alpha68",
+  "current_release": "v7e-alpha69",
   "history": [
     {
-      "release": "v7e-alpha68",
+      "release": "v7e-alpha69",
       "date": "2026-09-02",
       "note": "Root-cause fix: JS Number(null)=0 violated PC _linear_score(None)=50 semantics; null/blank now returns default before coercion."
     }

@@ -2401,6 +2401,64 @@ function residualFullTrace(pcRows,webSelected,webScored,codes){
  return lines.join("\n");
 }
 
+
+function parityRootCauseAudit(pcRows,webSelected,webScored,codes){
+ const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+ const pm=new Map(pcRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const sm=new Map(webSelected.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const um=new Map(webScored.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
+ const blank=v=>v==null||String(v).trim()==="";
+ const num=v=>blank(v)?null:(Number.isFinite(Number(v))?Number(v):null);
+ const inferReverse=(score,maxN=500)=>{
+   const sc=num(score);if(sc==null)return [];
+   const out=[];
+   for(let n=5;n<=maxN;n++)for(let k2=2;k2<=2*n;k2++){
+     const avg=k2/2,calc=100-avg/n*100;
+     if(Math.abs(calc-sc)<1e-8){out.push({n,avg});if(out.length>=8)return out}
+   }
+   return out;
+ };
+ const peerStats=(row,field)=>{
+   const sec=String(row?.Sector33||"").trim();
+   const peers=webScored.filter(r=>String(r.Sector33||"").trim()===sec&&num(r[field])!=null&&(!["ForecastPER","PBR"].includes(field)||num(r[field])>0));
+   peers.sort((a,b)=>num(a[field])-num(b[field])||String(a.NormalizedCode).localeCompare(String(b.NormalizedCode)));
+   const code=norm(row?.NormalizedCode||row?.Code),idx=peers.findIndex(r=>norm(r.NormalizedCode)===code);
+   return {sec,peers,idx};
+ };
+ const lines=["【alpha69 一発原因監査】","PC screening.py の実装条件とWeb全母集団を同時照合","PC共通条件: Prime/Standard/Growth + ProdCat=011 + 売買代金20D>=5000万円 + Close>=100 + 履歴>=60日","QVR採用条件: score有効 + EarningsReactionPendingでない + FinancialDataFlagがWebRequired/NoLatestFinancialでない → 上位20"," "];
+ for(const c of codes){
+   const p=pm.get(c)||{},w=um.get(c)||{},sel=sm.get(c);if(!Object.keys(w).length)continue;
+   lines.push(`--- ${c} ${w.CompanyName||p.CompanyName||""} ---`);
+   lines.push(`Web基礎適格: Market=${w.Market||"-"} / Product=${w.ProductCategory||"-"} / AvgValue20=${w.AverageTradingValue20D??"-"} / Close=${w.Close??"-"} / History=${w.PriceHistoryDays??"-"}`);
+   lines.push(`Web QVR適格: Score=${w.QualityValueReRatingScore??"(blank)"} / Rank=${w.QualityValueReRatingUniverseRank??"(blank)"} / FinancialFlag=${w.FinancialDataFlag??""} / ReactionPending=${w.EarningsReactionPending??false} / Selected=${sel?"YES":"NO"}`);
+   if(pm.has(c)){
+     for(const [field,scoreField] of [["PBR","SectorPBRValueScore"],["ForecastPER","SectorForecastPERValueScore"],["ForecastDividendYieldPct","SectorDividendYieldValueScore"]]){
+       const ps=p[scoreField],ws=w[scoreField];if(blank(ps)||blank(ws)||Math.abs(Number(ps)-Number(ws))<1e-10)continue;
+       const st=peerStats(w,field),inf=inferReverse(ps);
+       lines.push(`${scoreField}差: PC=${ps} / Web=${ws} / Web peer有効=${st.peers.length} / Web位置=${st.idx>=0?st.idx+1:"-"}`);
+       if(inf.length)lines.push(`PC scoreから逆算可能な(peer数,平均順位): ${inf.map(x=>`(${x.n},${x.avg})`).join(" ")}`);
+       if(st.idx>=0){const lo=Math.max(0,st.idx-3),hi=Math.min(st.peers.length,st.idx+4);lines.push(`${field} Web近傍: `+st.peers.slice(lo,hi).map((r,i)=>`${lo+i+1}:${r.NormalizedCode}=${Number(r[field]).toFixed(6)}`).join(" / "))}
+     }
+   }else if(Number(w.QualityValueReRatingUniverseRank)<=20){
+     lines.push("判定: WebではQVR Top20。PC候補に存在しないため、PC側では①母集団外 ②QVR入力/財務フラグ差 ③ReactionPending差 のいずれか。単なるTop20境界差ではない。");
+   }else{
+     lines.push("判定: Web候補だがQVR Top20由来ではない。SelectedByStrategies/他戦略順位を確認対象。");
+   }
+   lines.push("");
+ }
+ const p2120=pm.get("2120"),w2120=um.get("2120");
+ if(p2120&&w2120){
+   const st=peerStats(w2120,"PBR"),inf=inferReverse(p2120.SectorPBRValueScore).filter(x=>Math.abs(x.n-st.peers.length)<=5);
+   if(inf.length){
+     const best=inf[0];
+     lines.push("【2120 自動結論】");
+     lines.push(`PC SectorPBR=${p2120.SectorPBRValueScore} は peer=${best.n},平均順位=${best.avg} と整合。Webは peer=${st.peers.length},位置=${st.idx+1}。`);
+     if(st.peers.length===best.n+1)lines.push("→ Webのサービス業PBR有効peerがPCよりちょうど1銘柄多い。2120のPBR raw値ではなく、peer母集団差が主因と特定。");
+   }
+ }
+ return lines.join("\n");
+}
+
 function residualBoundaryAudit(pcRows,webRows,codes){
  const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
  const pm=new Map(pcRows.map(r=>[norm(r.NormalizedCode??r.Code),r]).filter(x=>x[0]));
@@ -2434,6 +2492,7 @@ if($("screeningStrategyParityBtn")) $("screeningStrategyParityBtn").onclick=asyn
  const residualCodes=[...new Set([...missing,...extra])];
  const residualAudit=residualBoundaryAudit(pcRows,latestScreeningScoredRows,residualCodes);
  const residualTrace=residualFullTrace(pcRows,latestScreeningCandidates,latestScreeningScoredRows,residualCodes);
+ const rootCauseAudit=parityRootCauseAudit(pcRows,latestScreeningCandidates,latestScreeningScoredRows,residualCodes);
  // alpha62: pinpoint the first QVR component divergence on common rows.
  const qvrFields=[
   "QualityValueReRatingScore","QVRQualityScore","QVRValueScore","QVRReRatingScore","QVRCrowdingPenalty","QVRQualityMismatchPenalty",
@@ -2474,7 +2533,9 @@ ${d.detail.slice(0,40).join("\n")||"なし"}${diff.length?"\n\nPrimary差分:\n"
 【残差銘柄 自動監査】
 ${residualAudit||"残差なし"}
 
-${residualTrace}${auditText}`)
+${residualTrace}
+
+${rootCauseAudit}${auditText}`)
 }catch(e){box("screeningStrategyParityResult","fail","FAIL\n"+(e?.message||e))}};
 
 if($("screeningAsOf")&&!$("screeningAsOf").value) $("screeningAsOf").value=todayIsoLocal();

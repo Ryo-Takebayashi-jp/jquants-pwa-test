@@ -1,6 +1,15 @@
 # CHANGELOG
 
-## v7e-alpha68 — 2026-09-02
+## v7e-alpha69 — 2026-09-02
+- Screening Parity残差向け「一発原因監査」を自動追加。
+- PC screening.pyの母集団/Top20適格条件を画面内で明示。
+- PCのSectorスコアからpeer数・平均順位を逆算し、Web全母集団のpeer数/順位/近傍と同時照合。
+- 2120 LIFULLのSectorPBR差について、peer母集団差を自動判定。
+- Web-only残差は、単なる境界差かPC側母集団/財務フラグ/ReactionPending差かを分類。
+- 追加データ更新不要。既存のWeb選抜結果＋PC screening_candidates.csvだけで実行。
+
+
+## v7e-alpha69 — 2026-09-02
 - QVR残差の根本原因を特定。
 - PC `screening.py::_linear_score` は `None` を既定値50点として扱う。
 - Web `lin()` は先に `Number(v)` を実行していたため、JavaScriptの `Number(null) === 0` により欠損値を実値0として誤採点していた。
