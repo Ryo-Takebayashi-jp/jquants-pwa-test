@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha73",
+  "current_release": "v7e-alpha75",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -20,6 +20,16 @@
       "release": "v7e-alpha73",
       "date": "2026-09-02",
       "note": "Discovery Daily 42-column Web recomputation/parity: price/TOPIX/sector/historical technical/supply/market regime."
+    },
+    {
+      "release": "v7e-alpha74",
+      "date": "2026-09-02",
+      "note": "One-click next delivered trading day DataLake update for bars/master/fins/earnings/TOPIX/calendar/supply-demand + normalization; Discovery parity logic unchanged."
+    },
+    {
+      "release": "v7e-alpha75",
+      "date": "2026-09-02",
+      "note": "Discovery Daily append/freeze parity; sector/technical parity fixes; resumable supply-demand coverage; one-click daily update pinned to top."
     }
   ]
 }

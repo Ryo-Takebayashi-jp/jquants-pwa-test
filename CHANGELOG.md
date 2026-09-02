@@ -1,3 +1,26 @@
+# v7e-alpha75 - 2026-09-02
+
+- Discovery DailyをPCと同じ append/freeze 履歴へ変更。既存PC `discovery_episode_daily.csv` を一度Web private DBへ移行し、既存 Episode×Date は再計算で上書きしない。
+- Discovery Daily Parityを「基準日の計算エンジン監査」と「全履歴診断」に分離。過去のvintage/provenance差と現在計算差を混同しない。
+- Sector benchmarkの母集団をPC Screening universe（Prime/Standard/Growth + ProductCategory=011）へ一致。
+- historical technicalの日足入力をraw_jsonからPCと同じフィールド優先順位で再構築。AdjH/AdjLを誤って利用して分割調整を二重適用する差を修正。
+- 信用残の必要履歴を一律470日前とする誤診断を修正。信用残はEpisode最古日から21日前、大口空売りは470日前を別々に監査。
+- 需給5種に取得coverageを追加。既取得日はAPI照会をskipし、再実行時に最初から取り直さない。既存DBのdata_dateも初回coverageとして再利用。
+- 空売り報告raw保存のdata_date候補へ `DiscDate` / `CalcDate` を追加。
+- Discovery Dailyから基準日の対象コードについてWeb大口空売りraw診断CSVを出力できるようにし、残るSupply差を更新版なしで追跡可能にした。
+- 「次の取引日を全データ更新」をページ最上段へ移動。週次需給は14日、日次公表需給は3日の短いlookbackで未取得/遅延分のみ確認。
+- Screening 87/87 PASS、Discovery Episode 23/23 PASSの基準ロジックは変更なし。
+
+# v7e-alpha74 - 2026-09-02
+
+- Web DataLakeに「次の取引日を全データ更新」を追加。
+- 日足DataLake最新日から、J-Quantsで次に配信済みの日足日を自動探索（週末・休場日を自動スキップ）。
+- 対象日に日足 / 銘柄マスター / 財務サマリー / 決算予定 / TOPIX / 営業日カレンダー / Standard需給5種を順次取得・保存。
+- 需給取得後に分析用正規化まで自動実行。
+- 各個別カードの日付入力も対象日に同期し、翌日は同じボタンを押すだけで次取引日へ進める。
+- 日足未配信時は他データを更新せず安全停止。需給などPlan依存項目は失敗しても主要データ更新を継続するPlan Adaptive動作。
+- Discovery Episode / Discovery Daily parityロジックはalpha73から変更なし。
+
 # v7e-alpha73 - 2026-09-02
 
 - Discovery Daily 42-column PC/Web Parityを追加。

@@ -1111,6 +1111,32 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
 
+ if(cmd==="discovery-short-trace"){
+   let db=null;try{
+     const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),codes=new Set((payload.codes||[]).map(v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean));
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+     if(!poolFileNamesSafe(p).some(f=>f.replace(/^\/+/,"")==="jq_short_sale_report_v1.sqlite")){self.postMessage({ok:true,type:"result",rows:[]});return}
+     db=new p.OpfsSAHPoolDb("/jq_short_sale_report_v1.sqlite","r");
+     const raw=execRows(db,"SELECT data_date,raw_json FROM short_sale_report ORDER BY data_date,row_key"),out=[];
+     for(const rr of raw){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}let c=String(o.Code??o.code??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);const disc=String(o.DiscDate??rr.data_date??"").slice(0,10),calc=String(o.CalcDate??"").slice(0,10);if(!c||!codes.has(c)||!disc||disc>asOf)continue;out.push({Code:c,DiscDate:disc,CalcDate:calc,SSName:o.SSName??"",SSAddr:o.SSAddr??"",DICName:o.DICName??"",DICAddr:o.DICAddr??"",FundName:o.FundName??"",ShrtPosToSO:o.ShrtPosToSO??"",ShrtPosShares:o.ShrtPosShares??"",PrevRptDate:o.PrevRptDate??"",PrevRptRatio:o.PrevRptRatio??"",StoredDataDate:rr.data_date??""})}
+     db.close();db=null;self.postMessage({ok:true,type:"result",rows:out,count:out.length});return;
+   }catch(err){try{if(db)db.close()}catch(_){}throw err}
+ }
+
+ if(cmd==="discovery-daily-import-seed"){
+   let pdb=null;try{
+     const payload=d.payload||{},rows=Array.isArray(payload.rows)?payload.rows:[];
+     if(!rows.length)throw new Error("Discovery Daily seed rows empty");
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS discovery_episode_daily_web(event_id TEXT NOT NULL,date TEXT NOT NULL,row_json TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(event_id,date)) WITHOUT ROWID`);
+     const st=pdb.prepare(`INSERT OR REPLACE INTO discovery_episode_daily_web(event_id,date,row_json,updated_at) VALUES(?,?,?,?)`);
+     let count=0,minDate="",maxDate="";const now=new Date().toISOString();
+     try{pdb.exec("BEGIN IMMEDIATE");pdb.exec("DELETE FROM discovery_episode_daily_web");for(const r of rows){const id=String(r.EventID||"").trim(),dt=String(r.Date||"").slice(0,10);if(!id||!/^\d{4}-\d{2}-\d{2}$/.test(dt))continue;st.bind([id,dt,JSON.stringify(r),now]);st.step();st.reset();count++;minDate=!minDate||dt<minDate?dt:minDate;maxDate=!maxDate||dt>maxDate?dt:maxDate}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
+     const stored=Number(scalar(pdb,"SELECT COUNT(*) FROM discovery_episode_daily_web")||0);pdb.close();pdb=null;
+     self.postMessage({ok:true,type:"result",count:stored,imported:count,minDate,maxDate});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+
  if(cmd==="discovery-daily-recalc"){
    let pdb=null,cdb=null,tdb=null,mdb=null,stage="01-input";
    try{
@@ -1144,7 +1170,10 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        episodes.push({eventId:String(x.event_id),code,start,end,row});earliest=minIso(earliest,start);
      }
      if(!episodes.length)throw new Error("有効なDiscovery Episodeがありません");
-     const tracked=[...new Set(episodes.map(x=>x.code))],trackedJq=tracked.map(jq),historyStart=subDays(earliest,430),supplyHistoryStart=subDays(earliest,470);
+     const tracked=[...new Set(episodes.map(x=>x.code))],trackedJq=tracked.map(jq),historyStart=subDays(earliest,430),
+       // Margin weekly features only require the current observation plus the 1W reference;
+       // large-short subject-state reconstruction needs the long 470-day window.
+       marginHistoryStart=subDays(earliest,21),shortHistoryStart=subDays(earliest,470),supplyHistoryStart=shortHistoryStart;
 
      stage="03-master-sector";
      const sectorMap=new Map();let masterDate="";
@@ -1152,8 +1181,12 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");
        masterDate=String(scalarBind(mdb,"SELECT max(effective_date) FROM equities_master WHERE effective_date<=?",[asOf])||"");
        if(masterDate){
-         const ms=execRows(mdb,"SELECT code,sector33_name FROM equities_master WHERE effective_date=?",[masterDate]);
-         for(const r of ms){const sec=String(r.sector33_name||"").trim(),c=norm(r.code);if(!sec||!c)continue;if(!sectorMap.has(sec))sectorMap.set(sec,[]);sectorMap.get(sec).push(c)}
+         const ms=execRows(mdb,"SELECT code,sector33_name,market_name,product_category FROM equities_master WHERE effective_date=?",[masterDate]);
+         // PC discovery sector benchmark reads Sector33 from all securities, but its price cache
+         // contains only the current screening investable universe (Prime/Standard/Growth + ProdCat=011).
+         // Therefore the effective constituent set is the same filtered universe.
+         const targetMarkets=new Set(["プライム","スタンダード","グロース"]);
+         for(const r of ms){const sec=String(r.sector33_name||"").trim(),c=norm(r.code),mkt=String(r.market_name||"").trim(),prod=String(r.product_category||"").trim();if(!sec||!c||!targetMarkets.has(mkt)||prod!=="011")continue;if(!sectorMap.has(sec))sectorMap.set(sec,[]);sectorMap.get(sec).push(c)}
        }
        mdb.close();mdb=null;
      }catch(_){try{if(mdb)mdb.close()}catch(__){}mdb=null}
@@ -1169,12 +1202,22 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        .sort((a,b)=>{const pa=String(a.shard_key)==="bars_recent"?2:1,pb=String(b.shard_key)==="bars_recent"?2:1;return pa-pb||String(a.shard_key).localeCompare(String(b.shard_key))});
      if(!cats.length)throw new Error("bars_daily Shardがありません");
      const trackedHistory=new Map(),sectorPrices=new Map();
-     const addTracked=r=>{const c=norm(r.code),dt=String(r.date),base=num(r.adj_c)??num(r.c),h=num(r.adj_h)??num(r.h)??base,l=num(r.adj_l)??num(r.l)??base;
-       if(!c||!dt||!Number.isFinite(base))return;if(!trackedHistory.has(c))trackedHistory.set(c,new Map());trackedHistory.get(c).set(dt,{date:dt,close:base,h,l,adjFactor:num(r.adj_factor)??1,volume:num(r.volume),tradingValue:num(r.turnover_value)??num(r.value)});};
+     // Reconstruct the exact PC discovery price input from raw_json.
+     // PC datalake_access.price_rows uses AdjC first for the close, while
+     // technical._adjusted_entries deliberately does NOT consume AdjH/AdjL aliases
+     // (it uses AdjustmentHigh/AdjHigh/High/H and AdjustmentLow/AdjLow/Low/L).
+     // Reading transformed DB adj_h/adj_l here caused split factors to be applied twice.
+     const addTracked=r=>{let o={};try{o=JSON.parse(String(r.raw_json||"{}"))}catch(_){}
+       const c=norm(r.code),dt=String(r.date),base=num(o.AdjC)??num(o.AdjustmentClose)??num(o.AdjClose)??num(o.C)??num(o.Close)??num(r.adj_c)??num(r.c),
+         h=num(o.AdjustmentHigh)??num(o.AdjHigh)??num(o.High)??num(o.H)??num(r.h)??base,
+         l=num(o.AdjustmentLow)??num(o.AdjLow)??num(o.Low)??num(o.L)??num(r.l)??base,
+         factor=num(o.AdjFactor)??num(o.AdjustmentFactor)??num(r.adj_factor)??1,
+         vol=num(o.Vo)??num(o.Volume)??num(r.volume),tv=num(o.Va)??num(o.TradingValue)??num(r.turnover_value)??num(r.value);
+       if(!c||!dt||!Number.isFinite(base))return;if(!trackedHistory.has(c))trackedHistory.set(c,new Map());trackedHistory.get(c).set(dt,{date:dt,close:base,h,l,adjFactor:factor,volume:vol,tradingValue:tv});};
      const addSector=r=>{const c=norm(r.code),dt=String(r.date),close=num(r.c)??num(r.adj_c);if(!c||!dt||!Number.isFinite(close))return;if(!sectorPrices.has(c))sectorPrices.set(c,new Map());sectorPrices.get(c).set(dt,close)};
      for(const sh of cats){let db=null;try{const nm=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");
        for(let off=0;off<trackedJq.length;off+=400){const chunk=trackedJq.slice(off,off+400),ph=chunk.map(()=>"?").join(",");if(!ph)continue;
-         const rs=execRows(db,`SELECT code,date,c,h,l,adj_c,adj_h,adj_l,adj_factor,volume,turnover_value,value FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[historyStart,asOf,...chunk]);for(const r of rs)addTracked(r)}
+         const rs=execRows(db,`SELECT code,date,c,h,l,adj_c,adj_h,adj_l,adj_factor,volume,turnover_value,value,raw_json FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[historyStart,asOf,...chunk]);for(const r of rs)addTracked(r)}
        for(let off=0;off<sectorJq.length;off+=400){const chunk=sectorJq.slice(off,off+400),ph=chunk.map(()=>"?").join(",");if(!ph)continue;
          const rs=execRows(db,`SELECT code,date,c,adj_c FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[earliest,asOf,...chunk]);for(const r of rs)addSector(r)}
      }finally{try{if(db)db.close()}catch(_){}}}
@@ -1229,9 +1272,13 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        }}
      out.sort((a,b)=>String(a.EventID).localeCompare(String(b.EventID))||String(a.Date).localeCompare(String(b.Date)));
 
-     stage="09-save";pdb.exec(`CREATE TABLE IF NOT EXISTS discovery_episode_daily_web(event_id TEXT NOT NULL,date TEXT NOT NULL,row_json TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(event_id,date)) WITHOUT ROWID`);const st=pdb.prepare(`INSERT INTO discovery_episode_daily_web(event_id,date,row_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(event_id,date) DO UPDATE SET row_json=excluded.row_json,updated_at=excluded.updated_at`);try{pdb.exec("BEGIN IMMEDIATE");const now=new Date().toISOString();for(const r of out){st.bind([String(r.EventID),String(r.Date),JSON.stringify(r),now]);st.step();st.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}pdb.close();pdb=null}
-     const coverage={historyStart,supplyHistoryStart,marginMinDate:marginMin||"",shortMinDate:shortMin||"",alertMinDate:alertMin||"",marginHistorySufficient:!marginAvailable||!marginMin||marginMin<=supplyHistoryStart,shortHistorySufficient:!shortAvailable||!shortMin||shortMin<=supplyHistoryStart,sourceStatusMode:"WebContentOnly_NoPCDatasetStatusMetadata"};
-     self.postMessage({ok:true,type:"result",asOf,from:earliest,historyStart,masterDate,episodes:episodes.length,count:out.length,rows:out,coverage,elapsedMs:Math.round(performance.now()-t0)});return;
+     stage="09-save";pdb.exec(`CREATE TABLE IF NOT EXISTS discovery_episode_daily_web(event_id TEXT NOT NULL,date TEXT NOT NULL,row_json TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(event_id,date)) WITHOUT ROWID`);
+     // Discovery Daily is append/freeze by design on PC.  A migrated PC history seed must never
+     // be rewritten from today's Web DataLake; only previously unseen Episode×Date rows append.
+     const st=pdb.prepare(`INSERT INTO discovery_episode_daily_web(event_id,date,row_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(event_id,date) DO NOTHING`);try{pdb.exec("BEGIN IMMEDIATE");const now=new Date().toISOString();for(const r of out){st.bind([String(r.EventID),String(r.Date),JSON.stringify(r),now]);st.step();st.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
+     const storedRows=execRows(pdb,"SELECT row_json FROM discovery_episode_daily_web ORDER BY event_id,date").map(x=>{try{return JSON.parse(String(x.row_json||"{}"))}catch(_){return {}}}).filter(x=>x.EventID&&x.Date);pdb.close();pdb=null;
+     const coverage={historyStart,supplyHistoryStart,marginHistoryStart,shortHistoryStart,marginMinDate:marginMin||"",shortMinDate:shortMin||"",alertMinDate:alertMin||"",marginHistorySufficient:!marginAvailable||!marginMin||marginMin<=marginHistoryStart,shortHistorySufficient:!shortAvailable||!shortMin||shortMin<=shortHistoryStart,sourceStatusMode:"WebContentOnly_NoPCDatasetStatusMetadata"};
+     self.postMessage({ok:true,type:"result",asOf,from:earliest,historyStart,masterDate,episodes:episodes.length,count:out.length,rows:out,storedRows,storedCount:storedRows.length,coverage,elapsedMs:Math.round(performance.now()-t0)});return;
    }catch(err){try{if(pdb)pdb.close()}catch(_){}try{if(cdb)cdb.close()}catch(_){}try{if(tdb)tdb.close()}catch(_){}try{if(mdb)mdb.close()}catch(_){}throw new Error(`[discovery-daily:${stage}] ${err?.message||err}`)}
  }
 
@@ -1405,6 +1452,18 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
 
+ if(cmd==="raw-range-covered-dates"){
+   const payload=d.payload||{},writerCmd=String(payload.writerCmd||"");
+   const map={
+     "margin-interest-write":["/jq_margin_interest_v1.sqlite","margin_interest"],
+     "margin-alert-write":["/jq_margin_alert_v1.sqlite","margin_alert"],
+     "short-ratio-write":["/jq_short_ratio_v1.sqlite","short_ratio"],
+     "short-sale-report-write":["/jq_short_sale_report_v1.sqlite","short_sale_report"],
+     "investor-types-write":["/jq_investor_types_v1.sqlite","investor_types"]
+   },cfg=map[writerCmd];if(!cfg){self.postMessage({ok:true,type:"result",dates:[]});return}
+   let db=null;try{if(!poolFileNamesSafe(p).some(f=>f.replace(/^\/+/,"")===cfg[0].replace(/^\/+/,""))){self.postMessage({ok:true,type:"result",dates:[],coverage:[]});return}db=new p.OpfsSAHPoolDb(cfg[0],"r");const has=Number(scalarBind(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='fetch_coverage'",[])||0)>0;let rows=[];if(has)rows=execRows(db,`SELECT query_date,row_count,fetched_at FROM fetch_coverage UNION ALL SELECT data_date AS query_date,COUNT(*) AS row_count,'' AS fetched_at FROM ${cfg[1]} WHERE data_date IS NOT NULL AND data_date<>'' AND data_date NOT IN (SELECT query_date FROM fetch_coverage) GROUP BY data_date ORDER BY query_date`);else rows=execRows(db,`SELECT data_date AS query_date,COUNT(*) AS row_count,'' AS fetched_at FROM ${cfg[1]} WHERE data_date IS NOT NULL AND data_date<>'' GROUP BY data_date ORDER BY data_date`);db.close();db=null;const coverage=rows.map(x=>({date:String(x.query_date||""),rowCount:Number(x.row_count||0),fetchedAt:String(x.fetched_at||"")})).filter(x=>x.date);self.postMessage({ok:true,type:"result",dates:coverage.map(x=>x.date),coverage});return}catch(_){try{if(db)db.close()}catch(__){}self.postMessage({ok:true,type:"result",dates:[],coverage:[]});return}
+ }
+
  const RAW_RANGE_DATASETS={
    "topix-write":{db:"/jq_topix_v1.sqlite",table:"topix",key:"topix",dataset:"topix"},
    "market-calendar-write":{db:"/jq_market_calendar_v1.sqlite",table:"market_calendar",key:"market_calendar",dataset:"market_calendar"},
@@ -1415,7 +1474,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    "investor-types-write":{db:"/jq_investor_types_v1.sqlite",table:"investor_types",key:"investor_types",dataset:"investor_types"}
  };
  if(RAW_RANGE_DATASETS[cmd]){
-   const cfg=RAW_RANGE_DATASETS[cmd],payload=d.payload||{},rows=payload.rows||[],from=String(payload.from||""),to=String(payload.to||"");
+   const cfg=RAW_RANGE_DATASETS[cmd],payload=d.payload||{},rows=payload.rows||[],from=String(payload.from||""),to=String(payload.to||""),coverageDates=Array.isArray(payload.coverageDates)?payload.coverageDates.map(x=>String(x||"").slice(0,10)).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x)):[];
    let db=null;
    try{
      db=new p.OpfsSAHPoolDb(cfg.db,"c");
@@ -1427,17 +1486,19 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      ) WITHOUT ROWID`);
      db.exec(`CREATE INDEX IF NOT EXISTS idx_${cfg.table}_date ON ${cfg.table}(data_date)`);
      db.exec(`CREATE INDEX IF NOT EXISTS idx_${cfg.table}_code ON ${cfg.table}(code)`);
+     db.exec(`CREATE TABLE IF NOT EXISTS fetch_coverage(query_date TEXT PRIMARY KEY,row_count INTEGER NOT NULL,fetched_at TEXT NOT NULL) WITHOUT ROWID`);
      const stmt=db.prepare(`INSERT OR REPLACE INTO ${cfg.table}(row_key,data_date,code,raw_json) VALUES(?,?,?,?)`);
      db.exec("BEGIN");
      try{
        let seq=0;
        for(const r of rows){
-         const date=String(r.Date??r.date??r.StartDate??r.PubDate??"").slice(0,10);
+         const date=String(r.Date??r.date??r.DiscDate??r.CalcDate??r.StartDate??r.PubDate??"").slice(0,10);
          const code=String(r.Code??r.code??r.S33??r.Sector33Code??r.Section??"").trim();
          const signature=JSON.stringify(r);
          const rowKey=[date,code,signature.slice(0,120),seq++].join("|");
          stmt.bind([rowKey,date||null,code||null,signature]).stepReset();
        }
+       if(coverageDates.length){const counts=new Map();for(const r of rows){const dt=String(r.Date??r.date??r.DiscDate??r.CalcDate??r.StartDate??r.PubDate??"").slice(0,10);if(dt)counts.set(dt,(counts.get(dt)||0)+1)}const cov=db.prepare(`INSERT OR REPLACE INTO fetch_coverage(query_date,row_count,fetched_at) VALUES(?,?,?)`);try{const now=new Date().toISOString();for(const dt of coverageDates){cov.bind([dt,Number(counts.get(dt)||0),now]);cov.step();cov.reset()}}finally{try{cov.finalize()}catch(_){}}}
        db.exec("COMMIT");
      }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
      stmt.finalize();

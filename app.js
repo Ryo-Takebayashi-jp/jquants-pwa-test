@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha73");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha75");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha73").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha75").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -322,10 +322,11 @@ function isoDays(from,to){
  return out;
 }
 function isoWeekdays(from,to){return isoDays(from,to).filter(x=>{const d=new Date(x+"T00:00:00").getDay();return d!==0&&d!==6})}
-async function jqFetchByDates(path,dates,token,onProgress){
+async function jqFetchByDates(path,dates,token,onProgress,opts={}){
+ const skipDates=opts.skipDates instanceof Set?opts.skipDates:new Set(opts.skipDates||[]),allDates=[...dates],todo=allDates.filter(x=>!skipDates.has(x));
  let rows=[],calls=0,empty=0;
- for(let i=0;i<dates.length;i++){
-   const date=dates[i];
+ for(let i=0;i<todo.length;i++){
+   const date=todo[i];
    try{
      const r=await jqFetchV2Rows(path,{date:date.replaceAll("-","")},token);
      rows.push(...r.rows); calls++; if(!r.rows.length)empty++;
@@ -333,37 +334,45 @@ async function jqFetchByDates(path,dates,token,onProgress){
      if(/subscription covers/i.test(String(e))) throw e;
      throw new Error(`${path} ${date}: ${e.message||e}`);
    }
-   if(onProgress && (i%5===0||i===dates.length-1))onProgress(i+1,dates.length,rows.length);
-   if(i<dates.length-1)await sleep(120);
+   if(onProgress && (i%5===0||i===todo.length-1))onProgress(i+1,todo.length,rows.length,allDates.length-todo.length);
+   if(i<todo.length-1)await sleep(120);
  }
- return {rows,calls,empty,endpoint:`/v2${path}`,strategy:"date-scan"};
+ return {rows,calls,empty,queriedDates:todo,skippedDates:allDates.length-todo.length,totalDates:allDates.length,endpoint:`/v2${path}`,strategy:"date-scan+resume"};
 }
-async function jqFetchMarginInterest(from,to,token,onProgress){
+async function jqFetchMarginInterest(from,to,token,onProgress,opts={}){
  // Weekly margin interest requires code OR date. For all-market DataLake, date scan is far cheaper than 4,441 code scans.
  const dates=isoWeekdays(from,to).filter(x=>new Date(x+"T00:00:00").getDay()===5);
- return jqFetchByDates("/markets/margin-interest",dates,token,onProgress);
+ return jqFetchByDates("/markets/margin-interest",dates,token,onProgress,opts);
 }
-async function jqFetchMarginAlert(from,to,token,onProgress){
+async function jqFetchMarginAlert(from,to,token,onProgress,opts={}){
  // Daily-publication margin supports all-listed retrieval by a specific date.
- return jqFetchByDates("/markets/margin-alert",isoWeekdays(from,to),token,onProgress);
+ return jqFetchByDates("/markets/margin-alert",isoWeekdays(from,to),token,onProgress,opts);
 }
-async function jqFetchShortRatio(from,to,token,onProgress){
+async function jqFetchShortRatio(from,to,token,onProgress,opts={}){
  // API requires date OR s33. For all-market history, scan dates rather than 33 sector codes.
- return jqFetchByDates("/markets/short-ratio",isoWeekdays(from,to),token,onProgress);
+ return jqFetchByDates("/markets/short-ratio",isoWeekdays(from,to),token,onProgress,opts);
 }
-async function jqFetchShortSaleReport(from,to,token,onProgress){
+async function jqFetchShortSaleReport(from,to,token,onProgress,opts={}){
  // API requires code OR disc_date OR calc_date. For all-market history, scan disclosure dates.
- let rows=[],calls=0,empty=0,dates=isoWeekdays(from,to);
+ const skipDates=opts.skipDates instanceof Set?opts.skipDates:new Set(opts.skipDates||[]),allDates=isoWeekdays(from,to),dates=allDates.filter(x=>!skipDates.has(x));
+ let rows=[],calls=0,empty=0;
  for(let i=0;i<dates.length;i++){
    const date=dates[i];
    const r=await jqFetchV2Rows("/markets/short-sale-report",{disc_date:date.replaceAll("-","")},token);
    rows.push(...r.rows); calls++; if(!r.rows.length)empty++;
-   if(onProgress && (i%5===0||i===dates.length-1))onProgress(i+1,dates.length,rows.length);
+   if(onProgress && (i%5===0||i===dates.length-1))onProgress(i+1,dates.length,rows.length,allDates.length-dates.length);
    if(i<dates.length-1)await sleep(120);
  }
- return {rows,calls,empty,endpoint:"/v2/markets/short-sale-report",strategy:"disc-date-scan"};
+ return {rows,calls,empty,queriedDates:dates,skippedDates:allDates.length-dates.length,totalDates:allDates.length,endpoint:"/v2/markets/short-sale-report",strategy:"disc-date-scan+resume"};
 }
-async function jqFetchInvestorTypes(from,to,token){return jqFetchRange("/equities/investor-types",from,to,token)}
+async function jqFetchInvestorTypes(from,to,token,onProgress,opts={}){
+ // Investor-types is a range endpoint. Coverage still prevents a completed historical range from being re-fetched.
+ const skipDates=opts.skipDates instanceof Set?opts.skipDates:new Set(opts.skipDates||[]),allDates=isoWeekdays(from,to),todo=allDates.filter(x=>!skipDates.has(x));
+ if(!todo.length)return {rows:[],calls:0,empty:0,queriedDates:[],skippedDates:allDates.length,totalDates:allDates.length,endpoint:"/v2/equities/investor-types",strategy:"range+resume"};
+ const qFrom=todo[0],qTo=todo[todo.length-1],r=await jqFetchRange("/equities/investor-types",qFrom,qTo,token);
+ if(onProgress)onProgress(1,1,r.rows.length,allDates.length-todo.length);
+ return {...r,calls:1,empty:r.rows.length?0:1,queriedDates:todo,skippedDates:allDates.length-todo.length,totalDates:allDates.length,strategy:"range+resume"};
+}
 
 async function jqFetchEquitiesMaster(date, token){
  if(!token) throw new Error("APIキーを入力してください");
@@ -1667,9 +1676,10 @@ if($("gapRepair2026Btn"))$("gapRepair2026Btn").onclick=async()=>{
 if($("simpleDailyDate")&&!$("simpleDailyDate").value) $("simpleDailyDate").value=todayIsoLocal();
 
 function copyTokenToAdvanced(){
- const t=$("simpleGapToken")?.value?.trim()||"";
- if($("gapToken")) $("gapToken").value=t;
- if($("prodDailyToken")) $("prodDailyToken").value=t;
+ const t=prodTokenValue()||"";
+ if($("gapToken")&&!$("gapToken").value) $("gapToken").value=t;
+ if($("prodDailyToken")&&!$("prodDailyToken").value) $("prodDailyToken").value=t;
+ if($("simpleGapToken")&&!$("simpleGapToken").value) $("simpleGapToken").value=t;
  return t;
 }
 async function simpleAudit(){
@@ -1726,6 +1736,91 @@ Legacy DataLake: 未使用
 処理時間: ${(wr.elapsedMs/1000).toFixed(1)}秒`);
  }catch(e){box("simpleDailyResult","fail","FAIL\n"+(e.message||e))}
  finally{$("simpleDailyBtn").disabled=false}
+};
+
+// v7e-alpha75: advance the local DataLake one trading day with one operation.
+function addIsoDays(iso,n){
+ const d=new Date(String(iso)+"T00:00:00");
+ d.setDate(d.getDate()+Number(n||0));
+ return d.toLocaleDateString("sv-SE");
+}
+function syncDailyDateInputs(date){
+ const single=["simpleDailyDate","masterDate","finsDate","earningsDate","screeningAsOf","screeningBaseAsOf","parityAsOf","discoveryAsOf"];
+ for(const id of single) if($(id)) $(id).value=date;
+ const ranges=[["topixFrom","topixTo"],["calendarFrom","calendarTo"],["sdFrom","sdTo"]];
+ for(const [a,b] of ranges){if($(a))$(a).value=date;if($(b))$(b).value=date}
+}
+async function writeRangeRowsForDay(workerCmd,date,rows){
+ return workerCall(workerCmd,300000,null,null,{from:date,to:date,rows:rows||[]});
+}
+if($("nextTradingDayAllBtn")) $("nextTradingDayAllBtn").onclick=async()=>{
+ const btn=$("nextTradingDayAllBtn"),token=copyTokenToAdvanced();
+ if(!token){box("nextTradingDayAllResult","warn","APIキーを入力してください。");return}
+ btn.disabled=true;
+ const lines=[],results=[]; let target="",base="",barsFetch=null;
+ const report=()=>box("nextTradingDayAllResult","run",lines.join("\n"));
+ const run=async(label,fn,{optional=false}={})=>{
+   lines.push(`${label}: 実行中…`);report();
+   try{const x=await fn();results.push({label,ok:true});lines[lines.length-1]=`${label}: OK${x?.rows!=null?` (${Number(x.rows).toLocaleString()} rows)`:""}`;report();return x}
+   catch(e){results.push({label,ok:false,optional,error:String(e?.message||e)});lines[lines.length-1]=`${label}: NG - ${e?.message||e}`;report();return null}
+ };
+ try{
+   const cov=await workerCall("catalog-coverage-audit",300000);
+   base=String(cov.coverageEnd||"");
+   if(!base) throw new Error("日足DataLakeの最新日を取得できません。先に日足DataLakeを構築してください。");
+   const today=localTodayIso();
+   lines.push(`現在の日足最新日: ${base}`);
+   lines.push(`配信済みの次取引日を探索中…`);report();
+   for(let i=1;i<=14;i++){
+     const d=addIsoDays(base,i);
+     if(d>today) break;
+     const w=new Date(d+"T00:00:00").getDay();
+     if(w===0||w===6) continue;
+     const got=await jqFetchDaily(d,token);
+     if(got.rows.length){target=d;barsFetch=got;break}
+     await sleep(120);
+   }
+   if(!target){
+     box("nextTradingDayAllResult","pass",`更新不要
+日足DataLake最新日: ${base}
+本日: ${today}
+次の配信済み取引日はまだありません。`);
+     return;
+   }
+   syncDailyDateInputs(target);
+   lines.length=0;lines.push(`一括更新日: ${target}`,`基準: 日足DataLake ${base} の次の配信済み取引日`,``);report();
+
+   await run("日足",async()=>{const wr=await workerCall("shard-native-daily-write",600000,null,null,{date:target,rows:barsFetch.rows});return {rows:barsFetch.rows.length,wr}});
+   await run("銘柄マスター",async()=>{const g=await jqFetchEquitiesMaster(target,token);await workerCall("equities-master-write",300000,null,null,{date:target,rows:g.rows});return {rows:g.rows.length}});
+   await run("財務サマリー",async()=>{const g=await jqFetchFinsSummary(target,token);await workerCall("fins-summary-write",300000,null,null,{date:target,rows:g.rows});return {rows:g.rows.length}});
+   await run("決算予定",async()=>{const g=await jqFetchEarningsCalendar(target,token);await workerCall("earnings-calendar-write",300000,null,null,{date:target,rows:g.rows});return {rows:g.rows.length}});
+   await run("TOPIX",async()=>{const g=await jqFetchTopix(target,target,token);await writeRangeRowsForDay("topix-write",target,g.rows);return {rows:g.rows.length}});
+   await run("営業日カレンダー",async()=>{const g=await jqFetchMarketCalendar(target,target,token);await writeRangeRowsForDay("market-calendar-write",target,g.rows);return {rows:g.rows.length}});
+
+   const supplyJobs=[
+     // Weekly datasets get a 14-day lookback; daily publication datasets re-check the recent 3 days.
+     ["信用取引週末残高",jqFetchMarginInterest,"margin-interest-write",14],
+     ["日々公表信用",jqFetchMarginAlert,"margin-alert-write",3],
+     ["空売り比率",jqFetchShortRatio,"short-ratio-write",3],
+     ["空売り報告",jqFetchShortSaleReport,"short-sale-report-write",3],
+     ["投資部門別",jqFetchInvestorTypes,"investor-types-write",14]
+   ];
+   for(const [label,fetcher,cmd,lookback] of supplyJobs){
+     await run(label,async()=>{
+       const from=addIsoDays(target,-lookback),r=await fetchAndPersistSupplyRange(fetcher,cmd,from,target,token);
+       return {rows:r.got.rows.length};
+     },{optional:true});
+     await sleep(150);
+   }
+   await run("需給正規化",async()=>{await workerCall("supply-demand-normalize",180000);return {}},{optional:true});
+
+   const failed=results.filter(x=>!x.ok),critical=failed.filter(x=>!x.optional);
+   lines.push("",`結果: ${critical.length?"要確認":failed.length?"主要データPASS / 任意データ一部NG":"PASS"}`,`成功: ${results.length-failed.length}/${results.length}`);
+   if(failed.length)lines.push("NG: "+failed.map(x=>x.label).join(" / "));
+   lines.push("",`各日付入力欄を ${target} に同期済み。`,`次回は同じボタンで、この日の次の配信済み取引日へ進みます。`);
+   box("nextTradingDayAllResult",critical.length?"warn":failed.length?"warn":"pass",lines.join("\n"));
+ }catch(e){box("nextTradingDayAllResult","fail",`FAIL\n${e?.message||e}\n\n日足の確定前には他データへ進まない設計です。`)}
+ finally{btn.disabled=false}
 };
 
 let productionGapCandidates=[];
@@ -1870,22 +1965,52 @@ if($("finsFetchBtn")) $("finsFetchBtn").onclick=()=>runDailyDataset("finsFetchBt
 if($("earningsFetchBtn")) $("earningsFetchBtn").onclick=()=>runDailyDataset("earningsFetchBtn","earningsResult","earningsDate",jqFetchEarningsCalendar,"earnings-calendar-write","決算予定");
 
 
+const SUPPLY_RANGE_WRITERS=new Set(["margin-interest-write","margin-alert-write","short-ratio-write","short-sale-report-write","investor-types-write"]);
+async function supplyResumeOptions(workerCmd){
+ if(!SUPPLY_RANGE_WRITERS.has(workerCmd))return {skipDates:new Set(),coverage:[]};
+ const r=await workerCall("raw-range-covered-dates",300000,null,null,{writerCmd});
+ const coverage=Array.isArray(r.coverage)?r.coverage:[];
+ // A positive historical response is safely reusable. Empty responses are also reusable once 7+ days old,
+ // while recent empty dates stay eligible for re-check because J-Quants publication can lag the trading day.
+ const oldCutoff=addIsoDays(localTodayIso(),-7),skipDates=new Set();
+ for(const x of coverage){const d=String(x.date||"").slice(0,10),n=Number(x.rowCount||0);if(d&&(n>0||d<=oldCutoff))skipDates.add(d)}
+ return {skipDates,coverage};
+}
+async function fetchAndPersistSupplyRange(fetcher,workerCmd,from,to,token,onProgress){
+ const resume=await supplyResumeOptions(workerCmd);
+ const got=await fetcher(from,to,token,onProgress,{skipDates:resume.skipDates});
+ const coverageDates=Array.isArray(got.queriedDates)?got.queriedDates:[];
+ let wr=null;
+ if(coverageDates.length||got.rows.length){wr=await workerCall(workerCmd,300000,null,null,{from,to,rows:got.rows,coverageDates})}
+ return {got,wr,resume};
+}
+
 async function runRangeDataset(btnId,resultId,fromId,toId,fetcher,workerCmd,label){
  const btn=$(btnId),from=$(fromId).value,to=$(toId).value,token=prodTokenValue();
  if(!token){box(resultId,"fail","APIキーを入力してください");return {ok:false}}
  btn.disabled=true;box(resultId,"run",`${label}取得中…\n${from} ～ ${to}`);
  try{
-   const got=await fetcher(from,to,token,(done,total,rows)=>{
-     box(resultId,"run",`${label}取得中…\n${from} ～ ${to}\nAPI照会: ${done}/${total}\n取得 rows: ${rows}`);
-   });
-   const wr=await workerCall(workerCmd,300000,null,null,{from,to,rows:got.rows});
-   box(resultId,"pass",`PASS\nEndpoint: ${got.endpoint}\n取得方式: ${got.strategy||"range"}${got.calls!=null?` / API照会 ${got.calls}回 / 0件 ${got.empty}回`:""}\n範囲: ${from} ～ ${to}\nAPI rows: ${got.rows.length}\n保存 rows: ${wr.rows}\nDB: ${wr.dbName}\nquick_check: ${wr.quickCheck}\n適用日: ${wr.minDate||"-"} ～ ${wr.maxDate||"-"}`);
-   return {ok:true,rows:got.rows.length};
+   let got,wr=null,skipped=0;
+   if(SUPPLY_RANGE_WRITERS.has(workerCmd)){
+     const r=await fetchAndPersistSupplyRange(fetcher,workerCmd,from,to,token,(done,total,rows,already)=>{
+       box(resultId,"run",`${label}取得中…\n${from} ～ ${to}\nAPI照会: ${done}/${total}\n取得済みskip: ${already||0}\n取得 rows: ${rows}`);
+     });got=r.got;wr=r.wr;skipped=Number(got.skippedDates||0);
+     if(!got.queriedDates?.length){
+       box(resultId,"pass",`PASS - 取得済み\n範囲: ${from} ～ ${to}\nAPI照会: 0回\n取得済みskip: ${skipped}\n既存DataLakeを再利用しました。`);
+       return {ok:true,rows:0,skipped,alreadyCovered:true};
+     }
+   }else{
+     got=await fetcher(from,to,token,(done,total,rows)=>{box(resultId,"run",`${label}取得中…\n${from} ～ ${to}\nAPI照会: ${done}/${total}\n取得 rows: ${rows}`)});
+     wr=await workerCall(workerCmd,300000,null,null,{from,to,rows:got.rows});
+   }
+   box(resultId,"pass",`PASS\nEndpoint: ${got.endpoint}\n取得方式: ${got.strategy||"range"}${got.calls!=null?` / API照会 ${got.calls}回 / 0件 ${got.empty}回`:""}${skipped?` / 取得済みskip ${skipped}`:""}\n範囲: ${from} ～ ${to}\nAPI rows: ${got.rows.length}\n保存 rows: ${wr?.rows??"既存"}\nDB: ${wr?.dbName||"既存DataLake"}\nquick_check: ${wr?.quickCheck||"-"}\n適用日: ${wr?.minDate||"-"} ～ ${wr?.maxDate||"-"}`);
+   return {ok:true,rows:got.rows.length,skipped};
  }catch(e){
    box(resultId,"fail","FAIL\n"+(e?.message||e));
    return {ok:false,error:String(e?.message||e)};
  }finally{btn.disabled=false}
 }
+
 if($("topixFetchBtn")) $("topixFetchBtn").onclick=()=>runRangeDataset("topixFetchBtn","topixResult","topixFrom","topixTo",jqFetchTopix,"topix-write","TOPIX");
 if($("calendarFetchBtn")) $("calendarFetchBtn").onclick=()=>runRangeDataset("calendarFetchBtn","calendarResult","calendarFrom","calendarTo",jqFetchMarketCalendar,"market-calendar-write","営業日カレンダー");
 if($("marginInterestFetchBtn")) $("marginInterestFetchBtn").onclick=()=>runRangeDataset("marginInterestFetchBtn","marginInterestResult","sdFrom","sdTo",jqFetchMarginInterest,"margin-interest-write","信用取引週末残高");
@@ -2967,7 +3092,11 @@ function discoveryDailyParity(pcRows,webRows){const wm=new Map((webRows||[]).map
   for(const f of DISCOVERY_DAILY_FIELDS){let same;if(DISCOVERY_DAILY_NUMERIC.has(f)){const av=discoveryNum(p[f]),bv=discoveryNum(w[f]);same=(av==null&&bv==null)||(av!=null&&bv!=null&&Math.abs(av-bv)<=1e-5)}else same=String(p[f]??"").trim()===String(w[f]??"").trim();if(!same){const g=discoveryDailyGroup(f);groups[g]++;bad.push(`${f}: PC=${String(p[f]??"").trim()||"(blank)"} / Web=${String(w[f]??"").trim()||"(blank)"}`);if(g!=="Provenance")coreBad.push(f)}}
   if(!bad.length)perfect++;if(!coreBad.length)corePerfect++;if(bad.length)diffs.push({id:p.EventID,date:p.Date,code:p.Code,bad,coreBad:coreBad.length>0});}
  const webOnly=(webRows||[]).filter(r=>!pcKeys.has(`${String(r.EventID||"")}\u0001${String(r.Date||"")}`));return{compared,perfect,corePerfect,missingWeb,webOnly,diffs,groups,corePass:missingWeb===0&&webOnly.length===0&&diffs.every(x=>!x.coreBad),fullPass:missingWeb===0&&webOnly.length===0&&diffs.length===0}}
-function renderDiscoveryDailyParity(sum,web){const cls=sum.fullPass?"pass":sum.corePass?"warn":"warn",coverage=web.coverage||{},lines=[sum.fullPass?"完全一致 PASS":sum.corePass?"CORE PASS / Provenance差のみ":"要確認",`基準日: ${web.asOf||"-"}`,`Web Daily行: ${web.count??0}`,`PC Daily行: ${sum.compared+sum.missingWeb}`,`比較: ${sum.compared}`,`42列完全一致行: ${sum.perfect}`,`Core一致行: ${sum.corePerfect}`,`Web欠損: ${sum.missingWeb}`,`Webのみ: ${sum.webOnly.length}`,`差分列数 Base/Sector/Technical/Supply/Provenance/Market = ${sum.groups.Base}/${sum.groups.Sector}/${sum.groups.Technical}/${sum.groups.Supply}/${sum.groups.Provenance}/${sum.groups.Market}`,`価格テクニカル必要開始: ${coverage.historyStart||"-"}`,`需給必要開始: ${coverage.supplyHistoryStart||"-"}`,`信用残履歴開始: ${coverage.marginMinDate||"-"}${coverage.marginHistorySufficient===false?"  ← 不足":""}`,`空売り履歴開始: ${coverage.shortMinDate||"-"}${coverage.shortHistorySufficient===false?"  ← 不足":""}`];box("discoveryDailyParityResult",cls,lines.join("\n"));
- const esc=x=>String(x??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));const rows=sum.diffs.slice(0,60);if(!rows.length){$("discoveryDailyParityTable").innerHTML="";return}let h='<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th>EventID</th><th>Date</th><th>Code</th><th>差分</th></tr></thead><tbody>';for(const x of rows)h+=`<tr><td>${esc(x.id)}</td><td>${esc(x.date)}</td><td>${esc(x.code)}</td><td>${x.bad.map(esc).join("<br>")}</td></tr>`;h+="</tbody></table></div>";$("discoveryDailyParityTable").innerHTML=h}
-if($("discoveryDailyParityBtn"))$("discoveryDailyParityBtn").onclick=async()=>{const f=$("discoveryDailyFile")?.files?.[0];if(!f){box("discoveryDailyParityResult","warn","PC版 discovery_episode_daily.csv を選択してください。");return}$("discoveryDailyParityBtn").disabled=true;try{const pc=parseCsv(await f.text()).rows;if(!pc.length)throw new Error("Discovery daily CSVが空です");const asOf=$("discoveryAsOf")?.value||todayIsoLocal();const web=await workerCall("discovery-daily-recalc",600000,s=>box("discoveryDailyParityResult","run",`Discovery Daily計算中…\n${s.stage||""}\n${s.detail||""}`),null,{asOf});latestDiscoveryDailyWebRows=web.rows||[];$("discoveryDailyExportBtn").disabled=!latestDiscoveryDailyWebRows.length;renderDiscoveryDailyParity(discoveryDailyParity(pc,web.rows||[]),web)}catch(e){box("discoveryDailyParityResult","fail","FAIL\n"+(e.message||e))}finally{$("discoveryDailyParityBtn").disabled=false}};
+function renderDiscoveryDailyParity(sum,web,latestSum=null){const basis=latestSum||sum,cls=basis.fullPass?"pass":basis.corePass?"warn":"warn",coverage=web.coverage||{},lines=[basis.fullPass?"基準日エンジン 完全一致 PASS":basis.corePass?"基準日エンジン CORE PASS / Provenance差のみ":"基準日エンジン 要確認",`基準日: ${web.asOf||"-"}`];
+ if(latestSum)lines.push(`【基準日のみ】比較: ${latestSum.compared} / 完全一致: ${latestSum.perfect} / Core一致: ${latestSum.corePerfect}`,`基準日差分 Base/Sector/Technical/Supply/Provenance/Market = ${latestSum.groups.Base}/${latestSum.groups.Sector}/${latestSum.groups.Technical}/${latestSum.groups.Supply}/${latestSum.groups.Provenance}/${latestSum.groups.Market}`,``);
+ lines.push(`【全履歴・診断】Web再計算行: ${web.count??0}`,`PC Daily行: ${sum.compared+sum.missingWeb}`,`比較: ${sum.compared}`,`42列完全一致行: ${sum.perfect}`,`Core一致行: ${sum.corePerfect}`,`Web欠損: ${sum.missingWeb}`,`Webのみ: ${sum.webOnly.length}`,`全履歴差分 Base/Sector/Technical/Supply/Provenance/Market = ${sum.groups.Base}/${sum.groups.Sector}/${sum.groups.Technical}/${sum.groups.Supply}/${sum.groups.Provenance}/${sum.groups.Market}`,`保存済み固定Daily: ${web.storedCount??"-"}`,`価格テクニカル読込開始: ${coverage.historyStart||"-"}`,`信用残の実必要開始: ${coverage.marginHistoryStart||"-"}`,`信用残履歴開始: ${coverage.marginMinDate||"-"}${coverage.marginHistorySufficient===false?"  ← 不足":""}`,`大口空売りの実必要開始: ${coverage.shortHistoryStart||coverage.supplyHistoryStart||"-"}`,`空売り履歴開始: ${coverage.shortMinDate||"-"}${coverage.shortHistorySufficient===false?"  ← 不足":""}`);box("discoveryDailyParityResult",cls,lines.join("\n"));
+ const esc=x=>String(x??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));const latestRows=(latestSum?.diffs||[]).slice(0,60),rows=latestRows.length?latestRows:sum.diffs.slice(0,60);if(!rows.length){$("discoveryDailyParityTable").innerHTML="";return}let h=`<p><strong>${latestRows.length?"基準日差分":"全履歴差分"}</strong></p><div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th>EventID</th><th>Date</th><th>Code</th><th>差分</th></tr></thead><tbody>`;for(const x of rows)h+=`<tr><td>${esc(x.id)}</td><td>${esc(x.date)}</td><td>${esc(x.code)}</td><td>${x.bad.map(esc).join("<br>")}</td></tr>`;h+="</tbody></table></div>";$("discoveryDailyParityTable").innerHTML=h}
+if($("discoveryDailySeedBtn"))$("discoveryDailySeedBtn").onclick=async()=>{const f=$("discoveryDailyFile")?.files?.[0];if(!f){box("discoveryDailyParityResult","warn","PC版 discovery_episode_daily.csv を選択してください。");return}$("discoveryDailySeedBtn").disabled=true;try{const pc=parseCsv(await f.text()).rows;if(!pc.length)throw new Error("Discovery daily CSVが空です");const r=await workerCall("discovery-daily-import-seed",300000,null,null,{rows:pc});latestDiscoveryDailyWebRows=pc;$("discoveryDailyExportBtn").disabled=false;box("discoveryDailyParityResult","pass",`PC Daily履歴 移行・固定 PASS\nRows: ${r.count}\n期間: ${r.minDate||"-"} ～ ${r.maxDate||"-"}\n\n以後は既存行を上書きせず、新しいEpisode×DateだけWebで追加します。`)}catch(e){box("discoveryDailyParityResult","fail","FAIL\n"+(e.message||e))}finally{$("discoveryDailySeedBtn").disabled=false}};
+if($("discoveryDailyParityBtn"))$("discoveryDailyParityBtn").onclick=async()=>{const f=$("discoveryDailyFile")?.files?.[0];if(!f){box("discoveryDailyParityResult","warn","PC版 discovery_episode_daily.csv を選択してください。");return}$("discoveryDailyParityBtn").disabled=true;try{const pc=parseCsv(await f.text()).rows;if(!pc.length)throw new Error("Discovery daily CSVが空です");const asOf=$("discoveryAsOf")?.value||todayIsoLocal();const web=await workerCall("discovery-daily-recalc",600000,s=>box("discoveryDailyParityResult","run",`Discovery Daily計算中…\n${s.stage||""}\n${s.detail||""}`),null,{asOf});latestDiscoveryDailyWebRows=web.storedRows||web.rows||[];$("discoveryDailyExportBtn").disabled=!latestDiscoveryDailyWebRows.length;const all=discoveryDailyParity(pc,web.rows||[]),pcLatest=pc.filter(r=>String(r.Date||"").slice(0,10)===asOf),webLatest=(web.rows||[]).filter(r=>String(r.Date||"").slice(0,10)===asOf),latest=discoveryDailyParity(pcLatest,webLatest);renderDiscoveryDailyParity(all,web,latest)}catch(e){box("discoveryDailyParityResult","fail","FAIL\n"+(e.message||e))}finally{$("discoveryDailyParityBtn").disabled=false}};
 if($("discoveryDailyExportBtn"))$("discoveryDailyExportBtn").onclick=()=>{if(!latestDiscoveryDailyWebRows.length)return;downloadBlob(new Blob([discoveryDailyCsv(latestDiscoveryDailyWebRows)],{type:"text/csv;charset=utf-8"}),`web_discovery_episode_daily_${($("discoveryAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};
+if($("discoveryShortTraceExportBtn"))$("discoveryShortTraceExportBtn").onclick=async()=>{const f=$("discoveryDailyFile")?.files?.[0];if(!f){box("discoveryDailyParityResult","warn","PC版 discovery_episode_daily.csv を選択してください。");return}const btn=$("discoveryShortTraceExportBtn");btn.disabled=true;try{const pc=parseCsv(await f.text()).rows,asOf=$("discoveryAsOf")?.value||todayIsoLocal(),codes=[...new Set(pc.filter(r=>String(r.Date||"").slice(0,10)===asOf).map(r=>String(r.Code||"").trim()).filter(Boolean))];if(!codes.length)throw new Error("基準日のDiscovery Dailyコードがありません");const r=await workerCall("discovery-short-trace",300000,null,null,{asOf,codes});const fields=["Code","DiscDate","CalcDate","SSName","SSAddr","DICName","DICAddr","FundName","ShrtPosToSO","ShrtPosShares","PrevRptDate","PrevRptRatio","StoredDataDate"],esc=v=>'"'+String(v??"").replaceAll('"','""')+'"',csv="\uFEFF"+[fields.map(esc).join(","),...(r.rows||[]).map(x=>fields.map(k=>esc(x[k])).join(","))].join("\n");downloadBlob(new Blob([csv],{type:"text/csv;charset=utf-8"}),`web_large_short_trace_${asOf.replaceAll("-","")}.csv`);box("discoveryDailyParityResult","pass",`大口空売り診断CSVを書き出しました。\n基準日: ${asOf}\n対象コード: ${codes.length}\nraw rows: ${r.count||0}`)}catch(e){box("discoveryDailyParityResult","fail","診断CSV FAIL\n"+(e?.message||e))}finally{btn.disabled=false}};
