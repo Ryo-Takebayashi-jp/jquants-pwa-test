@@ -1306,6 +1306,8 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        if(!actual.length)continue;
        actual.sort((a,b)=>(perEnd(a)+"|"+disc(a)+"|"+s(a,"DiscNo")).localeCompare(perEnd(b)+"|"+disc(b)+"|"+s(b,"DiscNo")));
        const cur=actual.at(-1),curType=s(cur,"CurPerType").toUpperCase(),curEnd=perEnd(cur),curDt=Date.parse(curEnd||"1970-01-01");
+       const eventDates=actual.filter(x=>s(x,"CurPerType").toUpperCase()===curType&&perEnd(x)===curEnd&&disc(x)).map(x=>disc(x)).sort();
+       const earningsEventDate=eventDates[0]||disc(cur);
        let prev=null,best=1e99;
        for(const x of hist){if(x===cur||s(x,"CurPerType").toUpperCase()!==curType)continue;const pe=perEnd(x);if(!pe)continue;const dd=(curDt-Date.parse(pe))/86400000;if(dd>=330&&dd<=400&&Math.abs(dd-365)<best){best=Math.abs(dd-365);prev=x}}
        const [cp,ptype]=primary(cur),[pp]=primary(prev||{});
@@ -1362,7 +1364,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        if(lacfo==null&&lacfi==null&&lacff==null&&latestFY){lacfo=n(latestFY,"CFO");lacfi=n(latestFY,"CFI");lacff=n(latestFY,"CFF");cfDate=disc(latestFY)}
        const effectiveShares=effectiveSharesOf(latestFY||cur,null);
        const fdiv=n(fc||{},"FDivAnn","FDivTotalAnn"),adiv=n(latestFY||{},"DivAnn","DivTotalAnn");
-       rows.push({code,discDate:disc(cur),curPerType:curType,ProfitType:ptype,
+       rows.push({code,discDate:disc(cur),earningsEventDate,curPerType:curType,ProfitType:ptype,
          sales,op:n(cur,"OP","NCOP"),odp:n(cur,"OdP","NCOdP"),np:n(cur,"NP","NCNP"),
          eps:actualEPS,bps,equity:eq,totalAssets:ta,cfo,cfi,cff,
          forecastSales:fs,forecastOP:n(fc||{},"FOP","FNCOP"),forecastOdP:n(fc||{},"FOdP","FNCOdP"),forecastNP:n(fc||{},"FNP","FNCNP"),forecastEPS,
@@ -1556,7 +1558,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      MA25DeviationPct:t.distMa25??null,MA75DeviationPct:t.distMa75??null,MA25Slope5DPct:t.slope25??null,MA75Slope20DPct:t.slope75??null,
      MACDHistogram:t.macdHistogram??null,MACDHistogramChange5D:t.macdHistogramChange5D??null,MACDState:t.macdState??null,
      PositionVs60DHighPct:t.positionVs60DHighPct??null,DistanceFrom52WLowPct:t.low52?((t.close/t.low52-1)*100):null,TrendState:t.trendState??null,
-     DiscDate:f.discDate??null,LatestDisclosureDate:f.discDate??null,LatestPeriodType:f.curPerType??null,ProfitType:f.ProfitType??null,Sales:f.sales??null,OperatingProfit:f.op??null,OrdinaryProfit:f.odp??null,NetProfit:f.np??null,EPS:f.eps??null,BPS:f.bps??null,Equity:f.equity??null,TotalAssets:f.totalAssets??null,CFO:f.cfo??null,CFI:f.cfi??null,CFF:f.cff??null,ForecastSales:f.forecastSales??null,ForecastOperatingProfit:f.forecastOP??null,ForecastOrdinaryProfit:f.forecastOdP??null,ForecastNetProfit:f.forecastNP??null,ForecastEPS:f.forecastEPS??null,
+     DiscDate:f.discDate??null,LatestDisclosureDate:f.discDate??null,LatestFinancialDisclosureDate:f.discDate??null,LatestEarningsEventDate:f.earningsEventDate??f.discDate??null,LatestPeriodType:f.curPerType??null,ProfitType:f.ProfitType??null,Sales:f.sales??null,OperatingProfit:f.op??null,OrdinaryProfit:f.odp??null,NetProfit:f.np??null,EPS:f.eps??null,BPS:f.bps??null,Equity:f.equity??null,TotalAssets:f.totalAssets??null,CFO:f.cfo??null,CFI:f.cfi??null,CFF:f.cff??null,ForecastSales:f.forecastSales??null,ForecastOperatingProfit:f.forecastOP??null,ForecastOrdinaryProfit:f.forecastOdP??null,ForecastNetProfit:f.forecastNP??null,ForecastEPS:f.forecastEPS??null,
      SalesYoY:f.SalesYoY??null,PrimaryProfitYoY:f.PrimaryProfitYoY??null,CurrentOperatingMarginPct:f.CurrentOperatingMarginPct??null,PreviousOperatingMarginPct:f.PreviousOperatingMarginPct??null,OperatingMarginChangePt:f.OperatingMarginChangePt??null,ForecastSalesGrowthPct:f.ForecastSalesGrowthPct??null,ForecastPrimaryProfitGrowthPct:f.ForecastPrimaryProfitGrowthPct??null,ROE:f.ROE??null,ROESource:f.ROESource??"",ROEReferenceDate:f.ROEReferenceDate??"",ROESourcePeriod:f.ROESourcePeriod??"",BPSSource:f.BPSSource??"",BPSReferenceDate:f.BPSReferenceDate??"",BPSSourcePeriod:f.BPSSourcePeriod??"",EquityRatioPct:f.EquityRatioPct??null,EquityRatioSource:f.EquityRatioSource??"",EquityRatioReferenceDate:f.EquityRatioReferenceDate??"",EquityRatioSourcePeriod:f.EquityRatioSourcePeriod??"",CFO:f.CFO??f.cfo??null,LatestAvailableCFO:f.LatestAvailableCFO??null,LatestAvailableFCF:f.LatestAvailableFCF??null,
      EffectiveShares:f.EffectiveShares??null,ActualAnnualDividend:f.ActualAnnualDividend??null,ForecastAnnualDividend:f.ForecastAnnualDividend??null,
      ActualEPS:f.ActualEPS??f.eps??null,FinancialDataFlag:f.FinancialDataFlag??"",

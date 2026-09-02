@@ -2253,7 +2253,7 @@ if($("screeningStrategyBtn")) $("screeningStrategyBtn").onclick=async()=>{
  try{
    box("screeningStrategyResult","run","決算イベント窓（1/3/5/10営業日）を計算中…");
    const asOf=$("screeningBaseAsOf")?.value||todayIsoLocal();
-   const ev=await workerCall("screening-event-features",300000,null,null,{asOf,events:latestScreeningBaseRows.map(r=>({code:r.NormalizedCode,disclosureDate:r.LatestDisclosureDate}))});
+   const ev=await workerCall("screening-event-features",300000,null,null,{asOf,events:latestScreeningBaseRows.map(r=>({code:r.NormalizedCode,disclosureDate:r.LatestEarningsEventDate||r.LatestDisclosureDate}))});
    const em=new Map((ev.rows||[]).map(x=>[String(x.code),x]));
    const enriched=latestScreeningBaseRows.map(r=>({...r,...(em.get(String(r.NormalizedCode))||{EarningsElapsedTradingDays:null,EarningsReactionPending:false})}));
    const r=buildScreeningStrategies(enriched);latestScreeningCandidates=r.rows;latestScreeningScoredRows=r.scored||[];
