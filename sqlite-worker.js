@@ -1029,6 +1029,87 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }
  }
 
+
+ if(cmd==="discovery-master-import-recalc" || cmd==="discovery-recalc"){
+   let pdb=null,cdb=null,tdb=null,stage="01-input";
+   try{
+     const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10), incoming=Array.isArray(payload.rows)?payload.rows:[];
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+     const norm=v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+     const jq=v=>{const c=norm(v);return c.length===4?c+"0":c};
+     const n=v=>{if(v==null||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)?x:null};
+     const round6=v=>Number.isFinite(v)?Math.round((v+Number.EPSILON)*1e6)/1e6:null;
+     const ret=(a,b)=>Number.isFinite(a)&&a!==0&&Number.isFinite(b)?round6((b/a-1)*100):null;
+     const relative=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)?round6(a-b):null;
+     const plus3Months=iso=>{const z=new Date(iso+"T00:00:00Z");if(Number.isNaN(z.getTime()))return "";const y=z.getUTCFullYear(),m=z.getUTCMonth(),day=z.getUTCDate();const targetM=m+3,ty=y+Math.floor(targetM/12),tm=((targetM%12)+12)%12;const last=new Date(Date.UTC(ty,tm+1,0)).getUTCDate();return `${String(ty).padStart(4,"0")}-${String(tm+1).padStart(2,"0")}-${String(Math.min(day,last)).padStart(2,"0")}`};
+
+     stage="02-private";
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS discovery_episode_master(
+       event_id TEXT PRIMARY KEY, code TEXT NOT NULL, episode_start_date TEXT NOT NULL,
+       row_json TEXT NOT NULL, imported_at TEXT NOT NULL, updated_at TEXT NOT NULL
+     ) WITHOUT ROWID`);
+     if(cmd==="discovery-master-import-recalc"){
+       if(!incoming.length)throw new Error("Discovery master rows missing");
+       const st=pdb.prepare(`INSERT INTO discovery_episode_master(event_id,code,episode_start_date,row_json,imported_at,updated_at)
+         VALUES(?,?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET code=excluded.code,episode_start_date=excluded.episode_start_date,row_json=excluded.row_json,updated_at=excluded.updated_at`);
+       try{
+         pdb.exec("BEGIN IMMEDIATE");const now=new Date().toISOString();let count=0;
+         for(const row of incoming){const code=norm(row.Code??row.NormalizedCode),start=String(row.EpisodeStartDate??row.DiscoveryDate??"").slice(0,10);let id=String(row.EventID??"").trim();if(!code||!start)continue;if(!id)id=start.replaceAll("-","")+"-"+code;st.bind([id,code,start,JSON.stringify(row),now,now]);st.step();st.reset();count++}
+         pdb.exec("COMMIT");status("discovery-import",`${count} Episodes imported/upserted`);
+       }catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
+     }
+     const stored=execRows(pdb,"SELECT event_id,code,episode_start_date,row_json FROM discovery_episode_master ORDER BY episode_start_date,event_id");
+     if(!stored.length){pdb.close();pdb=null;self.postMessage({ok:true,type:"result",asOf,count:0,rows:[],from:"",elapsedMs:Math.round(performance.now()-t0)});return}
+     const episodes=stored.map(x=>{let row={};try{row=JSON.parse(String(x.row_json||"{}"))}catch(_){}return {eventId:String(x.event_id),code:norm(x.code),start:String(x.episode_start_date),row}}).filter(x=>x.code&&/^\d{4}-\d{2}-\d{2}$/.test(x.start));
+     const earliest=episodes.map(x=>x.start).sort()[0];const wanted=[...new Set(episodes.map(x=>jq(x.code)))];
+     pdb.close();pdb=null;
+
+     stage="03-bars";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end FROM shard_catalog
+       WHERE dataset='bars_daily' AND state='ready' AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key`);
+     cdb.close();cdb=null;
+     const byCode=new Map();
+     for(const sh of cats){
+       if(String(sh.range_end||"")<earliest||String(sh.range_start||"")>asOf)continue;let bdb=null;
+       try{
+         const nm=String(sh.logical_name||"");bdb=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");
+         const ph=wanted.map(()=>"?").join(",");if(!ph)continue;
+         const rs=execRows(bdb,`SELECT code,date,COALESCE(adj_c,c) AS close FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[earliest,asOf,...wanted]);
+         for(const r of rs){const code=norm(r.code),date=String(r.date),close=Number(r.close);if(!Number.isFinite(close)||close<=0)continue;if(!byCode.has(code))byCode.set(code,new Map());byCode.get(code).set(date,close)}
+       }finally{try{if(bdb)bdb.close()}catch(_){}}
+     }
+
+     stage="04-topix";
+     const topix=new Map();tdb=new p.OpfsSAHPoolDb("/jq_topix_v1.sqlite","r");
+     for(const rr of execRows(tdb,"SELECT raw_json FROM topix"))try{const o=JSON.parse(String(rr.raw_json||"{}")),date=String(o.Date??o.date??"").slice(0,10),close=Number(o.C??o.Close??o.c??o.close);if(date&&date>=earliest&&date<=asOf&&Number.isFinite(close)&&close>0)topix.set(date,close)}catch(_){}
+     tdb.close();tdb=null;
+
+     stage="05-calc";const result=[];let noBars=0;
+     for(const ep of episodes){
+       const row={...ep.row};row.EventID=ep.eventId;row.Code=norm(row.Code||ep.code);row.DiscoveryDate=String(row.DiscoveryDate||ep.start).slice(0,10);row.EpisodeStartDate=ep.start;
+       const planned=plus3Months(ep.start);row.EpisodePlannedEndDate=planned;
+       const end=(planned&&planned<asOf)?planned:asOf;
+       const mp=byCode.get(ep.code)||new Map(), series=[...mp.entries()].filter(([date])=>date>=ep.start&&date<=end).sort((a,b)=>a[0].localeCompare(b[0]));
+       if(!series.length){noBars++;result.push(row);continue}
+       const startClose=mp.get(ep.start),locked=String(row.InitialPriceLocked??"")==="1";let initial=n(row.InitialPrice);
+       if(!locked&&Number.isFinite(startClose)){const old=initial;initial=startClose;row.InitialPrice=startClose;row.InitialPriceLocked="1";row.InitialPriceSource="DataLakeEpisodeStartClose";row.InitialPriceRepairReason=old==null?"FilledMissingInitialPrice":Math.abs(old-startClose)>Math.max(1e-9,Math.abs(startClose)*1e-9)?`RepairedPreAlpha21:${old}->${startClose}`:(row.InitialPriceRepairReason||"Verified")}
+       if(!Number.isFinite(initial))initial=series[0][1];
+       const dates=series.map(x=>x[0]),vals=series.map(x=>x[1]);row.PerfCurrentDate=dates.at(-1);row.PerfCurrentPrice=vals.at(-1);row.PerfTradingDaysElapsed=Math.max(0,vals.length-1);
+       for(const days of [1,5,10,20,60])if(vals.length>days){const sr=ret(initial,vals[days]),tr=ret(topix.get(dates[0]),topix.get(dates[days]));row[`PerfReturn${days}D`]=sr??"";row[`PerfRelativeTOPIX${days}D`]=relative(sr,tr)??""}
+       for(const horizon of [20,60]){const win=vals.slice(0,Math.min(vals.length,horizon+1));if(win.length&&initial){row[`PerfMaxReturn${horizon}D`]=round6((Math.max(...win)/initial-1)*100);let peak=win[0],dd=0;for(const v of win){peak=Math.max(peak,v);if(peak)dd=Math.min(dd,(v/peak-1)*100)}row[`PerfMaxDrawdown${horizon}D`]=round6(dd)}}
+       row.PerfLastUpdatedDate=asOf;if(planned&&asOf>=planned){row.PerfActiveWatchFlag="0";row.PerfEpisodeStatus="Closed";row.PerfEpisodeEndDate=planned;row.PerfEpisodeEndReason=row.PerfEpisodeEndReason||"Max3Months"}else{row.PerfActiveWatchFlag="1";row.PerfEpisodeStatus=row.PerfEpisodeStatus||"Active"}
+       result.push(row);
+     }
+
+     stage="06-save";pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");const up=pdb.prepare("UPDATE discovery_episode_master SET row_json=?,updated_at=? WHERE event_id=?");
+     try{pdb.exec("BEGIN IMMEDIATE");const now=new Date().toISOString();for(const row of result){up.bind([JSON.stringify(row),now,String(row.EventID||"")]);up.step();up.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{up.finalize()}catch(_){}}
+     pdb.close();pdb=null;
+     self.postMessage({ok:true,type:"result",asOf,from:earliest,count:result.length,noBars,rows:result,elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}try{if(cdb)cdb.close()}catch(_){}try{if(tdb)tdb.close()}catch(_){}throw new Error(`[discovery:${stage}] ${err?.message||err}`)}
+ }
+
  if(cmd==="equities-master-write"){
    const payload=d.payload||{}, rows=payload.rows||[], requestedDate=String(payload.date||"");
    const dbName="/jq_equities_master_v1.sqlite"; let mdb=null;

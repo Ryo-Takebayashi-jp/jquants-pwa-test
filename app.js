@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha68");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha72");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha68").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha72").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2872,3 +2872,84 @@ if($("screeningDiffExportBtn")) $("screeningDiffExportBtn").onclick=()=>{
 
 
 if($("residualAuditStandaloneBtn")) $("residualAuditStandaloneBtn").onclick=runStandaloneResidualFinancialAudit;
+
+
+// v7e-alpha72: Discovery Episode migration / performance parity
+let latestDiscoveryWebRows=[];
+function discoveryNormCode(v){
+  let s=String(v??"").trim().toUpperCase();
+  if(s.length===5&&s.endsWith("0"))s=s.slice(0,4);
+  return s;
+}
+function discoveryNum(v){const n=Number(v);return String(v??"").trim()!==""&&Number.isFinite(n)?n:null}
+function discoveryCsv(rows){
+  if(!rows?.length)return "";
+  const preferred=["EventID","DiscoveryDate","Code","CompanyName","PrimaryStrategy","AnalystDecision","SelectionType","Conviction","ExpectedHorizon","InitialPrice","InitialPriceLocked","InitialPriceSource","EpisodeStartDate","EpisodePlannedEndDate","PreviousEventID","PerfCurrentDate","PerfCurrentPrice","PerfTradingDaysElapsed","PerfReturn1D","PerfRelativeTOPIX1D","PerfReturn5D","PerfRelativeTOPIX5D","PerfReturn10D","PerfRelativeTOPIX10D","PerfReturn20D","PerfRelativeTOPIX20D","PerfReturn60D","PerfRelativeTOPIX60D","PerfMaxReturn20D","PerfMaxDrawdown20D","PerfMaxReturn60D","PerfMaxDrawdown60D","PerfActiveWatchFlag","PerfLastUpdatedDate","PerfEpisodeStatus","PerfEpisodeEndDate","PerfEpisodeEndReason","PerfResetDate"];
+  const all=new Set(preferred); for(const r of rows)for(const k of Object.keys(r))all.add(k);
+  const hdr=[...preferred,...[...all].filter(k=>!preferred.includes(k))];
+  const esc=v=>'"'+String(v??"").replaceAll('"','""')+'"';
+  return "\uFEFF"+[hdr.map(esc).join(","),...rows.map(r=>hdr.map(k=>esc(r[k]??"")).join(","))].join("\n");
+}
+function discoveryParity(pcRows,webRows){
+  const wm=new Map((webRows||[]).map(r=>[String(r.EventID||""),r]));
+  const exact=["Code","DiscoveryDate","EpisodeStartDate","EpisodePlannedEndDate","InitialPriceLocked","InitialPriceSource","PerfCurrentDate","PerfTradingDaysElapsed","PerfActiveWatchFlag","PerfEpisodeStatus","PerfEpisodeEndDate","PerfEpisodeEndReason"];
+  const numeric=["InitialPrice","PerfCurrentPrice","PerfReturn1D","PerfRelativeTOPIX1D","PerfReturn5D","PerfRelativeTOPIX5D","PerfReturn10D","PerfRelativeTOPIX10D","PerfReturn20D","PerfRelativeTOPIX20D","PerfReturn60D","PerfRelativeTOPIX60D","PerfMaxReturn20D","PerfMaxDrawdown20D","PerfMaxReturn60D","PerfMaxDrawdown60D"];
+  let compared=0,perfect=0,missingWeb=0;const diffs=[];
+  for(const p of pcRows||[]){
+    const id=String(p.EventID||"");if(!id)continue; const w=wm.get(id);
+    if(!w){missingWeb++;diffs.push({id,code:discoveryNormCode(p.Code),bad:["Web Episode missing"]});continue}
+    compared++;const bad=[];
+    for(const f of exact){const a=String(p[f]??"").trim(),b=String(w[f]??"").trim();if(a!==b)bad.push(`${f}: PC=${a||"(blank)"} / Web=${b||"(blank)"}`)}
+    for(const f of numeric){const a=discoveryNum(p[f]),b=discoveryNum(w[f]);if(a==null&&b==null)continue;if(a==null||b==null||Math.abs(a-b)>1e-5)bad.push(`${f}: PC=${a??"(blank)"} / Web=${b??"(blank)"}`)}
+    if(bad.length)diffs.push({id,code:discoveryNormCode(p.Code),bad});else perfect++;
+  }
+  const pcIds=new Set((pcRows||[]).map(r=>String(r.EventID||"")).filter(Boolean));
+  const webOnly=(webRows||[]).filter(r=>r.EventID&&!pcIds.has(String(r.EventID))).map(r=>String(r.EventID));
+  return {compared,perfect,missingWeb,webOnly,diffs,pass:missingWeb===0&&webOnly.length===0&&diffs.length===0};
+}
+function renderDiscoveryParity(summary,web){
+  const cls=summary?.pass?"pass":summary?"warn":"pass";
+  const lines=[
+    summary?(summary.pass?"完全一致 PASS":"要確認"):"Web Discovery 再計算 PASS",
+    `基準日: ${web.asOf||"-"}`,
+    `Web Episode: ${web.count??web.rows?.length??0}`,
+    `DataLake期間: ${web.from||"-"} ～ ${web.asOf||"-"}`
+  ];
+  if(summary)lines.push(`PC Episode: ${summary.compared+summary.missingWeb}`,`比較: ${summary.compared}`,`完全一致: ${summary.perfect}`,`差分: ${summary.diffs.length}`,`Web欠損: ${summary.missingWeb}`,`Webのみ: ${summary.webOnly.length}`);
+  box("discoveryParityResult",cls,lines.join("\n"));
+  if(!summary||!summary.diffs.length){$("discoveryParityTable").innerHTML="";return}
+  const esc=x=>String(x??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  let h='<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th>EventID</th><th>Code</th><th>差分</th></tr></thead><tbody>';
+  for(const x of summary.diffs.slice(0,50))h+=`<tr><td>${esc(x.id)}</td><td>${esc(x.code)}</td><td>${x.bad.map(esc).join("<br>")}</td></tr>`;
+  h+="</tbody></table></div>";$("discoveryParityTable").innerHTML=h;
+}
+async function discoveryReadPcAnalysis(){
+  const f=$("discoveryAnalysisFile")?.files?.[0]; if(!f)return [];
+  return parseCsv(await f.text()).rows;
+}
+async function runDiscoveryRecalc(importRows=null){
+  const asOf=$("discoveryAsOf")?.value||todayIsoLocal();
+  const cmd=importRows?"discovery-master-import-recalc":"discovery-recalc";
+  const payload={asOf}; if(importRows)payload.rows=importRows;
+  const r=await workerCall(cmd,600000,s=>box("discoveryParityResult","run",`Discovery計算中…\n${s.stage||""}\n${s.detail||""}`),null,payload);
+  latestDiscoveryWebRows=r.rows||[]; $("discoveryWebExportBtn").disabled=!latestDiscoveryWebRows.length;
+  return r;
+}
+if($("discoveryImportBtn"))$("discoveryImportBtn").onclick=async()=>{
+  const f=$("discoveryMasterFile")?.files?.[0]; if(!f){box("discoveryParityResult","warn","PC版 discovery_episode_master.csv を選択してください。");return}
+  $("discoveryImportBtn").disabled=true;
+  try{
+    const rows=parseCsv(await f.text()).rows;if(!rows.length)throw new Error("Discovery master CSVが空です");
+    const web=await runDiscoveryRecalc(rows),pc=await discoveryReadPcAnalysis();
+    renderDiscoveryParity(pc.length?discoveryParity(pc,web.rows):null,web);
+  }catch(e){box("discoveryParityResult","fail","FAIL\n"+(e.message||e))}finally{$("discoveryImportBtn").disabled=false}
+};
+if($("discoveryRecalcBtn"))$("discoveryRecalcBtn").onclick=async()=>{
+  $("discoveryRecalcBtn").disabled=true;try{const web=await runDiscoveryRecalc();renderDiscoveryParity(null,web)}catch(e){box("discoveryParityResult","fail","FAIL\n"+(e.message||e))}finally{$("discoveryRecalcBtn").disabled=false}
+};
+if($("discoveryParityBtn"))$("discoveryParityBtn").onclick=async()=>{
+  $("discoveryParityBtn").disabled=true;
+  try{const pc=await discoveryReadPcAnalysis();if(!pc.length)throw new Error("PC版 discovery_episode_analysis.csv を選択してください。");const web=latestDiscoveryWebRows.length?{rows:latestDiscoveryWebRows,asOf:$("discoveryAsOf")?.value||"",count:latestDiscoveryWebRows.length}:await runDiscoveryRecalc();renderDiscoveryParity(discoveryParity(pc,web.rows),web)}
+  catch(e){box("discoveryParityResult","fail","FAIL\n"+(e.message||e))}finally{$("discoveryParityBtn").disabled=false}
+};
+if($("discoveryWebExportBtn"))$("discoveryWebExportBtn").onclick=()=>{if(!latestDiscoveryWebRows.length)return;downloadBlob(new Blob([discoveryCsv(latestDiscoveryWebRows)],{type:"text/csv;charset=utf-8"}),`web_discovery_episode_analysis_${($("discoveryAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};

@@ -1,10 +1,20 @@
 {
-  "current_release": "v7e-alpha70",
+  "current_release": "v7e-alpha72",
   "history": [
     {
       "release": "v7e-alpha70",
       "date": "2026-09-02",
       "note": "Financial source-period resolver + strict disclosure date + PC-equivalent QVR crowding penalty."
+    },
+    {
+      "release": "v7e-alpha71",
+      "date": "2026-09-02",
+      "note": "Separate latest financial disclosure date from original earnings event date."
+    },
+    {
+      "release": "v7e-alpha72",
+      "date": "2026-09-02",
+      "note": "Screening exact parity baseline + Discovery Episode migration/performance parity."
     }
   ]
 }

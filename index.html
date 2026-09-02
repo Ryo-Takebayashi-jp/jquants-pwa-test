@@ -21,7 +21,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha70</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha72</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 
 
 <section class="card" id="apiKeyCard">
@@ -77,6 +77,20 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <button id="screeningDiffExportBtn" disabled>Parity差分診断CSVを書き出す</button>
 <pre id="screeningStrategyParityResult" class="result">未実行</pre>
 </section>
+<section class="card" id="discoveryParityCard">
+  <h2>⑥ Discovery Episode 移行 / Performance Parity</h2>
+  <p>PC版 <code>discovery_episode_master.csv</code> をWeb private DBへ一度移行し、Web DataLakeの日足/TOPIXからEpisode成績を再計算します。PC版 <code>discovery_episode_analysis.csv</code> を指定すると同時にParity確認できます。</p>
+  <label>基準日 <input id="discoveryAsOf" type="date" value="2026-09-02"></label>
+  <label>PC Discovery master <input id="discoveryMasterFile" type="file" accept=".csv,text/csv"></label>
+  <label>PC Discovery analysis（Parity用・任意） <input id="discoveryAnalysisFile" type="file" accept=".csv,text/csv"></label>
+  <button id="discoveryImportBtn">Discovery masterをWebへ移行・再計算</button>
+  <button id="discoveryRecalcBtn" class="secondary">Web Discoveryを最新DataLakeで再計算</button>
+  <button id="discoveryParityBtn" class="secondary">PC/Web Discovery Performance Parity</button>
+  <button id="discoveryWebExportBtn" class="secondary" disabled>Web Discovery分析CSVを書き出す</button>
+  <pre id="discoveryParityResult" class="result">未実行</pre>
+  <div id="discoveryParityTable"></div>
+  <p class="desc">この段階ではEpisode seed/3か月期限/固定1・5・10・20・60営業日リターン/TOPIX相対/最大上昇・最大DDをPC版と合わせます。Discovery Dailyの需給・sector・historical technicalは次のParity層です。</p>
+</section>
 <details class="card">
   <summary><strong>旧テスト・詳細ツール</strong></summary>
   <p class="desc">Parity済み・開発確認用の機能です。通常のScreeningテストでは触らなくてOKです。</p>
@@ -123,7 +137,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha70 起動確認</h2>
+<h2>v7e-alpha72 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>

@@ -1,9 +1,9 @@
 # CHANGELOG
 
-## v7e-alpha71 — 2026-09-02
-- LatestFinancialDisclosureDate / LatestEarningsEventDate を分離。
-- 同じ CurPerType + CurPerEn/FYEn の最初の開示日を決算イベント日とする。
-- 後日の訂正決算短信は最新財務値として採用するが ReactionPending を再発火させない。
-- 2593: 9/1新規1Qは ReactionPending を維持。
-- 3300: 9/1 FY訂正版は財務値へ反映し、EarningsEventDate は8/13。
-- alpha70のPeriod Resolver / QVR CrowdingPenaltyを維持。
+## v7e-alpha72 — 2026-09-02
+- Screening 5戦略 PC/Web 87/87完全一致を基準点として固定。
+- Discovery EpisodeのPC→Web移行を追加。`discovery_episode_master.csv` を `/jq_private_v1.sqlite` にupsert保存。
+- Web DataLakeの日足/TOPIXからEpisode成績を再計算。固定1/5/10/20/60営業日、TOPIX相対、20/60日最大上昇・最大DD、3か月期限をPC仕様に合わせた。
+- `discovery_episode_analysis.csv` とのPerformance ParityとWeb CSV exportを追加。
+- alpha71のEarningsEventDate分離、alpha70のQVR/Crowding修正を維持。
+- app/worker/service-workerのcache bustをalpha72へ更新。
