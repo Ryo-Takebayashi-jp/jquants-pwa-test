@@ -1301,7 +1301,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      db.close();db=null;
      const rows=[];
      for(const [code,hist] of byCode){
-       const disc=o=>s(o,"DiscDate","Date"), perEnd=o=>s(o,"CurPerEn","CurFYEn"), fyEnd=o=>s(o,"CurFYEn","CurPerEn");
+       const disc=o=>s(o,"DiscDate","DisclosedDate"), perEnd=o=>s(o,"CurPerEn","CurFYEn"), fyEnd=o=>s(o,"CurFYEn","CurPerEn");
        const actual=hist.filter(o=>["Sales","OP","OdP","NP","NCSales","NCOP","NCOdP","NCNP"].some(k=>n(o,k)!=null));
        if(!actual.length)continue;
        actual.sort((a,b)=>(perEnd(a)+"|"+disc(a)+"|"+s(a,"DiscNo")).localeCompare(perEnd(b)+"|"+disc(b)+"|"+s(b,"DiscNo")));
@@ -1322,16 +1322,23 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const [prevFYp]=primary(prevFY||{}),prevFYs=n(prevFY||{},"Sales","NCSales");
        const fyRows=hist.filter(x=>s(x,"CurPerType").toUpperCase()==="FY"&&disc(x));
        fyRows.sort((a,b)=>(fyEnd(a)+"|"+disc(a)).localeCompare(fyEnd(b)+"|"+disc(b)));
-       const latestFY=fyRows.at(-1)||cur;
-       const actualEPS=n(latestFY,"EPS","NCEPS"),forecastEPS=n(fc||{},"FEPS","FNCEPS"),bps=n(latestFY,"BPS","NCBPS");
+       const latestFY=fyRows.at(-1)||null;
+       const actualEPS=n(latestFY||{},"EPS","NCEPS"),forecastEPS=n(fc||{},"FEPS","FNCEPS");
+       const effectiveSharesOf=(row,fallback)=>{
+         const issued=n(row||{},"ShOutFY","ShOut")??n(fallback||{},"ShOutFY","ShOut");
+         const treasury=n(row||{},"TrShFY","TrSh")??n(fallback||{},"TrShFY","TrSh")??0;
+         return issued!=null?issued-treasury:null;
+       };
+       let bps=n(cur,"BPS","NCBPS"),bpsSource=bps!=null?"LatestActualDirect":"",bpsDate=bps!=null?disc(cur):"",bpsPeriod=bps!=null?curType:"";
+       if(bps==null){const sheq=n(cur,"ShEq","NCShEq"),sh=effectiveSharesOf(cur,latestFY);if(sheq!=null&&sh){bps=sheq/sh;bpsSource="LatestActualCalculated";bpsDate=disc(cur);bpsPeriod=curType}}
+       if(bps==null&&latestFY){bps=n(latestFY,"BPS","NCBPS");if(bps!=null)bpsSource="LatestFYDirect";else{const sheq=n(latestFY,"ShEq","NCShEq"),sh=effectiveSharesOf(latestFY,null);if(sheq!=null&&sh){bps=sheq/sh;bpsSource="LatestFYCalculated"}}if(bps!=null){bpsDate=disc(latestFY);bpsPeriod=s(latestFY,"CurPerType")}}
        // V2 fins/summary includes Shareholders' Equity aliases ShEq/NCShEq.
-       // Keep legacy Eq/NCEq first for PC compatibility, then current V2 aliases.
-       const eq=n(latestFY,"Eq","NCEq","ShEq","NCShEq"),ta=n(latestFY,"TA","NCTA"),fyNP=n(latestFY,"NP","NCNP");
+       const eq=n(cur,"Eq","NCEq","ShEq","NCShEq")??n(latestFY||{},"Eq","NCEq","ShEq","NCShEq"),ta=n(cur,"TA","NCTA")??n(latestFY||{},"TA","NCTA"),fyNP=n(latestFY||{},"NP","NCNP");
        let roe=n(latestFY,"ROE","NCROE"),roeSource=roe!=null?"JQuantsReported":"";
        if(roe!=null&&Math.abs(roe)<=1.5)roe*=100;
        if(roe==null&&eq){
          let priorFY=null,pbest=1e99;
-         const curFYEnd=s(latestFY,"CurFYEn","CurPerEn");
+         const curFYEnd=s(latestFY||{},"CurFYEn","CurPerEn");
          if(curFYEnd){
            const td=Date.parse(curFYEnd);
            for(const x of hist){
@@ -1346,12 +1353,15 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          roe=ratio(fyNP,den);
          if(roe!=null)roeSource="CalculatedNetProfitAverageEquity";
        }
-       let eqRatio=n(latestFY,"EqAR","NCEqAR");if(eqRatio!=null&&Math.abs(eqRatio)<=1.5)eqRatio*=100;
+       let eqRatio=n(cur,"EqAR","NCEqAR"),eqRatioSource=eqRatio!=null?"LatestActualDirect":"",eqRatioDate=eqRatio!=null?disc(cur):"",eqRatioPeriod=eqRatio!=null?curType:"";
+       if(eqRatio!=null&&Math.abs(eqRatio)<=1.5)eqRatio*=100;
+       if(eqRatio==null){const ceq=n(cur,"Eq","NCEq","ShEq","NCShEq"),cta=n(cur,"TA","NCTA");if(ceq!=null&&cta){eqRatio=ratio(ceq,cta);eqRatioSource="LatestActualCalculated";eqRatioDate=disc(cur);eqRatioPeriod=curType}}
+       if(eqRatio==null&&latestFY){eqRatio=n(latestFY,"EqAR","NCEqAR");if(eqRatio!=null){if(Math.abs(eqRatio)<=1.5)eqRatio*=100;eqRatioSource="LatestFYDirect"}else{const feq=n(latestFY,"Eq","NCEq","ShEq","NCShEq"),fta=n(latestFY,"TA","NCTA");if(feq!=null&&fta){eqRatio=ratio(feq,fta);eqRatioSource="LatestFYCalculated"}}if(eqRatio!=null){eqRatioDate=disc(latestFY);eqRatioPeriod=s(latestFY,"CurPerType")}}
        const cfo=n(cur,"CFO"),cfi=n(cur,"CFI"),cff=n(cur,"CFF");
        let lacfo=cfo,lacfi=cfi,lacff=cff,cfDate=disc(cur);
        if(lacfo==null&&lacfi==null&&lacff==null&&latestFY){lacfo=n(latestFY,"CFO");lacfi=n(latestFY,"CFI");lacff=n(latestFY,"CFF");cfDate=disc(latestFY)}
-       const shares=n(latestFY,"ShOutFY"),treasury=n(latestFY,"TrShFY")||0,effectiveShares=shares!=null?shares-treasury:null;
-       const fdiv=n(fc||{},"FDivAnn","FDivTotalAnn"),adiv=n(latestFY,"DivAnn","DivTotalAnn");
+       const effectiveShares=effectiveSharesOf(latestFY||cur,null);
+       const fdiv=n(fc||{},"FDivAnn","FDivTotalAnn"),adiv=n(latestFY||{},"DivAnn","DivTotalAnn");
        rows.push({code,discDate:disc(cur),curPerType:curType,ProfitType:ptype,
          sales,op:n(cur,"OP","NCOP"),odp:n(cur,"OdP","NCOdP"),np:n(cur,"NP","NCNP"),
          eps:actualEPS,bps,equity:eq,totalAssets:ta,cfo,cfi,cff,
@@ -1360,7 +1370,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          CurrentOperatingMarginPct:ptype==="OperatingProfit"?margin:null,PreviousOperatingMarginPct:ptype==="OperatingProfit"?pmargin:null,
          OperatingMarginChangePt:(margin!=null&&pmargin!=null)?margin-pmargin:null,
          ForecastSalesGrowthPct:pct(fs,prevFYs),ForecastPrimaryProfitGrowthPct:(fp>0&&prevFYp>0)?pct(fp,prevFYp):null,
-         CurrentPrimaryProfit:cp,ForecastPrimaryProfit:fp,ActualEPS:actualEPS,ForecastEPS:forecastEPS,BPS:bps,ROE:roe,ROESource:roeSource,EquityRatioPct:eqRatio,
+         CurrentPrimaryProfit:cp,ForecastPrimaryProfit:fp,ActualEPS:actualEPS,ForecastEPS:forecastEPS,BPS:bps,BPSSource:bpsSource,BPSReferenceDate:bpsDate,BPSSourcePeriod:bpsPeriod,ROE:roe,ROESource:roeSource,ROEReferenceDate:latestFY?disc(latestFY):"",ROESourcePeriod:latestFY?s(latestFY,"CurPerType"):"",EquityRatioPct:eqRatio,EquityRatioSource:eqRatioSource,EquityRatioReferenceDate:eqRatioDate,EquityRatioSourcePeriod:eqRatioPeriod,
          CFO:cfo,CFI:cfi,CFF:cff,LatestAvailableCFO:lacfo,LatestAvailableCFI:lacfi,LatestAvailableCFF:lacff,
          LatestAvailableFCF:(lacfo!=null&&lacfi!=null)?lacfo+lacfi:null,CashFlowReferenceDate:cfDate,
          EffectiveShares:effectiveShares,ActualAnnualDividend:adiv,ForecastAnnualDividend:fdiv,
@@ -1429,6 +1439,28 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      }
    }
    self.postMessage({ok:true,type:"result",result});return;
+ }
+
+ if(cmd==="screening-supply-features"){
+   const payload=d.payload||{},asOf=String(payload.asOf||""),want=new Set((payload.codes||[]).map(v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean));
+   const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const num=(o,k)=>{const v=o?.[k];return v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v))?Number(v):null};
+   const dateDiff=(a,b)=>(Date.parse(a)-Date.parse(b))/86400000;
+   const pct=(a,b)=>a!=null&&b!=null&&b!==0?(a/b-1)*100:null;
+   const result=new Map([...want].map(c=>[c,{NormalizedCode:c}]));
+   // Weekly margin interest: reproduce PC row_on_or_before(target) and target-7d reference.
+   try{let db=new p.OpfsSAHPoolDb("/jq_margin_interest_v1.sqlite","r");const rs=execRows(db,"SELECT data_date,raw_json FROM margin_interest ORDER BY data_date");db.close();const by=new Map();
+     for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const c=norm(o.Code??o.code);if(!want.has(c))continue;const dt=String(o.Date??rr.data_date??"").slice(0,10);if(!dt||dt>asOf)continue;if(!by.has(c))by.set(c,[]);by.get(c).push({dt,o})}
+     for(const c of want){const arr=by.get(c)||[];if(!arr.length)continue;const cur=arr.at(-1),cut=new Date(Date.parse(cur.dt)-7*86400000).toISOString().slice(0,10);let prior=null;for(const x of arr){if(x.dt<=cut)prior=x;else break}const long=num(cur.o,"LongVol");const prev=prior?num(prior.o,"LongVol"):null;Object.assign(result.get(c),{MarginDate:cur.dt,MarginLongChangePct1W:pct(long,prev)})}
+   }catch(_){}
+   // Large short reports: reconstruct latest known report per reporting identity at asOf and asOf-7d.
+   try{let db=new p.OpfsSAHPoolDb("/jq_short_sale_report_v1.sqlite","r");const rs=execRows(db,"SELECT data_date,raw_json FROM short_sale_report ORDER BY data_date");db.close();const by=new Map();
+     for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const c=norm(o.Code??o.code);if(!want.has(c))continue;const dd=String(o.DiscDate??"").slice(0,10),cd=String(o.CalcDate??"").slice(0,10);if(!dd||dd>asOf)continue;if(!by.has(c))by.set(c,[]);by.get(c).push({dd,cd,o})}
+     const state=(arr,cut)=>{const m=new Map();for(const x of arr){if(x.dd>cut)continue;const o=x.o,key=[norm(o.Code),o.SSName??"",o.SSAddr??"",o.DICName??"",o.DICAddr??"",o.FundName??""].join("|");const old=m.get(key);if(!old||(x.dd+"|"+x.cd)>=(old.dd+"|"+old.cd))m.set(key,x)}return m};
+     const agg=(arr,cut)=>{const st=state(arr,cut),rat=[],dates=[];for(const x of st.values()){const v=num(x.o,"ShrtPosToSO");if(v!=null)rat.push(v);if(x.cd)dates.push(x.cd)}const ratioSum=rat.length?rat.reduce((a,b)=>a+b,0):null;let fresh="Unknown";if(dates.length){const oldest=dates.sort()[0],age=dateDiff(cut,oldest);fresh=age<0?"FutureDateError":age<=7?"Fresh":age<=30?"Recent":"Stale"}return {ratioSum,fresh}};
+     for(const c of want){const arr=by.get(c)||[];if(!arr.length)continue;const cur=agg(arr,asOf),cut=new Date(Date.parse(asOf)-7*86400000).toISOString().slice(0,10),pr=agg(arr,cut);Object.assign(result.get(c),{LargeShortRatioChange1W:cur.ratioSum!=null&&pr.ratioSum!=null?cur.ratioSum-pr.ratioSum:null,LargeShortAggregateFreshness:cur.fresh})}
+   }catch(_){}
+   self.postMessage({ok:true,type:"result",rows:[...result.values()]});return;
  }
 
  if(cmd==="screening-event-features"){
@@ -1525,7 +1557,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      MACDHistogram:t.macdHistogram??null,MACDHistogramChange5D:t.macdHistogramChange5D??null,MACDState:t.macdState??null,
      PositionVs60DHighPct:t.positionVs60DHighPct??null,DistanceFrom52WLowPct:t.low52?((t.close/t.low52-1)*100):null,TrendState:t.trendState??null,
      DiscDate:f.discDate??null,LatestDisclosureDate:f.discDate??null,LatestPeriodType:f.curPerType??null,ProfitType:f.ProfitType??null,Sales:f.sales??null,OperatingProfit:f.op??null,OrdinaryProfit:f.odp??null,NetProfit:f.np??null,EPS:f.eps??null,BPS:f.bps??null,Equity:f.equity??null,TotalAssets:f.totalAssets??null,CFO:f.cfo??null,CFI:f.cfi??null,CFF:f.cff??null,ForecastSales:f.forecastSales??null,ForecastOperatingProfit:f.forecastOP??null,ForecastOrdinaryProfit:f.forecastOdP??null,ForecastNetProfit:f.forecastNP??null,ForecastEPS:f.forecastEPS??null,
-     SalesYoY:f.SalesYoY??null,PrimaryProfitYoY:f.PrimaryProfitYoY??null,CurrentOperatingMarginPct:f.CurrentOperatingMarginPct??null,PreviousOperatingMarginPct:f.PreviousOperatingMarginPct??null,OperatingMarginChangePt:f.OperatingMarginChangePt??null,ForecastSalesGrowthPct:f.ForecastSalesGrowthPct??null,ForecastPrimaryProfitGrowthPct:f.ForecastPrimaryProfitGrowthPct??null,ROE:f.ROE??null,ROESource:f.ROESource??"",EquityRatioPct:f.EquityRatioPct??null,CFO:f.CFO??f.cfo??null,LatestAvailableCFO:f.LatestAvailableCFO??null,LatestAvailableFCF:f.LatestAvailableFCF??null,
+     SalesYoY:f.SalesYoY??null,PrimaryProfitYoY:f.PrimaryProfitYoY??null,CurrentOperatingMarginPct:f.CurrentOperatingMarginPct??null,PreviousOperatingMarginPct:f.PreviousOperatingMarginPct??null,OperatingMarginChangePt:f.OperatingMarginChangePt??null,ForecastSalesGrowthPct:f.ForecastSalesGrowthPct??null,ForecastPrimaryProfitGrowthPct:f.ForecastPrimaryProfitGrowthPct??null,ROE:f.ROE??null,ROESource:f.ROESource??"",ROEReferenceDate:f.ROEReferenceDate??"",ROESourcePeriod:f.ROESourcePeriod??"",BPSSource:f.BPSSource??"",BPSReferenceDate:f.BPSReferenceDate??"",BPSSourcePeriod:f.BPSSourcePeriod??"",EquityRatioPct:f.EquityRatioPct??null,EquityRatioSource:f.EquityRatioSource??"",EquityRatioReferenceDate:f.EquityRatioReferenceDate??"",EquityRatioSourcePeriod:f.EquityRatioSourcePeriod??"",CFO:f.CFO??f.cfo??null,LatestAvailableCFO:f.LatestAvailableCFO??null,LatestAvailableFCF:f.LatestAvailableFCF??null,
      EffectiveShares:f.EffectiveShares??null,ActualAnnualDividend:f.ActualAnnualDividend??null,ForecastAnnualDividend:f.ForecastAnnualDividend??null,
      ActualEPS:f.ActualEPS??f.eps??null,FinancialDataFlag:f.FinancialDataFlag??"",
      ActualPER:(t.close!=null&&f.ActualEPS>0)?t.close/f.ActualEPS:null,ForecastPER:(t.close!=null&&f.ForecastEPS>0)?t.close/f.ForecastEPS:null,

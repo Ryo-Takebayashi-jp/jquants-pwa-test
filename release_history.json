@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha69",
+  "current_release": "v7e-alpha70",
   "history": [
     {
-      "release": "v7e-alpha69",
+      "release": "v7e-alpha70",
       "date": "2026-09-02",
-      "note": "Root-cause fix: JS Number(null)=0 violated PC _linear_score(None)=50 semantics; null/blank now returns default before coercion."
+      "note": "Financial source-period resolver + strict disclosure date + PC-equivalent QVR crowding penalty."
     }
   ]
 }

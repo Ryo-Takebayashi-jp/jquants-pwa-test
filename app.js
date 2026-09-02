@@ -2118,6 +2118,9 @@ if($("screeningBaseBtn")) $("screeningBaseBtn").onclick=async()=>{
    if(!latestFinancialNormalized){const fr=await workerCall("financial-normalize-latest",180000);latestFinancialNormalized=fr.rows}
    const r=await workerCall("screening-base-snapshot",240000,null,null,{asOf,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized});
    latestScreeningBaseRows=r.rows||[];
+   const sf=await workerCall("screening-supply-features",300000,null,null,{asOf,codes:latestScreeningBaseRows.map(x=>x.NormalizedCode)});
+   const sm=new Map((sf.rows||[]).map(x=>[String(x.NormalizedCode),x]));
+   latestScreeningBaseRows=latestScreeningBaseRows.map(x=>({...x,...(sm.get(String(x.NormalizedCode))||{})}));
    const x=r.coverage||{};
    box("screeningBaseResult",(x.technical===r.count&&x.master===r.count)?"pass":"warn",`Screening統合母集団\n基準日: ${asOf}\nフィルタ前: ${x.preFilter??"-"}\nフィルタ後: ${r.count}\nテクニカル: ${x.technical}/${r.count}\nMaster: ${x.master}/${r.count}\n財務: ${x.financial}/${r.count}\n会社予想: ${x.forecast}/${r.count}\n\n${x.master===r.count?"Master JOIN: PASS":"Master JOIN: 要確認"}\n母集団フィルタ: Market + 普通株011 + 売買代金5,000万円 + 株価100円 + 履歴60日\n次段階: PC版5戦略スコア/Top20選抜`);
    if($("screeningBaseExportBtn")) $("screeningBaseExportBtn").disabled=!latestScreeningBaseRows.length;
@@ -2201,7 +2204,13 @@ function buildScreeningStrategies(rows){
    const base=weighted(r,[["Relative20Score",.17],["Relative60Score",.13],["MA25SlopeScore",.14],["MA75SlopeScore",.10],["MACDHistogramImprovementScore",.12],["VolumePickupScore",.10]],50);
    r.QVRReRatingScore=Math.max(0,Math.min(100,base*.76+rsi*.09+early*.08+mb*.07));
    let mismatch=0;if(r.PrimaryProfitYoY>20&&r.LatestAvailableCFO<0)mismatch+=10;if(Math.abs(Number(r.PrimaryProfitYoY))>300)mismatch+=8;if(Number(r.AverageTradingValue20D)<100000000)mismatch+=5;
-   r.QVRCrowdingPenalty=0; // active once supply-change fields are normalized
+   let crowd=0;
+   const ml=Number(r.MarginLongChangePct1W);
+   if(Number.isFinite(ml)&&ml>10)crowd+=Math.min(12,(ml-10)*0.4);
+   const fresh=String(r.LargeShortAggregateFreshness||r.LargeShortFreshness||"");
+   const sc=Number(r.LargeShortRatioChange1W);
+   if((fresh==="Fresh"||fresh==="Recent")&&Number.isFinite(sc)&&sc>0)crowd+=Math.min(8,sc*100*4);
+   r.QVRCrowdingPenalty=Math.min(crowd,15);
    r.QVRQualityMismatchPenalty=mismatch;
    r.QualityValueReRatingScore=r.QVRValueScore==null?null:Math.max(0,Math.min(100,r.QVRQualityScore*.36+r.QVRValueScore*.28+r.QVRReRatingScore*.36-r.QVRCrowdingPenalty-mismatch));
    let chase=0;if(r.Return5D>10)chase+=Math.min((r.Return5D-10)*1.5,20);if(r.Return20D>25)chase+=Math.min((r.Return20D-25)*.8,20);if(r.MA25DeviationPct>12)chase+=Math.min(r.MA25DeviationPct-12,15);r.ChasePenalty=chase;
@@ -2425,7 +2434,7 @@ function parityRootCauseAudit(pcRows,webSelected,webScored,codes){
    const code=norm(row?.NormalizedCode||row?.Code),idx=peers.findIndex(r=>norm(r.NormalizedCode)===code);
    return {sec,peers,idx};
  };
- const lines=["【alpha69 一発原因監査】","PC screening.py の実装条件とWeb全母集団を同時照合","PC共通条件: Prime/Standard/Growth + ProdCat=011 + 売買代金20D>=5000万円 + Close>=100 + 履歴>=60日","QVR採用条件: score有効 + EarningsReactionPendingでない + FinancialDataFlagがWebRequired/NoLatestFinancialでない → 上位20"," "];
+ const lines=["【alpha70 原因監査】","PC screening.py の実装条件とWeb全母集団を同時照合","PC共通条件: Prime/Standard/Growth + ProdCat=011 + 売買代金20D>=5000万円 + Close>=100 + 履歴>=60日","QVR採用条件: score有効 + EarningsReactionPendingでない + FinancialDataFlagがWebRequired/NoLatestFinancialでない → 上位20"," "];
  for(const c of codes){
    const p=pm.get(c)||{},w=um.get(c)||{},sel=sm.get(c);if(!Object.keys(w).length)continue;
    lines.push(`--- ${c} ${w.CompanyName||p.CompanyName||""} ---`);

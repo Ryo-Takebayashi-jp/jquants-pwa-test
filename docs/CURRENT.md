@@ -1,22 +1,11 @@
-# v7e-alpha68
+# CURRENT — v7e-alpha70
 
-## 根本原因
-PC:
-`_linear_score(None, ...) -> 50`
+財務period resolverとQVR需給ペナルティを本実装。
 
-Web旧版:
-`Number(null) -> 0`
-その後0点相当の実値として採点。
+- LatestDisclosureとFY型指標の参照期間を分離
+- BPS/EquityRatio: latest actual -> FY carry-forward
+- ROE: latest FY
+- strict financial DiscDate semantics
+- QVRCrowdingPenalty: PC式をWebへ移植
 
-6176 / 3989 はPC CSV上で ROE / EquityRatioPct が両方空欄。
-そのため:
-- ROE: PC 50 / Web旧 20 → 7.50pt差
-- Equity: PC 50 / Web旧 25 → 3.75pt差
-- 合計 11.25pt
-
-観測されたQVRQualityScore差と完全一致。
-
-## テスト
-データ更新不要。
-既存DataLakeのまま ③ → ④ → ⑤。
-⑤の共通率、PCのみ/Webのみ、6176/3989のQVRQualityScoreを確認。
+次の実機確認は9/1 Screening parity。診断用の新規データ取得は不要。
