@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha67");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha68");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha67").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha68").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2138,7 +2138,22 @@ function pctRank(rows,key,reverse=false){
 function clip100(x){return Math.max(0,Math.min(100,Number(x)||0))}
 function buildScreeningStrategies(rows){
  const rr=rows.map(x=>({...x}));
- const lin=(v,pts,def=50)=>{v=Number(v);if(!Number.isFinite(v))return def;if(v<=pts[0][0])return pts[0][1];if(v>=pts.at(-1)[0])return pts.at(-1)[1];for(let i=1;i<pts.length;i++){const [x1,y1]=pts[i-1],[x2,y2]=pts[i];if(x1<=v&&v<=x2)return y1+(v-x1)/(x2-x1)*(y2-y1)}return def};
+ const lin=(v,pts,def=50)=>{
+  // PC screening.py::_linear_score parity:
+  // Python None -> default. JS Number(null) is 0, so null/blank MUST be
+  // rejected before numeric coercion or missing data is incorrectly scored
+  // as a real zero.
+  if(v==null||String(v).trim()==="")return def;
+  v=Number(v);
+  if(!Number.isFinite(v))return def;
+  if(v<=pts[0][0])return pts[0][1];
+  if(v>=pts.at(-1)[0])return pts.at(-1)[1];
+  for(let i=1;i<pts.length;i++){
+    const [x1,y1]=pts[i-1],[x2,y2]=pts[i];
+    if(x1<=v&&v<=x2)return y1+(v-x1)/(x2-x1)*(y2-y1);
+  }
+  return def;
+};
  const weighted=(r,defs,neutral=50)=>{let total=0,w=0;for(const [k,wt] of defs){const v=r[k];total+=(v==null?neutral:Number(v))*wt;w+=wt}return w?total/w:neutral};
  const rank=(field,out,reverse=false,groupField=null)=>{const assign=(items)=>{items.sort((a,b)=>a.v-b.v);const n=items.length;if(!n)return;let s=0;while(s<n){let e=s+1;while(e<n&&items[e].v===items[s].v)e++;const p=(((s+e-1)/2)+1)/n*100,q=reverse?100-p:p;for(let i=s;i<e;i++)rr[items[i].i][out]=q;s=e}};
    rr.forEach(r=>r[out]=null);
@@ -2364,6 +2379,9 @@ function residualFullTrace(pcRows,webSelected,webScored,codes){
      const other=(Number(q.QVROperatingMarginScore)||0)*.20+(Number(q.QVRMarginImprovementScore)||0)*.20+(Number(q.QVRCFScore)||0)*.20+(Number(q.QVREquityScore)||0)*.15;
      const implied=(pcQ-other)/.25;
      lines.push(`Quality分解(Web): ROE=${q.QVRROEScore??"(blank)"}×25% + OPM=${q.QVROperatingMarginScore??"(blank)"}×20% + Margin改善=${q.QVRMarginImprovementScore??"(blank)"}×20% + CF=${q.QVRCFScore??"(blank)"}×20% + Equity=${q.QVREquityScore??"(blank)"}×15%`);
+     if((q.ROE==null||String(q.ROE).trim()==="")&&(q.EquityRatioPct==null||String(q.EquityRatioPct).trim()==="")){
+       lines.push(`NULL既定値監査: ROE欠損→50点 / EquityRatio欠損→50点（PC _linear_score(None) と同一）`);
+     }
      lines.push(`PC Qualityから逆算したROE部品score=${Number.isFinite(implied)?implied.toFixed(4):"(blank)"} / Web ROE部品score=${q.QVRROEScore??"(blank)"}`);
      if(Number.isFinite(implied)&&Math.abs(implied-Number(q.QVRROEScore))>1e-6)lines.push(`Quality差の主因候補: ROE部品 ${implied.toFixed(2)} vs ${q.QVRROEScore??"(blank)"}`);
    }

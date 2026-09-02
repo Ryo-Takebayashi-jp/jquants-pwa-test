@@ -1,19 +1,22 @@
-# v7e-alpha67
+# v7e-alpha68
 
-データ更新・API再取得は不要です。
+## 根本原因
+PC:
+`_linear_score(None, ...) -> 50`
 
-今回まとめて対応:
-- V2 ShEq/NCShEq対応
-- PC相当の前年FY自己資本選択
-- ROE再計算
-- QVR Quality 5部品分解
-- PC QualityからROE score逆算
-- raw Eq/ShEq/ROE/EqAR監査
+Web旧版:
+`Number(null) -> 0`
+その後0点相当の実値として採点。
 
-既存DataLakeで ③ → ④ → ⑤ を実行。
-⑤の【残差フルトレース】だけ確認してください。
+6176 / 3989 はPC CSV上で ROE / EquityRatioPct が両方空欄。
+そのため:
+- ROE: PC 50 / Web旧 20 → 7.50pt差
+- Equity: PC 50 / Web旧 25 → 3.75pt差
+- 合計 11.25pt
 
-期待ポイント:
-- 6176 / 3989 の Web QVRQualityScore がPC側へ近づくか
-- `Quality差の主因候補: ROE部品 ...` が何を示すか
-- 共通率97.8%が改善するか
+観測されたQVRQualityScore差と完全一致。
+
+## テスト
+データ更新不要。
+既存DataLakeのまま ③ → ④ → ⑤。
+⑤の共通率、PCのみ/Webのみ、6176/3989のQVRQualityScoreを確認。

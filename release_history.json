@@ -1,10 +1,10 @@
 {
-  "current_release": "v7e-alpha67",
+  "current_release": "v7e-alpha68",
   "history": [
     {
-      "release": "v7e-alpha67",
+      "release": "v7e-alpha68",
       "date": "2026-09-02",
-      "note": "QVR Quality decomposition + V2 ShEq/NCShEq ROE normalization fix + inferred PC ROE component audit."
+      "note": "Root-cause fix: JS Number(null)=0 violated PC _linear_score(None)=50 semantics; null/blank now returns default before coercion."
     }
   ]
 }
