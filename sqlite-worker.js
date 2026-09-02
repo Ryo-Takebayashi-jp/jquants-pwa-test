@@ -1110,6 +1110,131 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){try{if(pdb)pdb.close()}catch(_){}try{if(cdb)cdb.close()}catch(_){}try{if(tdb)tdb.close()}catch(_){}throw new Error(`[discovery:${stage}] ${err?.message||err}`)}
  }
 
+
+ if(cmd==="discovery-daily-recalc"){
+   let pdb=null,cdb=null,tdb=null,mdb=null,stage="01-input";
+   try{
+     const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10);
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+     const norm=v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+     const jq=v=>{const c=norm(v);return c.length===4?c+"0":c};
+     const num=v=>{if(v==null||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)?x:null};
+     const round6=v=>Number.isFinite(v)?Math.round((v+Number.EPSILON)*1e6)/1e6:null;
+     const pct=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b!==0?(a/b-1)*100:null;
+     const ret6=(a,b)=>Number.isFinite(a)&&a!==0&&Number.isFinite(b)?round6((b/a-1)*100):null;
+     const rel6=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)?round6(a-b):null;
+     const subDays=(iso,days)=>{const z=new Date(iso+"T12:00:00Z");z.setUTCDate(z.getUTCDate()-days);return z.toISOString().slice(0,10)};
+     const minIso=(a,b)=>!a?b:!b?a:(a<b?a:b);
+     const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+     const fmtNum=v=>Number.isFinite(v)?round6(v):null;
+     const dbExists=name=>poolFileNamesSafe(p).some(f=>f.replace(/^\/+/,"")===String(name).replace(/^\/+/,""));
+
+     stage="02-private-master";
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     const hasMaster=Number(scalar(pdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='discovery_episode_master'")||0)>0;
+     if(!hasMaster)throw new Error("Discovery master未移行です。先に⑥を実行してください。");
+     const stored=execRows(pdb,"SELECT event_id,code,episode_start_date,row_json FROM discovery_episode_master ORDER BY episode_start_date,event_id");
+     if(!stored.length)throw new Error("Discovery masterが空です");
+     const episodes=[];let earliest="";
+     for(const x of stored){let row={};try{row=JSON.parse(String(x.row_json||"{}"))}catch(_){}
+       const code=norm(x.code),start=String(x.episode_start_date||row.EpisodeStartDate||row.DiscoveryDate||"").slice(0,10);
+       if(!code||!/^\d{4}-\d{2}-\d{2}$/.test(start))continue;
+       let planned=String(row.PerfEpisodeEndDate||row.EpisodePlannedEndDate||"").slice(0,10);
+       const end=planned&&planned<asOf?planned:asOf;
+       episodes.push({eventId:String(x.event_id),code,start,end,row});earliest=minIso(earliest,start);
+     }
+     if(!episodes.length)throw new Error("有効なDiscovery Episodeがありません");
+     const tracked=[...new Set(episodes.map(x=>x.code))],trackedJq=tracked.map(jq),historyStart=subDays(earliest,430),supplyHistoryStart=subDays(earliest,470);
+
+     stage="03-master-sector";
+     const sectorMap=new Map();let masterDate="";
+     try{
+       mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");
+       masterDate=String(scalarBind(mdb,"SELECT max(effective_date) FROM equities_master WHERE effective_date<=?",[asOf])||"");
+       if(masterDate){
+         const ms=execRows(mdb,"SELECT code,sector33_name FROM equities_master WHERE effective_date=?",[masterDate]);
+         for(const r of ms){const sec=String(r.sector33_name||"").trim(),c=norm(r.code);if(!sec||!c)continue;if(!sectorMap.has(sec))sectorMap.set(sec,[]);sectorMap.get(sec).push(c)}
+       }
+       mdb.close();mdb=null;
+     }catch(_){try{if(mdb)mdb.close()}catch(__){}mdb=null}
+     const episodeSectors=[...new Set(episodes.map(x=>String(x.row.Sector33||"").trim()).filter(Boolean))];
+     const sectorCodes=[...new Set(episodeSectors.flatMap(s=>sectorMap.get(s)||[]))],sectorJq=sectorCodes.map(jq);
+
+     stage="04-catalog-bars";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     let cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end FROM shard_catalog
+       WHERE dataset='bars_daily' AND state='ready' ORDER BY shard_key`);
+     cdb.close();cdb=null;
+     cats=cats.filter(s=>String(s.range_end||"")>=historyStart&&String(s.range_start||"")<=asOf)
+       .sort((a,b)=>{const pa=String(a.shard_key)==="bars_recent"?2:1,pb=String(b.shard_key)==="bars_recent"?2:1;return pa-pb||String(a.shard_key).localeCompare(String(b.shard_key))});
+     if(!cats.length)throw new Error("bars_daily Shardがありません");
+     const trackedHistory=new Map(),sectorPrices=new Map();
+     const addTracked=r=>{const c=norm(r.code),dt=String(r.date),base=num(r.adj_c)??num(r.c),h=num(r.adj_h)??num(r.h)??base,l=num(r.adj_l)??num(r.l)??base;
+       if(!c||!dt||!Number.isFinite(base))return;if(!trackedHistory.has(c))trackedHistory.set(c,new Map());trackedHistory.get(c).set(dt,{date:dt,close:base,h,l,adjFactor:num(r.adj_factor)??1,volume:num(r.volume),tradingValue:num(r.turnover_value)??num(r.value)});};
+     const addSector=r=>{const c=norm(r.code),dt=String(r.date),close=num(r.c)??num(r.adj_c);if(!c||!dt||!Number.isFinite(close))return;if(!sectorPrices.has(c))sectorPrices.set(c,new Map());sectorPrices.get(c).set(dt,close)};
+     for(const sh of cats){let db=null;try{const nm=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");
+       for(let off=0;off<trackedJq.length;off+=400){const chunk=trackedJq.slice(off,off+400),ph=chunk.map(()=>"?").join(",");if(!ph)continue;
+         const rs=execRows(db,`SELECT code,date,c,h,l,adj_c,adj_h,adj_l,adj_factor,volume,turnover_value,value FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[historyStart,asOf,...chunk]);for(const r of rs)addTracked(r)}
+       for(let off=0;off<sectorJq.length;off+=400){const chunk=sectorJq.slice(off,off+400),ph=chunk.map(()=>"?").join(",");if(!ph)continue;
+         const rs=execRows(db,`SELECT code,date,c,adj_c FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[earliest,asOf,...chunk]);for(const r of rs)addSector(r)}
+     }finally{try{if(db)db.close()}catch(_){}}}
+     const trackedSeries=new Map([...trackedHistory].map(([c,m])=>[c,[...m.values()].sort((a,b)=>a.date.localeCompare(b.date))]));
+
+     stage="05-topix";
+     const topix=new Map();tdb=new p.OpfsSAHPoolDb("/jq_topix_v1.sqlite","r");
+     for(const rr of execRows(tdb,"SELECT raw_json FROM topix")){try{const o=JSON.parse(String(rr.raw_json||"{}")),dt=String(o.Date??o.date??"").slice(0,10),cl=num(o.C??o.Close??o.c??o.close);if(dt&&dt>=historyStart&&dt<=asOf&&Number.isFinite(cl))topix.set(dt,cl)}catch(_){}}
+     tdb.close();tdb=null;const topixRows=[...topix.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+
+     stage="06-supply-load";
+     let marginAvailable=false,shortAvailable=false,alertAvailable=false,marginMin="",shortMin="",alertMin="";
+     const marginBy=new Map(),shortBy=new Map();let alertRows=[];
+     if(dbExists("/jq_margin_interest_v1.sqlite")){let db=null;try{db=new p.OpfsSAHPoolDb("/jq_margin_interest_v1.sqlite","r");const rs=execRows(db,"SELECT data_date,raw_json FROM margin_interest ORDER BY data_date");marginAvailable=true;
+       for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const c=norm(o.Code??o.code),dt=String(o.Date??rr.data_date??"").slice(0,10);if(!c||!tracked.includes(c)||!dt||dt>asOf)continue;marginMin=minIso(marginMin,dt);if(!marginBy.has(c))marginBy.set(c,[]);marginBy.get(c).push({dt,o})}
+       for(const a of marginBy.values())a.sort((x,y)=>x.dt.localeCompare(y.dt));db.close();db=null}catch(_){try{if(db)db.close()}catch(__){}}}
+     if(dbExists("/jq_short_sale_report_v1.sqlite")){let db=null;try{db=new p.OpfsSAHPoolDb("/jq_short_sale_report_v1.sqlite","r");const rs=execRows(db,"SELECT data_date,raw_json FROM short_sale_report ORDER BY data_date");shortAvailable=true;
+       for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const c=norm(o.Code??o.code),dd=String(o.DiscDate??rr.data_date??"").slice(0,10),cd=String(o.CalcDate??"").slice(0,10);if(!c||!tracked.includes(c)||!dd||dd>asOf)continue;shortMin=minIso(shortMin,dd);if(!shortBy.has(c))shortBy.set(c,[]);shortBy.get(c).push({dd,cd,o})}
+       for(const a of shortBy.values())a.sort((x,y)=>(x.dd+"|"+x.cd).localeCompare(y.dd+"|"+y.cd));db.close();db=null}catch(_){try{if(db)db.close()}catch(__){}}}
+     if(dbExists("/jq_margin_alert_v1.sqlite")){let db=null;try{db=new p.OpfsSAHPoolDb("/jq_margin_alert_v1.sqlite","r");const rs=execRows(db,"SELECT data_date,raw_json FROM margin_alert ORDER BY data_date");alertAvailable=true;
+       for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const pub=String(o.PubDate??rr.data_date??"").slice(0,10),app=String(o.AppDate??"").slice(0,10),c=norm(o.Code??o.code);if(!pub||pub>asOf)continue;alertMin=minIso(alertMin,pub);alertRows.push({pub,app,c,o})}db.close();db=null}catch(_){try{if(db)db.close()}catch(__){}}}
+
+     const rowOnBefore=(arr,cut)=>{let z=null;for(const x of arr||[]){const dt=x.dt??x.dd??x.pub??"";if(dt<=cut)z=x;else break}return z};
+     const supplyStatus=available=>available?"Available":"SourceMissing";
+     const marginFeat=(code,cut)=>{const arr=marginBy.get(code)||[],cur=rowOnBefore(arr,cut);const out={MarginInterestStatus:supplyStatus(marginAvailable),MarginLongVol:null,MarginShortVol:null,MarginLongShortRatio:null,MarginLongChangePct1W:null};if(!cur)return out;
+       const lv=num(cur.o.LongVol),sv=num(cur.o.ShrtVol);out.MarginLongVol=lv;out.MarginShortVol=sv;out.MarginLongShortRatio=(Number.isFinite(lv)&&Number.isFinite(sv)&&sv!==0)?lv/sv:null;
+       const refCut=subDays(cur.dt,7),pr=rowOnBefore(arr,refCut),pv=pr?num(pr.o.LongVol):null;out.MarginLongChangePct1W=(Number.isFinite(lv)&&Number.isFinite(pv)&&pv!==0)?fmtNum((lv/pv-1)*100):null;return out};
+     const subjectKey=o=>[norm(o.Code),o.SSName??"",o.SSAddr??"",o.DICName??"",o.DICAddr??"",o.FundName??""].map(x=>String(x).trim()).join("|");
+     const freshOne=(cut,cd)=>{if(!cd)return"Unknown";const age=(Date.parse(cut)-Date.parse(cd))/86400000;if(age<0)return"FutureDateError";if(age<=7)return"Fresh";if(age<=30)return"Recent";return"Stale"};
+     const shortAgg=(code,cut)=>{const latest=new Map();for(const x of shortBy.get(code)||[]){if(x.dd>cut)break;const k=subjectKey(x.o),old=latest.get(k),mk=x.dd+"|"+x.cd;if(!old||mk>=(old.dd+"|"+old.cd))latest.set(k,x)}
+       const ratios=[],counts={Fresh:0,Recent:0,Stale:0,Unknown:0,FutureDateError:0};for(const x of latest.values()){const v=num(x.o.ShrtPosToSO);if(v!=null)ratios.push(v);const f=freshOne(cut,x.cd);counts[f]=(counts[f]||0)+1}
+       let fr="Unknown";if(latest.size){fr=counts.FutureDateError?"FutureDateError":counts.Stale?"Stale":counts.Recent?"Recent":counts.Unknown?"Unknown":"Fresh"}
+       return {ratio:ratios.length?ratios.reduce((a,b)=>a+b,0):null,fresh:fr}};
+     const shortFeat=(code,cut)=>{const cur=shortAgg(code,cut),pr=shortAgg(code,subDays(cut,7));return {LargeShortReportStatus:supplyStatus(shortAvailable),LargeShortRatioSum:cur.ratio==null?null:fmtNum(cur.ratio),LargeShortRatioChange1W:(cur.ratio!=null&&pr.ratio!=null)?fmtNum(cur.ratio-pr.ratio):null,LargeShortAggregateFreshness:cur.fresh}};
+     const alertFeat=(code,cut)=>{if(!alertAvailable)return {MarginAlertStatus:"SourceMissing",MarginAlertPresent:null};let latestPub="";for(const x of alertRows)if(x.pub<=cut&&x.pub>latestPub)latestPub=x.pub;if(!latestPub)return {MarginAlertStatus:"Available",MarginAlertPresent:null};return {MarginAlertStatus:"Available",MarginAlertPresent:alertRows.some(x=>x.pub===latestPub&&x.c===code)?1:0}};
+
+     stage="07-helpers";
+     const rollingMA=(xs,w)=>{const out=Array(xs.length).fill(null);let run=0;for(let i=0;i<xs.length;i++){run+=xs[i];if(i>=w)run-=xs[i-w];if(i>=w-1)out[i]=run/w}return out};
+     const slopePct=(series,n)=>{if(series.length<=n)return null;const c=series.at(-1),pr=series.at(-1-n);return(c==null||pr==null||pr===0)?null:(c/pr-1)*100};
+     const rsi14=xs=>{if(xs.length<15)return null;const gains=[],losses=[];for(let i=1;i<xs.length;i++){const z=xs[i]-xs[i-1];gains.push(Math.max(z,0));losses.push(Math.max(-z,0))}let ag=avg(gains.slice(0,14)),al=avg(losses.slice(0,14));for(let i=14;i<gains.length;i++){ag=((ag*13)+gains[i])/14;al=((al*13)+losses[i])/14}if(al===0)return ag>0?100:50;const rs=ag/al;return 100-(100/(1+rs))};
+     const ema=(xs,n)=>{if(!xs.length)return[];const a=2/(n+1),o=[xs[0]];for(let i=1;i<xs.length;i++)o.push(a*xs[i]+(1-a)*o.at(-1));return o};
+     const technicalFor=(series,cut)=>{const src=(series||[]).filter(x=>x.date<=cut);if(!src.length)return{};let cumulative=1,rev=[];for(let i=src.length-1;i>=0;i--){const x=src[i],cl=x.close*cumulative,h=(Number.isFinite(x.h)?x.h:x.close)*cumulative,l=(Number.isFinite(x.l)?x.l:x.close)*cumulative;rev.push({date:x.date,c:cl,h,l,v:x.volume,tv:x.tradingValue});const f=Number.isFinite(x.adjFactor)&&x.adjFactor>0?x.adjFactor:1;cumulative*=f}const a=rev.reverse(),cs=a.map(x=>x.c),hs=a.map(x=>x.h),ls=a.map(x=>x.l),vs=a.map(x=>x.v),last=cs.at(-1);
+       const m25=rollingMA(cs,25),m75=rollingMA(cs,75),e12=ema(cs,12),e26=ema(cs,26),mac=e12.map((x,i)=>x-e26[i]),sig=ema(mac,9);const macd=cs.length>=26?mac.at(-1):null,signal=cs.length>=34?sig.at(-1):null,hist=(macd!=null&&signal!=null)?macd-signal:null;let state="";if(signal!=null&&mac.length>=2){const pd=mac.at(-2)-sig.at(-2),cd=mac.at(-1)-sig.at(-1);state=pd<=0&&cd>0?"GoldenCross":pd>=0&&cd<0?"DeadCross":cd>0?"AboveSignal":cd<0?"BelowSignal":"OnSignal"}
+       const r5=vs.slice(-5).filter(Number.isFinite),r20=vs.slice(-20).filter(Number.isFinite),vRatio=(r5.length&&r20.length&&r20.reduce((x,y)=>x+y,0)!==0)?avg(r5)/avg(r20):null;const h52=hs.length>=252?Math.max(...hs.slice(-252)):null,l52=ls.length>=252?Math.min(...ls.slice(-252)):null;
+       return {RSI14:rsi14(cs),MA25Slope5DPct:slopePct(m25,5),MA75Slope20DPct:slopePct(m75,20),MACDHistogram:hist,MACDState:state,DistanceFrom52WHighPct:(h52!=null&&h52!==0)?pct(last,h52):null,DistanceFrom52WLowPct:(l52!=null&&l52!==0)?pct(last,l52):null,VolumeRatio5To20:vRatio}};
+     const marketRegime=cut=>{const cl=topixRows.filter(x=>x[0]<=cut).map(x=>x[1]);if(!cl.length)return ["","","DiscoveryV1_TOPIXPriceOnly"];const c=cl.at(-1),r5=cl.length>5?ret6(cl.at(-6),c):null,r20=cl.length>20?ret6(cl.at(-21),c):null,ma25=cl.length>=25?avg(cl.slice(-25)):null;let reg;if((r5!=null&&r5<=-8)||(r20!=null&&r20<=-12))reg="Shock";else if((r5!=null&&r5<=-5)||(r20!=null&&r20<=-8))reg="Shock-Watch";else if((r20!=null&&r20<=-5)||(ma25!=null&&c<ma25&&r5!=null&&r5<=-2))reg="Risk-Off";else if((ma25!=null&&c<ma25)||(r20!=null&&r20<0))reg="Caution";else reg="Normal";let ph;if(r5!=null&&r5<=-2)ph="Deteriorating";else if(r5!=null&&r5>=2&&["Caution","Risk-Off","Shock-Watch","Shock"].includes(reg))ph="Recovering";else ph="Stable";return [reg,ph,"DiscoveryV1_TOPIXPriceOnly"]};
+
+     stage="08-calc";const out=[];
+     for(const ep of episodes){const all=trackedSeries.get(ep.code)||[],series=all.filter(x=>x.date>=ep.start&&x.date<=ep.end);if(!series.length)continue;let initial=num(ep.row.InitialPrice);if(initial==null)initial=series[0].close;const startDate=series[0].date,startTopix=topix.get(startDate),sector=String(ep.row.Sector33||"").trim(),secCodes=sectorMap.get(sector)||[];
+       for(let idx=0;idx<series.length;idx++){const x=series[idx],dte=x.date,stockRet=ret6(initial,x.close),topRet=(startTopix!=null&&topix.get(dte)!=null)?ret6(startTopix,topix.get(dte)):null;const sre=[];for(const c of secCodes){const mp=sectorPrices.get(c),a=mp?.get(startDate),b=mp?.get(dte);if(Number.isFinite(a)&&a!==0&&Number.isFinite(b))sre.push((b/a-1)*100)}const sectorRet=sre.length?round6(avg(sre)):null,sectorStatus=sectorMap.size?(sre.length?"Available":"NoObservation"):"SourceMissing";const tech=technicalFor(all,dte),mf=marginFeat(ep.code,dte),sf=shortFeat(ep.code,dte),af=alertFeat(ep.code,dte),[reg,phase,model]=marketRegime(dte);const statuses=[mf.MarginInterestStatus,sf.LargeShortReportStatus,af.MarginAlertStatus],unavail=[...new Set(statuses.filter(z=>z&&z!=="Available"))].sort();
+         out.push({EventID:ep.eventId,Code:ep.code,Date:dte,DaysFromStart:idx,EpisodeStartDate:ep.start,InitialPrice:initial,Close:x.close,Volume:x.volume??"",TradingValue:x.tradingValue??"",ReturnFromStart:stockRet??"",TOPIXClose:topix.get(dte)??"",TOPIXReturnFromStart:topRet??"",RelativeTOPIX:rel6(stockRet,topRet)??"",Sector33:sector,SectorReturnFromStart:sectorRet??"",RelativeSector:rel6(stockRet,sectorRet)??"",SectorBenchmarkStatus:sectorStatus,SectorConstituentCount:sre.length||"",SectorBenchmarkMethod:"EqualWeightScreeningUniverse_CurrentMembership_BackfillApproximation",RSI14:tech.RSI14??"",MA25Slope5DPct:tech.MA25Slope5DPct??"",MA75Slope20DPct:tech.MA75Slope20DPct??"",MACDHistogram:tech.MACDHistogram??"",MACDState:tech.MACDState??"",DistanceFrom52WHighPct:tech.DistanceFrom52WHighPct??"",DistanceFrom52WLowPct:tech.DistanceFrom52WLowPct??"",VolumeRatio5To20:tech.VolumeRatio5To20??"",MarginInterestStatus:mf.MarginInterestStatus,MarginLongVol:mf.MarginLongVol??"",MarginShortVol:mf.MarginShortVol??"",MarginLongShortRatio:mf.MarginLongShortRatio??"",MarginLongChangePct1W:mf.MarginLongChangePct1W??"",LargeShortReportStatus:sf.LargeShortReportStatus,LargeShortRatioSum:sf.LargeShortRatioSum??"",LargeShortRatioChange1W:sf.LargeShortRatioChange1W??"",LargeShortAggregateFreshness:sf.LargeShortAggregateFreshness??"",MarginAlertStatus:af.MarginAlertStatus,MarginAlertPresent:af.MarginAlertPresent??"",MarketRegime:reg,MarketPhase:phase,MarketRegimeModel:model,PlanAdaptiveNote:unavail.join(";")});
+       }}
+     out.sort((a,b)=>String(a.EventID).localeCompare(String(b.EventID))||String(a.Date).localeCompare(String(b.Date)));
+
+     stage="09-save";pdb.exec(`CREATE TABLE IF NOT EXISTS discovery_episode_daily_web(event_id TEXT NOT NULL,date TEXT NOT NULL,row_json TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(event_id,date)) WITHOUT ROWID`);const st=pdb.prepare(`INSERT INTO discovery_episode_daily_web(event_id,date,row_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(event_id,date) DO UPDATE SET row_json=excluded.row_json,updated_at=excluded.updated_at`);try{pdb.exec("BEGIN IMMEDIATE");const now=new Date().toISOString();for(const r of out){st.bind([String(r.EventID),String(r.Date),JSON.stringify(r),now]);st.step();st.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}pdb.close();pdb=null}
+     const coverage={historyStart,supplyHistoryStart,marginMinDate:marginMin||"",shortMinDate:shortMin||"",alertMinDate:alertMin||"",marginHistorySufficient:!marginAvailable||!marginMin||marginMin<=supplyHistoryStart,shortHistorySufficient:!shortAvailable||!shortMin||shortMin<=supplyHistoryStart,sourceStatusMode:"WebContentOnly_NoPCDatasetStatusMetadata"};
+     self.postMessage({ok:true,type:"result",asOf,from:earliest,historyStart,masterDate,episodes:episodes.length,count:out.length,rows:out,coverage,elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}try{if(cdb)cdb.close()}catch(_){}try{if(tdb)tdb.close()}catch(_){}try{if(mdb)mdb.close()}catch(_){}throw new Error(`[discovery-daily:${stage}] ${err?.message||err}`)}
+ }
+
  if(cmd==="equities-master-write"){
    const payload=d.payload||{}, rows=payload.rows||[], requestedDate=String(payload.date||"");
    const dbName="/jq_equities_master_v1.sqlite"; let mdb=null;

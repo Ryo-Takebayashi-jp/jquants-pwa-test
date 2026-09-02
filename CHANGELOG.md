@@ -1,3 +1,10 @@
+# v7e-alpha73 - 2026-09-02
+
+- Discovery Daily 42-column PC/Web Parityを追加。
+- Episode×取引日の価格/TOPIX/sector/historical technical/Standard需給/MarketRegimeをWeb DataLakeからpoint-in-time再計算。
+- 差分をBase/Sector/Technical/Supply/Provenance/Marketへ分類し、空売り履歴coverageも表示。
+- Screening 100% PASSとDiscovery Episode 23/23 PASSの既存ロジックは変更なし。
+
 # CHANGELOG
 
 ## v7e-alpha72 — 2026-09-02

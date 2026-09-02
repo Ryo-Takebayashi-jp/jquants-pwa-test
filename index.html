@@ -21,7 +21,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha72</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha73</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 
 
 <section class="card" id="apiKeyCard">
@@ -89,7 +89,17 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <button id="discoveryWebExportBtn" class="secondary" disabled>Web Discovery分析CSVを書き出す</button>
   <pre id="discoveryParityResult" class="result">未実行</pre>
   <div id="discoveryParityTable"></div>
-  <p class="desc">この段階ではEpisode seed/3か月期限/固定1・5・10・20・60営業日リターン/TOPIX相対/最大上昇・最大DDをPC版と合わせます。Discovery Dailyの需給・sector・historical technicalは次のParity層です。</p>
+  <p class="desc">Episode Performance層はPC/Web完全一致済みです。</p>
+</section>
+<section class="card" id="discoveryDailyParityCard">
+  <h2>⑦ Discovery Daily PC/Web Parity</h2>
+  <p>Web DataLakeからEpisode×各取引日の価格/TOPIX/sector benchmark/historical technical/需給snapshot/MarketRegimeを再計算し、PC版 <code>discovery_episode_daily.csv</code> と42列を照合します。</p>
+  <label>PC Discovery daily <input id="discoveryDailyFile" type="file" accept=".csv,text/csv"></label>
+  <button id="discoveryDailyParityBtn">Discovery Dailyを再計算・Parity</button>
+  <button id="discoveryDailyExportBtn" class="secondary" disabled>Web Discovery Daily CSVを書き出す</button>
+  <pre id="discoveryDailyParityResult" class="result">未実行</pre>
+  <div id="discoveryDailyParityTable"></div>
+  <p class="desc">供給データの数値はWeb Shardからpoint-in-time再構築します。PCのdataset_status JSON由来の <code>AvailableFromHistory</code> はWeb DBだけでは復元不能なため、該当する場合は「Provenance差」として別表示します。数値・Freshness・Alert判定は通常Parity対象です。</p>
 </section>
 <details class="card">
   <summary><strong>旧テスト・詳細ツール</strong></summary>
@@ -137,7 +147,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha72 起動確認</h2>
+<h2>v7e-alpha73 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -937,6 +947,6 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 </script>
 
-<script src="./app.js?v=v7e-alpha70"></script>
+<script src="./app.js?v=v7e-alpha73"></script>
 </body>
 </html>

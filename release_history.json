@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha72",
+  "current_release": "v7e-alpha73",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -15,6 +15,11 @@
       "release": "v7e-alpha72",
       "date": "2026-09-02",
       "note": "Screening exact parity baseline + Discovery Episode migration/performance parity."
+    },
+    {
+      "release": "v7e-alpha73",
+      "date": "2026-09-02",
+      "note": "Discovery Daily 42-column Web recomputation/parity: price/TOPIX/sector/historical technical/supply/market regime."
     }
   ]
 }

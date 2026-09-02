@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha72");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha73");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha72").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha73").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2874,7 +2874,7 @@ if($("screeningDiffExportBtn")) $("screeningDiffExportBtn").onclick=()=>{
 if($("residualAuditStandaloneBtn")) $("residualAuditStandaloneBtn").onclick=runStandaloneResidualFinancialAudit;
 
 
-// v7e-alpha72: Discovery Episode migration / performance parity
+// v7e-alpha73: Discovery Episode migration / performance parity
 let latestDiscoveryWebRows=[];
 function discoveryNormCode(v){
   let s=String(v??"").trim().toUpperCase();
@@ -2953,3 +2953,21 @@ if($("discoveryParityBtn"))$("discoveryParityBtn").onclick=async()=>{
   catch(e){box("discoveryParityResult","fail","FAIL\n"+(e.message||e))}finally{$("discoveryParityBtn").disabled=false}
 };
 if($("discoveryWebExportBtn"))$("discoveryWebExportBtn").onclick=()=>{if(!latestDiscoveryWebRows.length)return;downloadBlob(new Blob([discoveryCsv(latestDiscoveryWebRows)],{type:"text/csv;charset=utf-8"}),`web_discovery_episode_analysis_${($("discoveryAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};
+
+
+// v7e-alpha73: Discovery Daily 42-column parity
+let latestDiscoveryDailyWebRows=[];
+const DISCOVERY_DAILY_FIELDS=["EventID","Code","Date","DaysFromStart","EpisodeStartDate","InitialPrice","Close","Volume","TradingValue","ReturnFromStart","TOPIXClose","TOPIXReturnFromStart","RelativeTOPIX","Sector33","SectorReturnFromStart","RelativeSector","SectorBenchmarkStatus","SectorConstituentCount","SectorBenchmarkMethod","RSI14","MA25Slope5DPct","MA75Slope20DPct","MACDHistogram","MACDState","DistanceFrom52WHighPct","DistanceFrom52WLowPct","VolumeRatio5To20","MarginInterestStatus","MarginLongVol","MarginShortVol","MarginLongShortRatio","MarginLongChangePct1W","LargeShortReportStatus","LargeShortRatioSum","LargeShortRatioChange1W","LargeShortAggregateFreshness","MarginAlertStatus","MarginAlertPresent","MarketRegime","MarketPhase","MarketRegimeModel","PlanAdaptiveNote"];
+const DISCOVERY_DAILY_NUMERIC=new Set(["DaysFromStart","InitialPrice","Close","Volume","TradingValue","ReturnFromStart","TOPIXClose","TOPIXReturnFromStart","RelativeTOPIX","SectorReturnFromStart","RelativeSector","SectorConstituentCount","RSI14","MA25Slope5DPct","MA75Slope20DPct","MACDHistogram","DistanceFrom52WHighPct","DistanceFrom52WLowPct","VolumeRatio5To20","MarginLongVol","MarginShortVol","MarginLongShortRatio","MarginLongChangePct1W","LargeShortRatioSum","LargeShortRatioChange1W","MarginAlertPresent"]);
+const DISCOVERY_DAILY_PROVENANCE=new Set(["MarginInterestStatus","LargeShortReportStatus","MarginAlertStatus","PlanAdaptiveNote"]);
+function discoveryDailyCsv(rows){if(!rows?.length)return"";const esc=v=>'"'+String(v??"").replaceAll('"','""')+'"';return"\uFEFF"+[DISCOVERY_DAILY_FIELDS.map(esc).join(","),...rows.map(r=>DISCOVERY_DAILY_FIELDS.map(k=>esc(r[k]??"")).join(","))].join("\n")}
+function discoveryDailyGroup(field){if(["EventID","Code","Date","DaysFromStart","EpisodeStartDate","InitialPrice","Close","Volume","TradingValue","ReturnFromStart","TOPIXClose","TOPIXReturnFromStart","RelativeTOPIX"].includes(field))return"Base";if(["Sector33","SectorReturnFromStart","RelativeSector","SectorBenchmarkStatus","SectorConstituentCount","SectorBenchmarkMethod"].includes(field))return"Sector";if(["RSI14","MA25Slope5DPct","MA75Slope20DPct","MACDHistogram","MACDState","DistanceFrom52WHighPct","DistanceFrom52WLowPct","VolumeRatio5To20"].includes(field))return"Technical";if(DISCOVERY_DAILY_PROVENANCE.has(field))return"Provenance";if(["MarginLongVol","MarginShortVol","MarginLongShortRatio","MarginLongChangePct1W","LargeShortRatioSum","LargeShortRatioChange1W","LargeShortAggregateFreshness","MarginAlertPresent"].includes(field))return"Supply";return"Market"}
+function discoveryDailyParity(pcRows,webRows){const wm=new Map((webRows||[]).map(r=>[`${String(r.EventID||"")}\u0001${String(r.Date||"")}`,r])),pcKeys=new Set();let compared=0,perfect=0,corePerfect=0,missingWeb=0;const diffs=[],groups={Base:0,Sector:0,Technical:0,Supply:0,Provenance:0,Market:0};
+ for(const p of pcRows||[]){const key=`${String(p.EventID||"")}\u0001${String(p.Date||"")}`;if(!p.EventID||!p.Date)continue;pcKeys.add(key);const w=wm.get(key);if(!w){missingWeb++;diffs.push({id:p.EventID,date:p.Date,code:p.Code,bad:["Web row missing"],coreBad:true});continue}compared++;const bad=[],coreBad=[];
+  for(const f of DISCOVERY_DAILY_FIELDS){let same;if(DISCOVERY_DAILY_NUMERIC.has(f)){const av=discoveryNum(p[f]),bv=discoveryNum(w[f]);same=(av==null&&bv==null)||(av!=null&&bv!=null&&Math.abs(av-bv)<=1e-5)}else same=String(p[f]??"").trim()===String(w[f]??"").trim();if(!same){const g=discoveryDailyGroup(f);groups[g]++;bad.push(`${f}: PC=${String(p[f]??"").trim()||"(blank)"} / Web=${String(w[f]??"").trim()||"(blank)"}`);if(g!=="Provenance")coreBad.push(f)}}
+  if(!bad.length)perfect++;if(!coreBad.length)corePerfect++;if(bad.length)diffs.push({id:p.EventID,date:p.Date,code:p.Code,bad,coreBad:coreBad.length>0});}
+ const webOnly=(webRows||[]).filter(r=>!pcKeys.has(`${String(r.EventID||"")}\u0001${String(r.Date||"")}`));return{compared,perfect,corePerfect,missingWeb,webOnly,diffs,groups,corePass:missingWeb===0&&webOnly.length===0&&diffs.every(x=>!x.coreBad),fullPass:missingWeb===0&&webOnly.length===0&&diffs.length===0}}
+function renderDiscoveryDailyParity(sum,web){const cls=sum.fullPass?"pass":sum.corePass?"warn":"warn",coverage=web.coverage||{},lines=[sum.fullPass?"完全一致 PASS":sum.corePass?"CORE PASS / Provenance差のみ":"要確認",`基準日: ${web.asOf||"-"}`,`Web Daily行: ${web.count??0}`,`PC Daily行: ${sum.compared+sum.missingWeb}`,`比較: ${sum.compared}`,`42列完全一致行: ${sum.perfect}`,`Core一致行: ${sum.corePerfect}`,`Web欠損: ${sum.missingWeb}`,`Webのみ: ${sum.webOnly.length}`,`差分列数 Base/Sector/Technical/Supply/Provenance/Market = ${sum.groups.Base}/${sum.groups.Sector}/${sum.groups.Technical}/${sum.groups.Supply}/${sum.groups.Provenance}/${sum.groups.Market}`,`価格テクニカル必要開始: ${coverage.historyStart||"-"}`,`需給必要開始: ${coverage.supplyHistoryStart||"-"}`,`信用残履歴開始: ${coverage.marginMinDate||"-"}${coverage.marginHistorySufficient===false?"  ← 不足":""}`,`空売り履歴開始: ${coverage.shortMinDate||"-"}${coverage.shortHistorySufficient===false?"  ← 不足":""}`];box("discoveryDailyParityResult",cls,lines.join("\n"));
+ const esc=x=>String(x??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));const rows=sum.diffs.slice(0,60);if(!rows.length){$("discoveryDailyParityTable").innerHTML="";return}let h='<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th>EventID</th><th>Date</th><th>Code</th><th>差分</th></tr></thead><tbody>';for(const x of rows)h+=`<tr><td>${esc(x.id)}</td><td>${esc(x.date)}</td><td>${esc(x.code)}</td><td>${x.bad.map(esc).join("<br>")}</td></tr>`;h+="</tbody></table></div>";$("discoveryDailyParityTable").innerHTML=h}
+if($("discoveryDailyParityBtn"))$("discoveryDailyParityBtn").onclick=async()=>{const f=$("discoveryDailyFile")?.files?.[0];if(!f){box("discoveryDailyParityResult","warn","PC版 discovery_episode_daily.csv を選択してください。");return}$("discoveryDailyParityBtn").disabled=true;try{const pc=parseCsv(await f.text()).rows;if(!pc.length)throw new Error("Discovery daily CSVが空です");const asOf=$("discoveryAsOf")?.value||todayIsoLocal();const web=await workerCall("discovery-daily-recalc",600000,s=>box("discoveryDailyParityResult","run",`Discovery Daily計算中…\n${s.stage||""}\n${s.detail||""}`),null,{asOf});latestDiscoveryDailyWebRows=web.rows||[];$("discoveryDailyExportBtn").disabled=!latestDiscoveryDailyWebRows.length;renderDiscoveryDailyParity(discoveryDailyParity(pc,web.rows||[]),web)}catch(e){box("discoveryDailyParityResult","fail","FAIL\n"+(e.message||e))}finally{$("discoveryDailyParityBtn").disabled=false}};
+if($("discoveryDailyExportBtn"))$("discoveryDailyExportBtn").onclick=()=>{if(!latestDiscoveryDailyWebRows.length)return;downloadBlob(new Blob([discoveryDailyCsv(latestDiscoveryDailyWebRows)],{type:"text/csv;charset=utf-8"}),`web_discovery_episode_daily_${($("discoveryAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};
