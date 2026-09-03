@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha76");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha77");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha76").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha77").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1738,7 +1738,7 @@ Legacy DataLake: 未使用
  finally{$("simpleDailyBtn").disabled=false}
 };
 
-// v7e-alpha76: advance the local DataLake one trading day with one operation.
+// v7e-alpha77: advance the local DataLake one trading day with one operation, with current-day optional repair.
 function addIsoDays(iso,n){
  const d=new Date(String(iso)+"T00:00:00");
  d.setDate(d.getDate()+Number(n||0));
@@ -1781,10 +1781,30 @@ if($("nextTradingDayAllBtn")) $("nextTradingDayAllBtn").onclick=async()=>{
      await sleep(120);
    }
    if(!target){
-     box("nextTradingDayAllResult","pass",`更新不要
-日足DataLake最新日: ${base}
-本日: ${today}
-次の配信済み取引日はまだありません。`);
+     // No new bars yet. Still repair/re-check optional supply-demand datasets for the current latest trading day.
+     target=base;
+     syncDailyDateInputs(target);
+     lines.length=0;lines.push(`新規日足: なし`,`最新取引日 ${target} の任意データを補完・再確認します。`,``);report();
+     const repairJobs=[
+       ["信用取引週末残高",jqFetchMarginInterest,"margin-interest-write",14],
+       ["日々公表信用",jqFetchMarginAlert,"margin-alert-write",3],
+       ["空売り比率",jqFetchShortRatio,"short-ratio-write",3],
+       ["空売り報告",jqFetchShortSaleReport,"short-sale-report-write",3],
+       ["投資部門別",jqFetchInvestorTypes,"investor-types-write",14]
+     ];
+     for(const [label,fetcher,cmd,lookback] of repairJobs){
+       await run(label,async()=>{
+         const from=addIsoDays(target,-lookback),r=await fetchAndPersistSupplyRange(fetcher,cmd,from,target,token);
+         return {rows:r.got.rows.length};
+       },{optional:true});
+       await sleep(150);
+     }
+     await run("需給正規化",async()=>{await workerCall("supply-demand-normalize",180000);return {}},{optional:true});
+     const failed=results.filter(x=>!x.ok);
+     lines.push("",`結果: ${failed.length?"最新日維持 / 任意データ一部NG":"最新日維持 / 任意データ補完PASS"}`,`成功: ${results.length-failed.length}/${results.length}`);
+     if(failed.length)lines.push("NG: "+failed.map(x=>x.label).join(" / "));
+     lines.push("",`日足DataLake最新日: ${base}`,`次の配信済み取引日はまだありません。`,`任意データは取得coverageを使って未取得/直近未配信分だけ再確認しました。`);
+     box("nextTradingDayAllResult",failed.length?"warn":"pass",lines.join("\n"));
      return;
    }
    syncDailyDateInputs(target);
@@ -1968,7 +1988,7 @@ if($("earningsFetchBtn")) $("earningsFetchBtn").onclick=()=>runDailyDataset("ear
 const SUPPLY_RANGE_WRITERS=new Set(["margin-interest-write","margin-alert-write","short-ratio-write","short-sale-report-write","investor-types-write"]);
 async function supplyResumeOptions(workerCmd){
  if(!SUPPLY_RANGE_WRITERS.has(workerCmd))return {skipDates:new Set(),coverage:[]};
- const r=await workerCall("raw-range-covered-dates",300000,null,null,{writerCmd});
+ const r=await workerCall("raw-range-covered-dates",300000,null,null,{writerCmd:workerCmd});
  const coverage=Array.isArray(r.coverage)?r.coverage:[];
  // A positive historical response is safely reusable. Empty responses are also reusable once 7+ days old,
  // while recent empty dates stay eligible for re-check because J-Quants publication can lag the trading day.

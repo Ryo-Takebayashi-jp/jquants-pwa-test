@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha76",
+  "current_release": "v7e-alpha77",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -35,6 +35,11 @@
       "release": "v7e-alpha76",
       "date": "2026-09-02",
       "note": "Discovery Daily engine/diff/technical diagnostics; per-as-of 470-day large-short window parity fix."
+    },
+    {
+      "release": "v7e-alpha77",
+      "date": "2026-09-03",
+      "note": "Fix supply resume coverage writerCmd binding in one-click update; when no new bars are available, re-check/repair optional supply datasets for the current latest trading day."
     }
   ]
 }
