@@ -1,3 +1,13 @@
+# v7e-alpha81 - 2026-09-03
+
+- Added Factor Monitor PC/Web parity from the full Web Screening universe.
+- Recalculates Size / Valuation / Quality / Growth / Sector factor groups, robust medians/breadth, Strength, Acceleration, Phase and Alert using the PC FactorMonitorV1 definitions.
+- Added independent SectorSeasonalityV1 reconstruction from Web DataLake monthly stock/TOPIX history over the same 10-year lookback and look-ahead cutoff.
+- Added initial StrengthChange1D history bootstrap: only the prior Strength baseline is inferred from PC latest on first run; current factor values are independently recalculated by Web. Subsequent dates use Web private factor state.
+- Added optional Factor Summary parity.
+- Added diagnostic exports for Web factor_monitor_latest, cell-level factor parity diffs, and the full Web seasonality profile.
+- Screening / Discovery / Watchlist migration logic is unchanged.
+
 # v7e-alpha80 - 2026-09-03
 
 ## Watchlist / Investment Tracking migration baseline

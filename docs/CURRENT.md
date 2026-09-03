@@ -1,3 +1,3 @@
-# Current release
+v7e-alpha81
 
-v7e-alpha80
+Factor Monitor / Seasonality parity. See `history/README_alpha81.md`.

@@ -1112,6 +1112,66 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
 
 
 
+
+ if(cmd==="factor-state-load"){
+   let pdb=null;try{
+     if(!poolFileNamesSafe(p).some(f=>f.replace(/^\/+/,"")==="jq_private_v1.sqlite")){self.postMessage({ok:true,type:"result",rows:[]});return}
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS factor_state_web(factor_key TEXT PRIMARY KEY,date TEXT NOT NULL,strength REAL,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     const rows=execRows(pdb,"SELECT factor_key,date,strength,row_json FROM factor_state_web ORDER BY factor_key").map(x=>{let r={};try{r=JSON.parse(String(x.row_json||"{}"))}catch(_){}return{factorKey:String(x.factor_key||""),date:String(x.date||""),strength:x.strength,row:r}});
+     pdb.close();pdb=null;self.postMessage({ok:true,type:"result",rows,count:rows.length});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+ if(cmd==="factor-state-save"){
+   let pdb=null;try{
+     const payload=d.payload||{},date=String(payload.date||"").slice(0,10),rows=Array.isArray(payload.rows)?payload.rows:[];
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!rows.length)throw new Error("factor state input invalid");
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS factor_state_web(factor_key TEXT PRIMARY KEY,date TEXT NOT NULL,strength REAL,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     const st=pdb.prepare(`INSERT OR REPLACE INTO factor_state_web(factor_key,date,strength,row_json,updated_at) VALUES(?,?,?,?,?)`),now=new Date().toISOString();
+     try{pdb.exec("BEGIN IMMEDIATE");for(const r of rows){const k=String(r.FactorKey||r.factorKey||"").trim();if(!k)continue;const v=Number(r.Strength);st.bind([k,date,Number.isFinite(v)?v:null,JSON.stringify(r),now]);st.step();st.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
+     const count=Number(scalar(pdb,"SELECT COUNT(*) FROM factor_state_web")||0);pdb.close();pdb=null;self.postMessage({ok:true,type:"result",count,date});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+ if(cmd==="factor-seasonality-profile"){
+   const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),pairs=Array.isArray(payload.codeSectors)?payload.codeSectors:[];
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+   const norm=v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const wanted=new Map();for(const x of pairs){const c=norm(x.code??x.NormalizedCode??x.Code),sec=String(x.sector??x.Sector33??"").trim();if(c&&sec)wanted.set(c,sec)}
+   if(!wanted.size){self.postMessage({ok:true,type:"result",profile:[],count:0});return}
+   const year=Number(asOf.slice(0,4)),cutoff=year-1,startYear=Math.max(cutoff-9,2000),from=`${startYear}-01-01`,to=`${cutoff}-12-31`;
+   const n=v=>{if(v==null||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)?x:null};
+   const med=a=>{const z=a.filter(Number.isFinite).sort((a,b)=>a-b),m=z.length;if(!m)return null;const q=Math.floor(m/2);return m%2?z[q]:(z[q-1]+z[q])/2};
+   const mean=a=>{const z=a.filter(Number.isFinite);return z.length?z.reduce((u,v)=>u+v,0)/z.length:null};
+   const clip=(x,lo=0,hi=100)=>x==null?null:Math.min(hi,Math.max(lo,x));
+   const pct=(a,pred)=>{const z=a.filter(Number.isFinite);return z.length?z.filter(pred).length/z.length*100:null};
+   let cdb=null,tdb=null;try{
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cat=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end FROM shard_catalog WHERE dataset='bars_daily' AND state='ready' AND COALESCE(range_end,'9999-12-31')>=? AND COALESCE(range_start,'0000-01-01')<=? ORDER BY range_start,shard_key`,[from,to]);cdb.close();cdb=null;
+     const selected=[];for(let y=startYear;y<=cutoff;y++){const yf=`${y}-01-01`,yt=`${y}-12-31`,segFrom=from>yf?from:yf,segTo=to<yt?to:yt;let e=cat.find(r=>String(r.shard_key)===`bars_${y}`);if(!e)e=cat.find(r=>String(r.shard_key)==="bars_recent"&&String(r.range_end||"9999-12-31")>=segFrom&&String(r.range_start||"0000-01-01")<=segTo);if(e)selected.push({segFrom,segTo,...e})}
+     const stocks=[];
+     for(const sh of selected){let db=null;try{const nm=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");const rs=execRows(db,`WITH b AS (
+       SELECT code,date,substr(date,1,7) AS ym,COALESCE(adj_c,c) AS close,
+              COALESCE(turnover_value,value,COALESCE(adj_c,c)*volume) AS tv
+       FROM bars_daily WHERE date>=? AND date<=? AND COALESCE(adj_c,c)>0
+     ), w AS (
+       SELECT code,date,ym,close,tv,
+              FIRST_VALUE(close) OVER (PARTITION BY code,ym ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS first_close,
+              LAST_VALUE(close) OVER (PARTITION BY code,ym ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_close,
+              MAX(close) OVER (PARTITION BY code,ym ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS peak
+       FROM b
+     ) SELECT code,ym,MAX(first_close) AS first_close,MAX(last_close) AS last_close,
+              MIN((close/peak-1.0)*100.0) AS maxdd,AVG(tv) AS avg_tv
+       FROM w GROUP BY code,ym ORDER BY code,ym`,[sh.segFrom,sh.segTo]);for(const r of rs){const c=norm(r.code);if(!wanted.has(c))continue;const f=n(r.first_close),l=n(r.last_close);if(!(f>0)||l==null)continue;stocks.push({Code:c,Sector33:wanted.get(c),Month:String(r.ym||""),ReturnPct:(l/f-1)*100,MaxDDPct:n(r.maxdd),AvgTradingValue:n(r.avg_tv)})}}finally{try{if(db)db.close()}catch(_){}}}
+     const topix=new Map();tdb=new p.OpfsSAHPoolDb("/jq_topix_v1.sqlite","r");for(const rr of execRows(tdb,"SELECT raw_json FROM topix")){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const dt=String(o.Date??o.date??"").slice(0,10),cl=n(o.C??o.Close??o.TOPIX??o.Value);if(!dt||dt<from||dt>to||!(cl>0))continue;const ym=dt.slice(0,7),rec=topix.get(ym)||{firstDate:dt,firstClose:cl,lastDate:dt,lastClose:cl,peak:cl,maxDD:0};if(dt<rec.firstDate){rec.firstDate=dt;rec.firstClose=cl}if(dt>=rec.lastDate){rec.lastDate=dt;rec.lastClose=cl}rec.peak=Math.max(rec.peak,cl);rec.maxDD=Math.min(rec.maxDD,(cl/rec.peak-1)*100);topix.set(ym,rec)}tdb.close();tdb=null;
+     const topRet=new Map();for(const [ym,r] of topix)if(r.firstClose)topRet.set(ym,{ReturnPct:(r.lastClose/r.firstClose-1)*100,MaxDDPct:r.maxDD});
+     const bySecMonth=new Map();for(const r of stocks)if(topRet.has(r.Month)){const k=`${r.Sector33}\u0000${r.Month}`;if(!bySecMonth.has(k))bySecMonth.set(k,[]);bySecMonth.get(k).push(r)}
+     const grouped=new Map();for(const [k,rows] of bySecMonth){const [sec,ym]=k.split("\u0000");if(!sec||rows.length<3)continue;const sr=med(rows.map(x=>x.ReturnPct));if(sr==null)continue;const tr=topRet.get(ym)?.ReturnPct;if(tr==null)continue;const rec={Year:Number(ym.slice(0,4)),SectorReturnPct:sr,TOPIXReturnPct:tr,ExcessReturnPct:sr-tr,SectorMaxDDPct:med(rows.map(x=>x.MaxDDPct)),BreadthPct:pct(rows.map(x=>x.ReturnPct),v=>v>0),ConstituentCount:rows.length};const m=Number(ym.slice(5,7)),gk=`${sec}\u0000${m}`;if(!grouped.has(gk))grouped.set(gk,[]);grouped.get(gk).push(rec)}
+     const profile=[];for(const [gk,recs] of [...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){const [sec,ms]=gk.split("\u0000"),m=Number(ms),rets=recs.map(r=>r.SectorReturnPct),ex=recs.map(r=>r.ExcessReturnPct),dds=recs.map(r=>r.SectorMaxDDPct),br=recs.map(r=>r.BreadthPct),medEx=med(ex),meanEx=mean(ex),win=pct(rets,v=>v>0),exWin=pct(ex,v=>v>0),years=recs.length,exWinComp=clip(((exWin??50)-35)/40*100),medExComp=clip(((medEx??0)+3)/6*100),winComp=clip(((win??50)-35)/40*100),score=.45*exWinComp+.35*medExComp+.20*winComp,sampleConf=clip(years/5*70),gap=Math.abs((meanEx??0)-(medEx??0)),robust=clip(100-gap*15,20,100);let conf=Math.min(100,sampleConf*.65+robust*.35);if(years<5)conf*=years/5;profile.push({SeasonalityVersion:"SectorSeasonalityV1",AsOfYear:year,FactorType:"Sector",FactorName:sec,FactorKey:`Sector:${sec}`,SeasonMonth:m,HistoricalMembershipQuality:"CurrentMembershipProxy",LookAheadPolicy:`UsesYears<= ${cutoff}`,EffectiveYears:years,SeasonalMeanReturnPct:mean(rets),SeasonalMedianReturnPct:med(rets),SeasonalWinRate:win,SeasonalMeanExcessReturnPct:meanEx,SeasonalMedianExcessReturn:medEx,SeasonalExcessWinRate:exWin,SeasonalMaxDD:dds.filter(Number.isFinite).length?Math.min(...dds.filter(Number.isFinite)):null,SeasonalMedianBreadthPct:med(br),SeasonalityScore:score,SeasonalityConfidence:conf})}
+     self.postMessage({ok:true,type:"result",asOf,from,to,profile,count:profile.length,stockMonths:stocks.length,topixMonths:topRet.size,selectedShards:selected.map(x=>String(x.shard_key||""))});return;
+   }catch(err){try{if(cdb)cdb.close()}catch(_){}try{if(tdb)tdb.close()}catch(_){}throw new Error(`[seasonality] ${err?.message||err}`)}
+ }
+
  if(cmd==="watchlist-seed-import"){
    let pdb=null;try{
      const payload=d.payload||{},master=Array.isArray(payload.master)?payload.master:[],state=Array.isArray(payload.state)?payload.state:[];

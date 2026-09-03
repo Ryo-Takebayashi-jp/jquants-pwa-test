@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha80",
+  "current_release": "v7e-alpha81",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -53,6 +53,13 @@
     }
   ],
   "releases": [
+    {
+      "release": "v7e-alpha81",
+      "date": "2026-09-03",
+      "summary": "Factor Monitor / Sector Seasonality independent parity with diagnostics",
+      "schema": "web-local-first-v7e",
+      "migration": "No destructive migration. Adds factor_state_web table lazily in private DB."
+    },
     {
       "release": "v7e-alpha80",
       "date": "2026-09-03",
