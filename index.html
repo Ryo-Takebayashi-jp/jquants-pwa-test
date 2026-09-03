@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08111f">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>J-Quants Local-first PWA v7e-alpha75</title>
+<title>J-Quants Local-first PWA v7e-alpha76</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -21,7 +21,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha75</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha76</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 
 
 <section class="card" id="apiKeyCard">
@@ -104,11 +104,14 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <label>PC Discovery daily <input id="discoveryDailyFile" type="file" accept=".csv,text/csv"></label>
   <button id="discoveryDailySeedBtn">PC Daily履歴をWebへ移行・固定</button>
   <button id="discoveryDailyParityBtn">Discovery Daily計算エンジンを再計算・Parity</button>
-  <button id="discoveryDailyExportBtn" class="secondary" disabled>Web Discovery Daily CSVを書き出す</button>
+  <button id="discoveryDailyExportBtn" class="secondary" disabled>保存済み固定Daily CSVを書き出す</button>
+  <button id="discoveryDailyEngineExportBtn" class="secondary" disabled>Web計算エンジンCSVを書き出す</button>
+  <button id="discoveryDailyDiffExportBtn" class="secondary" disabled>Discovery Daily差分診断CSVを書き出す</button>
   <button id="discoveryShortTraceExportBtn" class="secondary">Web大口空売り診断CSVを書き出す</button>
+  <button id="discoveryTechnicalTraceExportBtn" class="secondary" disabled>Webテクニカル入力診断CSVを書き出す</button>
   <pre id="discoveryDailyParityResult" class="result">未実行</pre>
   <div id="discoveryDailyParityTable"></div>
-  <p class="desc">供給データの数値はWeb Shardからpoint-in-time再構築します。PCのdataset_status JSON由来の <code>AvailableFromHistory</code> はWeb DBだけでは復元不能なため、該当する場合は「Provenance差」として別表示します。数値・Freshness・Alert判定は通常Parity対象です。</p>
+  <p class="desc">診断用に「固定履歴」「計算エンジン」「差分」「大口空売りraw」「テクニカル入力」を別CSVで出力できます。供給データの数値はWeb Shardからpoint-in-time再構築します。PCのdataset_status JSON由来の <code>AvailableFromHistory</code> はWeb DBだけでは復元不能なため、該当する場合は「Provenance差」として別表示します。数値・Freshness・Alert判定は通常Parity対象です。</p>
 </section>
 <details class="card">
   <summary><strong>旧テスト・詳細ツール</strong></summary>
@@ -156,7 +159,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha75 起動確認</h2>
+<h2>v7e-alpha76 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -958,6 +961,6 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 </script>
 
-<script src="./app.js?v=v7e-alpha75"></script>
+<script src="./app.js?v=v7e-alpha76"></script>
 </body>
 </html>

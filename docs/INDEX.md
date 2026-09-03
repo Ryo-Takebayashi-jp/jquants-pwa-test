@@ -1,3 +1,6 @@
+## v7e-alpha76
+- Discovery Daily diagnostic parity / engine export / diff CSV / technical trace.
+
 # Documentation
 
 - `README.md` — Web/PWA全体の説明

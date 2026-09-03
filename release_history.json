@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha75",
+  "current_release": "v7e-alpha76",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -30,6 +30,11 @@
       "release": "v7e-alpha75",
       "date": "2026-09-02",
       "note": "Discovery Daily append/freeze parity; sector/technical parity fixes; resumable supply-demand coverage; one-click daily update pinned to top."
+    },
+    {
+      "release": "v7e-alpha76",
+      "date": "2026-09-02",
+      "note": "Discovery Daily engine/diff/technical diagnostics; per-as-of 470-day large-short window parity fix."
     }
   ]
 }

@@ -1,3 +1,12 @@
+# v7e-alpha76 - 2026-09-02
+
+- Discovery DailyのCSV出力を「保存済み固定履歴」と「Web計算エンジン」に分離。alpha75の既存出力が固定seedを出していたため、計算差の診断に使えない問題を修正。
+- Discovery Daily Parityの差分セルを `Scope/EventID/Date/Code/Group/Field/PC/Web` 形式の診断CSVとして出力可能にした。
+- Technical差が残ったコードだけについて、bars Shard/raw_json/採用OHLC/AdjFactorを追跡できるWebテクニカル入力診断CSVを追加。
+- Discovery Dailyの大口空売り集計をPC `build_screening_supply_features` と同じ「各as-of日から470日前の窓」に修正。最古Episode基準の長い共通窓を後日の行にも使っていた差を解消。
+- 空売り報告のraw `data_date` がAPI行の空 `Date` に吸われて空欄になる問題を修正。既存alpha75以前の空欄行も `raw_json.DiscDate/CalcDate` からcoverageを復元し、再取得時の無駄な全件やり直しを防止。
+- Screening 87/87 PASS、Discovery Episode 23/23 PASS、Discovery Daily append/freeze設計は変更なし。
+
 # v7e-alpha75 - 2026-09-02
 
 - Discovery DailyをPCと同じ append/freeze 履歴へ変更。既存PC `discovery_episode_daily.csv` を一度Web private DBへ移行し、既存 Episode×Date は再計算で上書きしない。
