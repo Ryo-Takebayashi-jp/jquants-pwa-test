@@ -1,3 +1,11 @@
+# v7e-alpha79 - 2026-09-03
+
+- Fixed a JST/UTC off-by-one bug in `isoDays()`: constructing local midnight then calling `toISOString()` shifted every date scan one calendar day backward on Japanese devices.
+- Supply range scans now query the actual requested dates, so a 2026-09-03 short-sale-report refresh includes `disc_date=20260903` instead of ending at 20260902.
+- Made weekday/date arithmetic timezone-independent for `isoDays`, `isoWeekdays`, margin-interest Friday selection, one-click next-day update, and the legacy 5-day sync helper.
+- Screening default as-of now uses the local calendar date rather than UTC date.
+- Discovery/Screening calculation logic itself is unchanged.
+
 # v7e-alpha78 - 2026-09-03
 
 - Discovery Daily historical technicalで、Web Shardのretroactive `AdjC`をさらに`AdjFactor`で再調整していた二重調整を修正。Base/Return用のadjusted closeとtechnical用のraw closeを分離し、9/3のTechnical残差13セルをPC値へ再現する入力意味論に統一。

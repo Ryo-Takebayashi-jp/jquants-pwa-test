@@ -11,3 +11,4 @@
 今後、通常の更新でルート直下に `README_alphaXX.md` は増やしません。
 
 - history/README_alpha78.md
+- history/README_alpha79.md

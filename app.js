@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha78");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha79");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha78").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha79").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -316,12 +316,15 @@ async function jqFetchRange(path,from,to,token){
 }
 async function jqFetchTopix(from,to,token){return jqFetchRange("/indices/bars/daily/topix",from,to,token)}
 async function jqFetchMarketCalendar(from,to,token){return jqFetchRange("/markets/calendar",from,to,token)}
+function isoDateParts(iso){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||""));return m?[Number(m[1]),Number(m[2]),Number(m[3])]:null}
+function isoAddDaysUtc(iso,n){const p=isoDateParts(iso);if(!p)return"";const d=new Date(Date.UTC(p[0],p[1]-1,p[2]+Number(n||0)));return d.toISOString().slice(0,10)}
+function isoDayOfWeek(iso){const p=isoDateParts(iso);return p?new Date(Date.UTC(p[0],p[1]-1,p[2])).getUTCDay():NaN}
 function isoDays(from,to){
- const out=[],a=new Date(from+"T00:00:00"),b=new Date(to+"T00:00:00");
- for(let d=new Date(a);d<=b;d.setDate(d.getDate()+1))out.push(d.toISOString().slice(0,10));
+ const out=[];let cur=String(from||"").slice(0,10),end=String(to||"").slice(0,10);if(!isoDateParts(cur)||!isoDateParts(end)||cur>end)return out;
+ for(let guard=0;cur<=end&&guard<5000;guard++,cur=isoAddDaysUtc(cur,1))out.push(cur);
  return out;
 }
-function isoWeekdays(from,to){return isoDays(from,to).filter(x=>{const d=new Date(x+"T00:00:00").getDay();return d!==0&&d!==6})}
+function isoWeekdays(from,to){return isoDays(from,to).filter(x=>{const d=isoDayOfWeek(x);return d!==0&&d!==6})}
 async function jqFetchByDates(path,dates,token,onProgress,opts={}){
  const skipDates=opts.skipDates instanceof Set?opts.skipDates:new Set(opts.skipDates||[]),allDates=[...dates],todo=allDates.filter(x=>!skipDates.has(x));
  let rows=[],calls=0,empty=0;
@@ -341,7 +344,7 @@ async function jqFetchByDates(path,dates,token,onProgress,opts={}){
 }
 async function jqFetchMarginInterest(from,to,token,onProgress,opts={}){
  // Weekly margin interest requires code OR date. For all-market DataLake, date scan is far cheaper than 4,441 code scans.
- const dates=isoWeekdays(from,to).filter(x=>new Date(x+"T00:00:00").getDay()===5);
+ const dates=isoWeekdays(from,to).filter(x=>isoDayOfWeek(x)===5);
  return jqFetchByDates("/markets/margin-interest",dates,token,onProgress,opts);
 }
 async function jqFetchMarginAlert(from,to,token,onProgress,opts={}){
@@ -451,11 +454,10 @@ if($("jqWriteBtn")) $("jqWriteBtn").onclick=async()=>{
 if($("jqFiveBtn")) $("jqFiveBtn").onclick=async()=>{
  box("jqFiveResult","run","最大5日を前景同期中… Safariを閉じないでください");
  try{
-  const base=new Date($("jqDate").value+"T00:00:00"),t=$("jqToken").value.trim(),out=[];
+  const base=String($("jqDate").value||"").slice(0,10),t=$("jqToken").value.trim(),out=[];
   for(let back=4;back>=0;back--){
-   const x=new Date(base);x.setDate(base.getDate()-back);
-   if([0,6].includes(x.getDay())) continue;
-   const d=x.toISOString().slice(0,10);
+   const d=isoAddDaysUtc(base,-back),dow=isoDayOfWeek(d);
+   if([0,6].includes(dow)) continue;
    box("jqFiveResult","run",`${d} を同期中…\n完了: ${out.length}日`);
    out.push(await jqCommitDate(d,t));
   }
@@ -1738,12 +1740,8 @@ Legacy DataLake: 未使用
  finally{$("simpleDailyBtn").disabled=false}
 };
 
-// v7e-alpha78: advance the local DataLake one trading day with one operation, with current-day optional repair.
-function addIsoDays(iso,n){
- const d=new Date(String(iso)+"T00:00:00");
- d.setDate(d.getDate()+Number(n||0));
- return d.toLocaleDateString("sv-SE");
-}
+// v7e-alpha79: advance the local DataLake one trading day with one operation, with current-day optional repair.
+function addIsoDays(iso,n){return isoAddDaysUtc(String(iso||"").slice(0,10),Number(n||0))}
 function syncDailyDateInputs(date){
  const single=["simpleDailyDate","masterDate","finsDate","earningsDate","screeningAsOf","screeningBaseAsOf","parityAsOf","discoveryAsOf"];
  for(const id of single) if($(id)) $(id).value=date;
@@ -1774,7 +1772,7 @@ if($("nextTradingDayAllBtn")) $("nextTradingDayAllBtn").onclick=async()=>{
    for(let i=1;i<=14;i++){
      const d=addIsoDays(base,i);
      if(d>today) break;
-     const w=new Date(d+"T00:00:00").getDay();
+     const w=isoDayOfWeek(d);
      if(w===0||w===6) continue;
      const got=await jqFetchDaily(d,token);
      if(got.rows.length){target=d;barsFetch=got;break}
@@ -2179,7 +2177,7 @@ if($("portfolioIntegratedBtn")) $("portfolioIntegratedBtn").onclick=async()=>{
  try{
    const txt=await file.text(), parsed=parseCsv(txt);
    const stocks=parsed.rows.map(r=>({code:r.Code,name:r.Name,account:r.Account,shares:r.Shares,avgCost:r.AvgCost,amount:r.Amount,strategy:r.Strategy}));
-   const asOf=$("screeningAsOf")?.value||new Date().toISOString().slice(0,10);
+   const asOf=$("screeningAsOf")?.value||localTodayIso();
    const tech=await workerCall("technical-screening-poc",300000,null,null,{asOf,lookback:320,topN:200,returnAll:true});
    if(!latestFinancialNormalized){
      const fr=await workerCall("financial-normalize-latest",180000); latestFinancialNormalized=fr.rows;
@@ -2248,13 +2246,13 @@ if($("portfolioJqpExportBtn")) $("portfolioJqpExportBtn").onclick=()=>{
    rows
  };
  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),el=document.createElement("a");
- el.href=url;el.download=`web_jqp_${new Date().toISOString().slice(0,10).replaceAll("-","")}.json`;el.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ el.href=url;el.download=`web_jqp_${localTodayIso().replaceAll("-","")}.json`;el.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 
 if($("portfolioExportBtn")) $("portfolioExportBtn").onclick=()=>{
  const rows=window.__latestPortfolioIntegrated||[];if(!rows.length)return;const headers=Object.keys(rows[0]),esc=v=>{const x=v==null?"":String(v);return /[",\n]/.test(x)?`"${x.replaceAll('"','""')}"`:x};
  const csv="\uFEFF"+headers.join(",")+"\n"+rows.map(r=>headers.map(k=>esc(r[k])).join(",")).join("\n"),blob=new Blob([csv],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),el=document.createElement("a");
- el.href=url;el.download=`web_portfolio_integrated_${new Date().toISOString().slice(0,10).replaceAll("-","")}.csv`;el.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ el.href=url;el.download=`web_portfolio_integrated_${localTodayIso().replaceAll("-","")}.csv`;el.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 
 let latestScreeningBaseRows=[];

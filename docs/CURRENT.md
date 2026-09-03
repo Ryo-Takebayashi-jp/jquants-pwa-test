@@ -1,3 +1,3 @@
-# Current
+# Current Web/PWA release
 
-v7e-alpha78
+v7e-alpha79
