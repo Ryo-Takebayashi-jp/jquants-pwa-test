@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08111f">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>J-Quants Local-first PWA v7e-alpha79</title>
+<title>J-Quants Local-first PWA v7e-alpha80</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -21,7 +21,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha79</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha80</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 
 
 <section class="card" id="apiKeyCard">
@@ -113,6 +113,25 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <div id="discoveryDailyParityTable"></div>
   <p class="desc">診断用に「固定履歴」「計算エンジン」「差分」「大口空売りraw」「テクニカル入力」を別CSVで出力できます。供給データの数値はWeb Shardからpoint-in-time再構築します。PCのdataset_status JSON由来の <code>AvailableFromHistory</code> はWeb DBだけでは復元不能なため、該当する場合は「Provenance差」として別表示します。数値・Freshness・Alert判定は通常Parity対象です。</p>
 </section>
+<section class="card" id="watchlistMigrationCard">
+  <h2>⑧ Watchlist / Investment Tracking 移行・Parity</h2>
+  <p>WatchlistはDiscoveryとは別ライフサイクルです。まずPCの <code>watchlist_master.csv</code> / <code>watchlist_state.csv</code> をWeb private DBへ一度だけ移行し、行・列を完全照合します。Alert計算エンジンはFactor/Seasonality依存のため次のParity層で接続します。</p>
+  <label>PC Watchlist master <input id="watchlistMasterFile" type="file" accept=".csv,text/csv"></label>
+  <label>PC Watchlist state <input id="watchlistStateFile" type="file" accept=".csv,text/csv"></label>
+  <button id="watchlistSeedBtn">PC Watchlist master/stateをWebへ移行・照合</button>
+  <button id="watchlistExportBtn" class="secondary" disabled>Web Watchlist状態CSVを書き出す</button>
+  <pre id="watchlistParityResult" class="result">未実行</pre>
+  <div id="watchlistParityTable"></div>
+
+  <h3>統合Investment Tracking入力 ルーティング監査</h3>
+  <p class="desc"><code>investment_tracking_input.csv</code> の InvestmentStatus をPC仕様どおり Discovery / Watchlistへ分岐します。現段階では監査・CSV書き出しまでで、既存Watchlist状態を勝手に更新しません。</p>
+  <label>investment_tracking_input.csv <input id="investmentTrackingFile" type="file" accept=".csv,text/csv"></label>
+  <button id="investmentTrackingAuditBtn">共通入力を検証・ルーティング監査</button>
+  <button id="investmentTrackingDiscoveryExportBtn" class="secondary" disabled>DiscoveryルートCSVを書き出す</button>
+  <button id="investmentTrackingWatchlistExportBtn" class="secondary" disabled>WatchlistルートCSVを書き出す</button>
+  <pre id="investmentTrackingResult" class="result">未実行</pre>
+  <p class="desc">対応Status: TRACK_ONLY / WATCH / ACTIONABLE / WATCH_ONLY。ACTIONABLEはBuySignalではなく優先再評価要求です。REMOVE/CLOSEはWatchlistだけ閉鎖し、Discovery履歴は保持するPC仕様を維持します。</p>
+</section>
 <details class="card">
   <summary><strong>旧テスト・詳細ツール</strong></summary>
   <p class="desc">Parity済み・開発確認用の機能です。通常のScreeningテストでは触らなくてOKです。</p>
@@ -159,7 +178,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha79 起動確認</h2>
+<h2>v7e-alpha80 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -961,6 +980,6 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 </script>
 
-<script src="./app.js?v=v7e-alpha79"></script>
+<script src="./app.js?v=v7e-alpha80"></script>
 </body>
 </html>

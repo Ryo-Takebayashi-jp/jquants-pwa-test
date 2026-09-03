@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha79",
+  "current_release": "v7e-alpha80",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -50,6 +50,13 @@
       "release": "v7e-alpha79",
       "date": "2026-09-03",
       "note": "Fix JST/UTC date-iteration off-by-one in supply date scans and related date helpers; ensures target-day short-sale-report disclosures (e.g. 2026-09-03) are actually queried."
+    }
+  ],
+  "releases": [
+    {
+      "release": "v7e-alpha80",
+      "date": "2026-09-03",
+      "summary": "Watchlist master/state migration parity and Investment Tracking routing audit"
     }
   ]
 }

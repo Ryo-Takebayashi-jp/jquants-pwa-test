@@ -1,3 +1,13 @@
+# v7e-alpha80 - 2026-09-03
+
+## Watchlist / Investment Tracking migration baseline
+- Added PC Watchlist master/state migration into `/jq_private_v1.sqlite` with exact row/column round-trip parity.
+- Added Web export of the migrated Watchlist master/state for audit and backup.
+- Added canonical `investment_tracking_input.csv` validation/routing audit for `TRACK_ONLY / WATCH / ACTIONABLE / WATCH_ONLY`.
+- Routing preserves PC semantics: Discovery history is not deleted by REMOVE/CLOSE; ACTIONABLE is a priority re-evaluation request, not a BuySignal.
+- Alert engine is intentionally not activated yet: Watchlist Factor/Seasonality triggers depend on the next native Factor/Seasonality parity layer.
+- Screening 100%, Discovery Episode, and Discovery Daily basis-date PASS logic are unchanged.
+
 # v7e-alpha79 - 2026-09-03
 
 - Fixed a JST/UTC off-by-one bug in `isoDays()`: constructing local midnight then calling `toISOString()` shifted every date scan one calendar day backward on Japanese devices.

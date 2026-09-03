@@ -1111,6 +1111,20 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
 
+
+ if(cmd==="watchlist-seed-import"){
+   let pdb=null;try{
+     const payload=d.payload||{},master=Array.isArray(payload.master)?payload.master:[],state=Array.isArray(payload.state)?payload.state:[];
+     if(!master.length)throw new Error("Watchlist master rows missing");
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_master_web(watch_id TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_state_web(watch_id TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     const ms=pdb.prepare(`INSERT OR REPLACE INTO watchlist_master_web(watch_id,row_json,updated_at) VALUES(?,?,?)`),ss=pdb.prepare(`INSERT OR REPLACE INTO watchlist_state_web(watch_id,row_json,updated_at) VALUES(?,?,?)`),now=new Date().toISOString();
+     try{pdb.exec("BEGIN IMMEDIATE");pdb.exec("DELETE FROM watchlist_master_web");pdb.exec("DELETE FROM watchlist_state_web");for(const r of master){const id=String(r.WatchID||"").trim();if(!id)continue;ms.bind([id,JSON.stringify(r),now]);ms.step();ms.reset()}for(const r of state){const id=String(r.WatchID||"").trim();if(!id)continue;ss.bind([id,JSON.stringify(r),now]);ss.step();ss.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{ms.finalize()}catch(_){}try{ss.finalize()}catch(_){}}
+     const read=t=>execRows(pdb,`SELECT row_json FROM ${t} ORDER BY watch_id`).map(x=>{try{return JSON.parse(String(x.row_json||"{}"))}catch(_){return{}}});const outM=read("watchlist_master_web"),outS=read("watchlist_state_web");pdb.close();pdb=null;self.postMessage({ok:true,type:"result",master:outM,state:outS,masterCount:outM.length,stateCount:outS.length});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+
  if(cmd==="discovery-short-trace"){
    let db=null;try{
      const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),codes=new Set((payload.codes||[]).map(v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean));
