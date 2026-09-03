@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha77");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha78");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha77").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha78").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1738,7 +1738,7 @@ Legacy DataLake: 未使用
  finally{$("simpleDailyBtn").disabled=false}
 };
 
-// v7e-alpha77: advance the local DataLake one trading day with one operation, with current-day optional repair.
+// v7e-alpha78: advance the local DataLake one trading day with one operation, with current-day optional repair.
 function addIsoDays(iso,n){
  const d=new Date(String(iso)+"T00:00:00");
  d.setDate(d.getDate()+Number(n||0));
@@ -1794,7 +1794,7 @@ if($("nextTradingDayAllBtn")) $("nextTradingDayAllBtn").onclick=async()=>{
      ];
      for(const [label,fetcher,cmd,lookback] of repairJobs){
        await run(label,async()=>{
-         const from=addIsoDays(target,-lookback),r=await fetchAndPersistSupplyRange(fetcher,cmd,from,target,token);
+         const from=addIsoDays(target,-lookback),r=await fetchAndPersistSupplyRange(fetcher,cmd,from,target,token,null,{forceDates:cmd==="short-sale-report-write"?isoWeekdays(from,target):[]});
          return {rows:r.got.rows.length};
        },{optional:true});
        await sleep(150);
@@ -1827,7 +1827,7 @@ if($("nextTradingDayAllBtn")) $("nextTradingDayAllBtn").onclick=async()=>{
    ];
    for(const [label,fetcher,cmd,lookback] of supplyJobs){
      await run(label,async()=>{
-       const from=addIsoDays(target,-lookback),r=await fetchAndPersistSupplyRange(fetcher,cmd,from,target,token);
+       const from=addIsoDays(target,-lookback),r=await fetchAndPersistSupplyRange(fetcher,cmd,from,target,token,null,{forceDates:cmd==="short-sale-report-write"?isoWeekdays(from,target):[]});
        return {rows:r.got.rows.length};
      },{optional:true});
      await sleep(150);
@@ -1996,9 +1996,12 @@ async function supplyResumeOptions(workerCmd){
  for(const x of coverage){const d=String(x.date||"").slice(0,10),n=Number(x.rowCount||0);if(d&&(n>0||d<=oldCutoff))skipDates.add(d)}
  return {skipDates,coverage};
 }
-async function fetchAndPersistSupplyRange(fetcher,workerCmd,from,to,token,onProgress){
- const resume=await supplyResumeOptions(workerCmd);
- const got=await fetcher(from,to,token,onProgress,{skipDates:resume.skipDates});
+async function fetchAndPersistSupplyRange(fetcher,workerCmd,from,to,token,onProgress,opts={}){
+ const resume=await supplyResumeOptions(workerCmd),skipDates=new Set(resume.skipDates);
+ // Recent short-sale reports can be updated at multiple publication times. A one-click
+ // refresh must be able to re-query the target disclosure date even when coverage exists.
+ for(const d of (opts.forceDates||[]))skipDates.delete(String(d||"").slice(0,10));
+ const got=await fetcher(from,to,token,onProgress,{skipDates});
  const coverageDates=Array.isArray(got.queriedDates)?got.queriedDates:[];
  let wr=null;
  if(coverageDates.length||got.rows.length){wr=await workerCall(workerCmd,300000,null,null,{from,to,rows:got.rows,coverageDates})}

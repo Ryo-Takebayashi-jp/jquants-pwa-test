@@ -1,3 +1,11 @@
+# v7e-alpha78 - 2026-09-03
+
+- Discovery Daily historical technicalで、Web Shardのretroactive `AdjC`をさらに`AdjFactor`で再調整していた二重調整を修正。Base/Return用のadjusted closeとtechnical用のraw closeを分離し、9/3のTechnical残差13セルをPC値へ再現する入力意味論に統一。
+- Discovery Dailyは過去日をfreezeしたまま、現在の`asOf`日だけ再計算・置換できるよう変更。同日中に需給等が更新された場合でも翌日を待たず再評価可能。
+- 大口空売りは直近日の取得済みcoverageがあっても、最上段の一括更新では直近3日を再照会可能に変更。JPX/J-Quantsの同日複数回更新によるpartial snapshot固定を防止。
+- `short_sale_report`保存は再照会したDiscDateの既存raw行を削除してから最新API snapshotへ置換。再取得のたびに旧行を蓄積しない。
+- 診断の結果、9/3 Supply残差16セルはWeb計算式ではなくPC/Webの大口空売りraw snapshot vintage差が主因と判明。PC側alpha26a13で同日/直近snapshot refreshを行い、新しいPC基準で再Parityする。
+
 # v7e-alpha77 - 2026-09-03
 
 - 「次の取引日を全データ更新」で需給5種が `Can't find variable: writerCmd` となる実装ミスを修正。coverage照会へ `workerCmd` を正しく渡す。

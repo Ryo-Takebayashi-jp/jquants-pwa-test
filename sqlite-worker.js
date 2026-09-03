@@ -1215,11 +1215,16 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      // Reading transformed DB adj_h/adj_l here caused split factors to be applied twice.
      const addTracked=r=>{let o={};try{o=JSON.parse(String(r.raw_json||"{}"))}catch(_){}
        const c=norm(r.code),dt=String(r.date),base=num(o.AdjC)??num(o.AdjustmentClose)??num(o.AdjClose)??num(o.C)??num(o.Close)??num(r.adj_c)??num(r.c),
-         h=num(o.AdjustmentHigh)??num(o.AdjHigh)??num(o.High)??num(o.H)??num(r.h)??base,
-         l=num(o.AdjustmentLow)??num(o.AdjLow)??num(o.Low)??num(o.L)??num(r.l)??base,
+         // Web historical shards may contain a retroactively adjusted AdjC in raw_json.
+         // PC historical technicals apply AdjFactor themselves, so feeding AdjC into that
+         // adjustment loop double-adjusts split history. Keep base for Discovery return/Close,
+         // but use the unadjusted close for technical reconstruction.
+         techClose=num(o.C)??num(o.Close)??num(r.c)??base,
+         h=num(o.AdjustmentHigh)??num(o.AdjHigh)??num(o.High)??num(o.H)??num(r.h)??techClose,
+         l=num(o.AdjustmentLow)??num(o.AdjLow)??num(o.Low)??num(o.L)??num(r.l)??techClose,
          factor=num(o.AdjFactor)??num(o.AdjustmentFactor)??num(r.adj_factor)??1,
          vol=num(o.Vo)??num(o.Volume)??num(r.volume),tv=num(o.Va)??num(o.TradingValue)??num(r.turnover_value)??num(r.value);
-       if(!c||!dt||!Number.isFinite(base))return;if(!trackedHistory.has(c))trackedHistory.set(c,new Map());trackedHistory.get(c).set(dt,{date:dt,close:base,h,l,adjFactor:factor,volume:vol,tradingValue:tv});};
+       if(!c||!dt||!Number.isFinite(base)||!Number.isFinite(techClose))return;if(!trackedHistory.has(c))trackedHistory.set(c,new Map());trackedHistory.get(c).set(dt,{date:dt,close:base,techClose,h,l,adjFactor:factor,volume:vol,tradingValue:tv});};
      const addSector=r=>{const c=norm(r.code),dt=String(r.date),close=num(r.c)??num(r.adj_c);if(!c||!dt||!Number.isFinite(close))return;if(!sectorPrices.has(c))sectorPrices.set(c,new Map());sectorPrices.get(c).set(dt,close)};
      for(const sh of cats){let db=null;try{const nm=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");
        for(let off=0;off<trackedJq.length;off+=400){const chunk=trackedJq.slice(off,off+400),ph=chunk.map(()=>"?").join(",");if(!ph)continue;
@@ -1265,7 +1270,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      const slopePct=(series,n)=>{if(series.length<=n)return null;const c=series.at(-1),pr=series.at(-1-n);return(c==null||pr==null||pr===0)?null:(c/pr-1)*100};
      const rsi14=xs=>{if(xs.length<15)return null;const gains=[],losses=[];for(let i=1;i<xs.length;i++){const z=xs[i]-xs[i-1];gains.push(Math.max(z,0));losses.push(Math.max(-z,0))}let ag=avg(gains.slice(0,14)),al=avg(losses.slice(0,14));for(let i=14;i<gains.length;i++){ag=((ag*13)+gains[i])/14;al=((al*13)+losses[i])/14}if(al===0)return ag>0?100:50;const rs=ag/al;return 100-(100/(1+rs))};
      const ema=(xs,n)=>{if(!xs.length)return[];const a=2/(n+1),o=[xs[0]];for(let i=1;i<xs.length;i++)o.push(a*xs[i]+(1-a)*o.at(-1));return o};
-     const technicalFor=(series,cut)=>{const src=(series||[]).filter(x=>x.date<=cut);if(!src.length)return{};let cumulative=1,rev=[];for(let i=src.length-1;i>=0;i--){const x=src[i],cl=x.close*cumulative,h=(Number.isFinite(x.h)?x.h:x.close)*cumulative,l=(Number.isFinite(x.l)?x.l:x.close)*cumulative;rev.push({date:x.date,c:cl,h,l,v:x.volume,tv:x.tradingValue});const f=Number.isFinite(x.adjFactor)&&x.adjFactor>0?x.adjFactor:1;cumulative*=f}const a=rev.reverse(),cs=a.map(x=>x.c),hs=a.map(x=>x.h),ls=a.map(x=>x.l),vs=a.map(x=>x.v),last=cs.at(-1);
+     const technicalFor=(series,cut)=>{const src=(series||[]).filter(x=>x.date<=cut);if(!src.length)return{};let cumulative=1,rev=[];for(let i=src.length-1;i>=0;i--){const x=src[i],rawClose=Number.isFinite(x.techClose)?x.techClose:x.close,cl=rawClose*cumulative,h=(Number.isFinite(x.h)?x.h:rawClose)*cumulative,l=(Number.isFinite(x.l)?x.l:rawClose)*cumulative;rev.push({date:x.date,c:cl,h,l,v:x.volume,tv:x.tradingValue});const f=Number.isFinite(x.adjFactor)&&x.adjFactor>0?x.adjFactor:1;cumulative*=f}const a=rev.reverse(),cs=a.map(x=>x.c),hs=a.map(x=>x.h),ls=a.map(x=>x.l),vs=a.map(x=>x.v),last=cs.at(-1);
        const m25=rollingMA(cs,25),m75=rollingMA(cs,75),e12=ema(cs,12),e26=ema(cs,26),mac=e12.map((x,i)=>x-e26[i]),sig=ema(mac,9);const macd=cs.length>=26?mac.at(-1):null,signal=cs.length>=34?sig.at(-1):null,hist=(macd!=null&&signal!=null)?macd-signal:null;let state="";if(signal!=null&&mac.length>=2){const pd=mac.at(-2)-sig.at(-2),cd=mac.at(-1)-sig.at(-1);state=pd<=0&&cd>0?"GoldenCross":pd>=0&&cd<0?"DeadCross":cd>0?"AboveSignal":cd<0?"BelowSignal":"OnSignal"}
        const r5=vs.slice(-5).filter(Number.isFinite),r20=vs.slice(-20).filter(Number.isFinite),vRatio=(r5.length&&r20.length&&r20.reduce((x,y)=>x+y,0)!==0)?avg(r5)/avg(r20):null;const h52=hs.length>=252?Math.max(...hs.slice(-252)):null,l52=ls.length>=252?Math.min(...ls.slice(-252)):null;
        return {RSI14:rsi14(cs),MA25Slope5DPct:slopePct(m25,5),MA75Slope20DPct:slopePct(m75,20),MACDHistogram:hist,MACDState:state,DistanceFrom52WHighPct:(h52!=null&&h52!==0)?pct(last,h52):null,DistanceFrom52WLowPct:(l52!=null&&l52!==0)?pct(last,l52):null,VolumeRatio5To20:vRatio}};
@@ -1281,7 +1286,12 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      stage="09-save";pdb.exec(`CREATE TABLE IF NOT EXISTS discovery_episode_daily_web(event_id TEXT NOT NULL,date TEXT NOT NULL,row_json TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(event_id,date)) WITHOUT ROWID`);
      // Discovery Daily is append/freeze by design on PC.  A migrated PC history seed must never
      // be rewritten from today's Web DataLake; only previously unseen Episode×Date rows append.
-     const st=pdb.prepare(`INSERT INTO discovery_episode_daily_web(event_id,date,row_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(event_id,date) DO NOTHING`);try{pdb.exec("BEGIN IMMEDIATE");const now=new Date().toISOString();for(const r of out){st.bind([String(r.EventID),String(r.Date),JSON.stringify(r),now]);st.step();st.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
+     const st=pdb.prepare(`INSERT INTO discovery_episode_daily_web(event_id,date,row_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(event_id,date) DO NOTHING`);try{pdb.exec("BEGIN IMMEDIATE");
+       // Past Discovery Daily rows are frozen, but the current analysis date is provisional
+       // until all same-day J-Quants publications have settled. Rebuild only asOf rows.
+       const delCurrent=pdb.prepare(`DELETE FROM discovery_episode_daily_web WHERE date=?`);
+       try{delCurrent.bind([asOf]);delCurrent.step()}finally{try{delCurrent.finalize()}catch(_){}}
+       const now=new Date().toISOString();for(const r of out){st.bind([String(r.EventID),String(r.Date),JSON.stringify(r),now]);st.step();st.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
      const storedRows=execRows(pdb,"SELECT row_json FROM discovery_episode_daily_web ORDER BY event_id,date").map(x=>{try{return JSON.parse(String(x.row_json||"{}"))}catch(_){return {}}}).filter(x=>x.EventID&&x.Date);pdb.close();pdb=null;
      const coverage={historyStart,supplyHistoryStart,marginHistoryStart,shortHistoryStart,marginMinDate:marginMin||"",shortMinDate:shortMin||"",alertMinDate:alertMin||"",marginHistorySufficient:!marginAvailable||!marginMin||marginMin<=marginHistoryStart,shortHistorySufficient:!shortAvailable||!shortMin||shortMin<=shortHistoryStart,sourceStatusMode:"WebContentOnly_NoPCDatasetStatusMetadata"};
      self.postMessage({ok:true,type:"result",asOf,from:earliest,historyStart,masterDate,episodes:episodes.length,count:out.length,rows:out,storedRows,storedCount:storedRows.length,coverage,elapsedMs:Math.round(performance.now()-t0)});return;
@@ -1496,6 +1506,12 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      const stmt=db.prepare(`INSERT OR REPLACE INTO ${cfg.table}(row_key,data_date,code,raw_json) VALUES(?,?,?,?)`);
      db.exec("BEGIN");
      try{
+       // Short-sale report API can be revised at multiple publication times on the same day.
+       // Re-querying a disclosure date replaces that date's stored snapshot.
+       if(cmd==="short-sale-report-write"&&coverageDates.length){
+         const del=db.prepare(`DELETE FROM ${cfg.table} WHERE data_date=?`);
+         try{for(const dt of coverageDates){del.bind([dt]);del.step();del.reset()}}finally{try{del.finalize()}catch(_){}}
+       }
        let seq=0;
        for(const r of rows){
          const date=[r.Date,r.date,r.DiscDate,r.CalcDate,r.StartDate,r.PubDate].map(v=>String(v??"").slice(0,10)).find(Boolean)||"";

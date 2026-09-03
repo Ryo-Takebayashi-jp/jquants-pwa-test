@@ -9,3 +9,5 @@
 - ルートの `release_history.json` — 機械可読リリース履歴
 
 今後、通常の更新でルート直下に `README_alphaXX.md` は増やしません。
+
+- history/README_alpha78.md

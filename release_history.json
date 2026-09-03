@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha77",
+  "current_release": "v7e-alpha78",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -40,6 +40,11 @@
       "release": "v7e-alpha77",
       "date": "2026-09-03",
       "note": "Fix supply resume coverage writerCmd binding in one-click update; when no new bars are available, re-check/repair optional supply datasets for the current latest trading day."
+    },
+    {
+      "release": "v7e-alpha78",
+      "date": "2026-09-03",
+      "note": "Discovery Daily raw-close technical parity; current-asOf refresh; mutable short-sale snapshot re-query/replace to avoid partial-vintage freezes."
     }
   ]
 }
