@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha86",
+  "current_release": "v7e-alpha87",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -91,6 +91,13 @@
       "schema": "web-local-first-v7e",
       "migration": "No destructive schema migration. Factor engine state advances to FactorWebV6-alpha86 and reseeds once.",
       "note": "Factor actual-FY dual-field baseline resolver, real 60-day factor eligibility, end-to-end FY diagnostics, consolidated milestone history docs."
+    },
+    {
+      "release": "v7e-alpha87",
+      "date": "2026-09-05",
+      "schema": "web-local-first-v7e",
+      "migration": "No destructive schema migration. Factor engine state advances to FactorWebV7-alpha87 and reseeds once.",
+      "note": "Factor prior-FY canonicalization: latest disclosure wins among equal FY matches; unsafe non-annual fallback removed; PC exact Factor parity becomes reference-only as Web-first semantics take over."
     }
   ]
 }

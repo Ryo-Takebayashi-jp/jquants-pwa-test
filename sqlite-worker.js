@@ -1731,17 +1731,19 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
              // Prefer the closest annual interval.  If equally close, CurFYEn remains the
              // PC-compatible first choice, while CurPerEn is an explicit V2 fallback.
              const penalty=Math.abs(dd-365)+(src==="CurFYEn"?0:0.0001);
-             if(penalty<pfbest){pfbest=penalty;prevFY=x;prevFYResolver=src==="CurFYEn"?"CurFYEnMatch":"CurPerEnFallback";prevFYMatchedEnd=fe}
+             const currentDiscKey=prevFY?`${disc(prevFY)}|${s(prevFY,"DiscTime")}|${s(prevFY,"DiscNo")}`:"";
+             const candidateDiscKey=`${disc(x)}|${s(x,"DiscTime")}|${s(x,"DiscNo")}`;
+             const betterPenalty=penalty<pfbest-1e-9;
+             const samePenalty=Math.abs(penalty-pfbest)<=1e-9;
+             if(betterPenalty||(samePenalty&&candidateDiscKey>currentDiscKey)){
+               pfbest=penalty;prevFY=x;prevFYResolver=src==="CurFYEn"?"CurFYEnMatchLatestDisclosure":"CurPerEnFallbackLatestDisclosure";prevFYMatchedEnd=fe
+             }
            }
          }
        }
-       // If aliases on the raw V2 FY row do not expose a usable end date, the latest reported
-       // ACTUAL FY is still the correct baseline for the current/next FY company forecast.
-       // Never fall back to a forecast-only FY row, and keep the resolver label observable.
-       if(!prevFY&&latestFY&&targetFY){
-         const [lp]=primary(latestFY);
-         if(lp!=null&&disc(latestFY)<=disc(cur)){prevFY=latestFY;prevFYResolver="LatestActualFYFallback";prevFYMatchedEnd=s(latestFY,"CurPerEn","CurFYEn")}
-       }
+       // Do not invent an annual comparison when no FY end falls in the comparable 300-430 day window.
+       // This intentionally rejects short/long transition fiscal years instead of forcing the latest FY.
+       if(!prevFY&&targetFY)prevFYResolver="NoComparableAnnualFY";
        const [prevFYp]=primary(prevFY||{}),prevFYs=n(prevFY||{},"Sales","NCSales");
        const actualEPS=n(latestFY||{},"EPS","NCEPS"),forecastEPS=n(fc||{},"FEPS","FNCEPS");
        const effectiveSharesOf=(row,fallback)=>{

@@ -1,6 +1,6 @@
 # Documentation Index
 
-Current: **v7e-alpha86**
+Current: **v7e-alpha87**
 
 - `README.md` — current Web/PWA architecture and development direction
 - `CURRENT.md` — current release pointer
@@ -8,7 +8,7 @@ Current: **v7e-alpha86**
 - root `release_history.json` — machine-readable release history
 
 ## Consolidated development history
-- `history/alpha80-alpha86.md` — Watchlist / Factor / Seasonality phase
+- `history/alpha80-alpha87.md` — Watchlist / Factor / Seasonality phase
 - `history/alpha72-alpha79.md` — Screening / Discovery migration and parity phase
 - `history/alpha30-alpha36.md` — earlier Web/PWA development phase
 
