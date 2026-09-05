@@ -1,0 +1,8 @@
+{
+  "name": "J-Quants Local-first PWA v7d-beta5f",
+  "short_name": "JQ beta5f",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#08111f",
+  "theme_color": "#08111f"
+}

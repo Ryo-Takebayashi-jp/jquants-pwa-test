@@ -1,0 +1,3218 @@
+const nativePostMessage=self.postMessage.bind(self);
+const status=(stage,detail="")=>self.postMessage({type:"status",stage,detail});
+function scalar(db,sql){let v=null;db.exec({sql,rowMode:"array",callback:r=>{if(v===null)v=r[0]}});return v}
+function poolFileNamesSafe(p){
+  try{return Array.from(p.getFileNames?.()||[]).map(String)}catch(_){return []}
+}
+function resolveExistingMarketDb(p,requested){
+  const files=poolFileNamesSafe(p);
+  const base=String(requested||"").replace(/^\/+/,"");
+  const candidates=[];
+  const add=x=>{if(x&&!candidates.includes(x))candidates.push(x)};
+  add(requested); add("/"+base);
+  for(const f of files){
+    if(f.replace(/^\/+/,"")===base) add(f.startsWith("/")?f:"/"+f);
+  }
+  const errors=[];
+  for(const candidate of candidates){
+    let probe=null;
+    try{
+      probe=new p.OpfsSAHPoolDb(candidate,"r");
+      const hasBars=Number(scalar(probe,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)>0;
+      probe.close(); probe=null;
+      if(hasBars) return {name:candidate,files};
+      errors.push(candidate+": bars_daily missing");
+    }catch(e){
+      try{if(probe)probe.close()}catch(_){}
+      errors.push(candidate+": "+String(e?.message||e));
+    }
+  }
+  throw new Error(`Market DataLake not found/openable. requested=${requested}; pool files=${JSON.stringify(files)}; tried=${errors.join(" | ")}`);
+}
+let sqlite3=null,pool=null;
+let _sqliteInitPromise=null;
+async function initSqlite(){
+ if(sqlite3&&pool)return {sqlite3,pool,runtimeId:"worker-persistent-v1"};
+ if(_sqliteInitPromise)return _sqliteInitPromise;
+ _sqliteInitPromise=(async()=>{
+   status("import-module","/sqlite/index.mjs");
+   let mod=null,lastErr=null;
+   for(let attempt=1;attempt<=3&&!mod;attempt++){
+     try{
+       const probe=await fetch(`/sqlite/index.mjs?probe=${Date.now()}-${attempt}`,{cache:"no-store"});
+       if(!probe.ok) throw new Error(`SQLite module probe HTTP ${probe.status}: ${await probe.text()}`);
+       const ct=probe.headers.get("content-type")||"";
+       if(!/javascript|ecmascript|module/i.test(ct)) throw new Error(`SQLite module Content-Type invalid: ${ct||"(none)"}`);
+       mod=await import(`/sqlite/index.mjs?v=v7e-alpha49-${attempt}`);
+     }catch(e){
+       lastErr=e; status("import-retry",`attempt ${attempt}/3: ${e?.message||e}`);
+       if(attempt<3) await new Promise(r=>setTimeout(r,700*attempt));
+     }
+   }
+   if(!mod) throw new Error(`SQLite runtime load failed after 3 attempts: ${lastErr?.message||lastErr}`);
+   status("initialize-sqlite","SQLite 3.53 + opfs-sahpool (Worker常駐)");
+   sqlite3=await mod.default({
+     locateFile:p=>new URL(`/sqlite/${p}`,self.location.origin).href,
+     print:(...a)=>status("sqlite-print",a.join(" ")),
+     printErr:(...a)=>status("sqlite-stderr",a.join(" "))
+   });
+   if(typeof sqlite3.installOpfsSAHPoolVfs!=="function")
+     throw new Error("installOpfsSAHPoolVfs() not exposed by this build");
+   status("install-sahpool","installOpfsSAHPoolVfs() once per Worker");
+   pool=await sqlite3.installOpfsSAHPoolVfs({
+     name:"jq-sahpool",
+     directory:".jq-sahpool-v7c-r5",
+     initialCapacity:32
+   });
+   status("reserve-sahpool-capacity","reserveMinimumCapacity(32)");
+   if(typeof pool.reserveMinimumCapacity!=="function")
+     throw new Error("reserveMinimumCapacity() not exposed by this SQLite build");
+   const poolCapacity=await pool.reserveMinimumCapacity(32);
+   return {sqlite3,pool,poolCapacity,runtimeId:"worker-persistent-v1"};
+ })().catch(err=>{
+   _sqliteInitPromise=null;
+   sqlite3=null; pool=null;
+   throw err;
+ });
+ return _sqliteInitPromise;
+}
+async function importFile(file,name){
+ const {pool}=await initSqlite();
+ const reader=file.stream().getReader(); let read=0,chunks=0;
+ status("stream-import",`0 / ${file.size}`);
+ const bytes=await pool.importDb(name,async()=>{
+   const {done,value}=await reader.read();
+   if(done)return undefined;
+   read+=value.byteLength;chunks++;
+   if(chunks%8===0)status("stream-import",`${read} / ${file.size}`);
+   return value;
+ });
+ return {bytes,chunks};
+}
+
+
+function scalarBind(db,sql,bind=[]){let out=null;db.exec({sql,bind,rowMode:"array",callback:r=>{if(out===null)out=r[0]}});return out;}
+function execRows(db,sql,bind=[]){
+ const rows=[]; db.exec({sql,bind,rowMode:"object",callback:r=>rows.push(r)}); return rows;
+}
+function ensureRuntimeTables(db){
+ db.exec(`CREATE TABLE IF NOT EXISTS web_sync_checkpoint(
+   dataset TEXT PRIMARY KEY,
+   last_success_date TEXT,
+   updated_at TEXT NOT NULL,
+   note TEXT
+ )`);
+ db.exec(`CREATE TABLE IF NOT EXISTS web_runtime_migrations(
+   migration_id TEXT PRIMARY KEY,
+   applied_at TEXT NOT NULL,
+   detail TEXT
+ )`);
+ db.exec({sql:`INSERT OR IGNORE INTO web_runtime_migrations(migration_id,applied_at,detail)
+   VALUES(?,?,?)`,bind:["v7d-runtime-1",new Date().toISOString(),"SQLite-WASM direct-write runtime tables"]});
+}
+
+
+function qident(x){return '"'+String(x).replaceAll('"','""')+'"'}
+function tableInfo(db,table){
+ const rows=[]; db.exec({sql:`PRAGMA table_info(${qident(table)})`,rowMode:"object",callback:r=>rows.push(r)});
+ return rows;
+}
+function primaryKeyCols(info){
+ return info.filter(r=>Number(r.pk)>0).sort((a,b)=>Number(a.pk)-Number(b.pk)).map(r=>r.name);
+}
+function dateLikeCols(info){
+ return info.map(r=>r.name).filter(n=>/^(date|Date|trade_date|TradeDate)$/i.test(n));
+}
+function ensureV7dTables(db){
+ db.exec(`CREATE TABLE IF NOT EXISTS web_sync_checkpoint(
+   dataset TEXT PRIMARY KEY,
+   last_success_date TEXT,
+   updated_at TEXT NOT NULL,
+   status TEXT NOT NULL DEFAULT 'OK',
+   rows_written INTEGER NOT NULL DEFAULT 0,
+   note TEXT
+ )`);
+ db.exec(`CREATE TABLE IF NOT EXISTS web_sync_run(
+   run_id TEXT PRIMARY KEY,
+   dataset TEXT NOT NULL,
+   started_at TEXT NOT NULL,
+   finished_at TEXT,
+   status TEXT NOT NULL,
+   rows_written INTEGER NOT NULL DEFAULT 0,
+   last_date TEXT,
+   error TEXT
+ )`);
+ db.exec(`CREATE TABLE IF NOT EXISTS web_no_data_dates(
+   dataset TEXT NOT NULL,
+   date TEXT NOT NULL,
+   checked_at TEXT NOT NULL,
+   reason TEXT,
+   PRIMARY KEY(dataset,date)
+ )`);
+ db.exec(`CREATE TABLE IF NOT EXISTS web_runtime_migrations(
+   migration_id TEXT PRIMARY KEY,
+   applied_at TEXT NOT NULL,
+   detail TEXT
+ )`);
+ db.exec({sql:`INSERT OR IGNORE INTO web_runtime_migrations(migration_id,applied_at,detail)
+   VALUES(?,?,?)`,bind:["v7d-alpha2-runtime",new Date().toISOString(),"direct-write + checkpoint + date-batch engine"]});
+}
+function sampleRows(db,table,limit=3){
+ const out=[]; db.exec({sql:`SELECT * FROM ${qident(table)} LIMIT ${Number(limit)}`,rowMode:"object",callback:r=>out.push(r)}); return out;
+}
+
+
+let cachedMarketDb=null;
+let cachedMarketDbName=null;
+function closeCachedMarketDb(){
+ try{cachedMarketDb?.close()}catch(_){}
+ cachedMarketDb=null; cachedMarketDbName=null;
+}
+
+function resolveMarketNameWithoutOpen(p,requested){
+ const files=poolFileNamesSafe(p);
+ const base=String(requested||"").replace(/^\/+/,"");
+ if(files.includes(requested)) return requested;
+ for(const f of files){
+   if(String(f).replace(/^\/+/,"")===base) return String(f).startsWith("/")?String(f):"/"+String(f);
+ }
+ throw new Error(`Market logical file not found. requested=${requested}; pool files=${JSON.stringify(files)}`);
+}
+function getCachedMarketDb(p,name){
+ if(cachedMarketDb && cachedMarketDbName===name) return cachedMarketDb;
+ closeCachedMarketDb();
+ cachedMarketDb=new p.OpfsSAHPoolDb(name,"r");
+ cachedMarketDbName=name;
+ return cachedMarketDb;
+}
+self.onmessage=async e=>{
+ const requestId=(e.data||{}).requestId;
+ const originalPostMessage=nativePostMessage;
+ self.postMessage=(msg,...rest)=>originalPostMessage({...msg,requestId},...rest);
+const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performance.now();let db;try{
+ if(cmd==="raw-ping"){
+   self.postMessage({ok:true,type:"result",pong:true,seq:d.seq||0,elapsedMs:Math.round(performance.now()-t0)});
+   return;
+ }
+ const x=await initSqlite(); const s=x.sqlite3,p=x.pool; const vfs=!!s.capi.sqlite3_vfs_find(p.vfsName);
+
+ if(cmd==="fins-summary-code-audit"){
+   const payload=d.payload||{},codes=(payload.codes||[]).map(x=>String(x||"").trim()).filter(Boolean),rows=[];
+   let fdb=null;
+   try{
+     fdb=new p.OpfsSAHPoolDb("/jq_fins_summary_v1.sqlite","r");
+     const tables=execRows(fdb,"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").map(x=>String(x.name));
+     if(!tables.includes("fins_summary")) throw new Error(`fins_summary table missing. tables=${tables.join(",")}`);
+     for(const c0 of codes){
+       const variants=[c0,c0.length===4?c0+"0":c0].filter((x,i,a)=>a.indexOf(x)===i);
+       for(const c of variants){
+         const got=execRows(fdb,`SELECT data_date,code,disclosed_date,disclosed_time,raw_json
+           FROM fins_summary
+           WHERE code=?
+           ORDER BY COALESCE(disclosed_date,data_date) DESC, disclosed_time DESC`,[c]);
+         for(const r of got) rows.push(r);
+       }
+     }
+     fdb.close();fdb=null;
+     self.postMessage({ok:true,type:"result",rows,codes,tables});
+     return;
+   }catch(err){
+     try{if(fdb)fdb.close()}catch(_){}
+     throw new Error(`[fins-summary-code-audit] ${err?.message||err}`);
+   }
+ }
+
+
+
+
+ if(cmd==="runtime-probe"){
+   self.postMessage({
+     ok:true,type:"result",
+     runtimeId:x.runtimeId||"worker-persistent-v1",
+     poolFiles:poolFileNamesSafe(p),
+     elapsedMs:Math.round(performance.now()-t0)
+   });
+   return;
+ }
+ if(cmd==="shard-lifecycle"){
+   const testName="/jq_lifecycle_probe_v1.sqlite";
+   let tdb=null,stage="start";
+   const mark=(s,detail="")=>{stage=s;status(s,detail)};
+   try{
+     mark("01-create-open","probe create/open");
+     tdb=new p.OpfsSAHPoolDb(testName,"c");
+     mark("02-schema","probe schema/write");
+     tdb.exec(`CREATE TABLE IF NOT EXISTS probe(id INTEGER PRIMARY KEY,value TEXT)`);
+     tdb.exec(`INSERT OR REPLACE INTO probe(id,value) VALUES(1,'ok')`);
+     mark("03-close","probe close");
+     tdb.close();tdb=null;
+     mark("04-reopen","probe reopen in SAME worker command");
+     const o=performance.now();
+     tdb=new p.OpfsSAHPoolDb(testName,"c");
+     const reopenMs=Math.round(performance.now()-o);
+     mark("05-read","probe readback");
+     const value=scalar(tdb,"SELECT value FROM probe WHERE id=1");
+     mark("06-final-close","probe final close");
+     tdb.close();tdb=null;
+     self.postMessage({ok:value==="ok",type:"result",stage:"PASS",value,reopenMs,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err&&err.message?err.message:err),stack:String(err&&err.stack?err.stack:""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(tdb)tdb.close()}catch(_){}}
+ }
+ if(cmd==="shard-bootstrap"){
+   const catalogName="/jq_catalog_v1.sqlite", recentName="/jq_bars_recent_v1.sqlite";
+   let cdb=null,rdb=null,stage="start";
+   const mark=(s,detail="")=>{stage=s;status(s,detail)};
+   try{
+     mark("01-catalog-open","Catalog DB reopen (mode=c)");
+     cdb=new p.OpfsSAHPoolDb(catalogName,"c");
+
+     mark("02-catalog-schema","Catalog schema create");
+     cdb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+       shard_key TEXT PRIMARY KEY,
+       logical_name TEXT NOT NULL,
+       dataset TEXT NOT NULL,
+       range_start TEXT,
+       range_end TEXT,
+       schema_version TEXT NOT NULL,
+       state TEXT NOT NULL,
+       updated_at TEXT NOT NULL
+     )`);
+     cdb.exec(`CREATE TABLE IF NOT EXISTS catalog_meta(
+       key TEXT PRIMARY KEY,
+       value TEXT NOT NULL
+     )`);
+     cdb.exec(`INSERT INTO catalog_meta(key,value)
+              VALUES('architecture','catalog-shards-v1')
+              ON CONFLICT(key) DO UPDATE SET value='catalog-shards-v1'`);
+
+     mark("03-recent-open","bars_recent DB open");
+     rdb=new p.OpfsSAHPoolDb(recentName,"c");
+
+     mark("04-recent-schema","bars_recent schema create");
+     rdb.exec(`CREATE TABLE IF NOT EXISTS bars_daily(
+       code TEXT NOT NULL,
+       date TEXT NOT NULL,
+       o REAL,h REAL,l REAL,c REAL,
+       upper_limit REAL,lower_limit REAL,value REAL,
+       adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,
+       adj_factor REAL,adj_volume REAL,volume REAL,
+       turnover_value REAL,raw_json TEXT,
+       PRIMARY KEY(code,date)
+     ) WITHOUT ROWID`);
+     rdb.exec(`CREATE INDEX IF NOT EXISTS idx_bars_recent_date ON bars_daily(date)`);
+     rdb.exec(`CREATE TABLE IF NOT EXISTS shard_meta(
+       key TEXT PRIMARY KEY,
+       value TEXT NOT NULL
+     )`);
+     rdb.exec(`INSERT INTO shard_meta(key,value)
+              VALUES('schema_version','bars-v1')
+              ON CONFLICT(key) DO UPDATE SET value='bars-v1'`);
+     rdb.exec(`INSERT INTO shard_meta(key,value)
+              VALUES('role','bars_recent')
+              ON CONFLICT(key) DO UPDATE SET value='bars_recent'`);
+
+     mark("05-recent-close","bars_recent close");
+     rdb.close();rdb=null;
+
+     mark("06-catalog-register","Catalog register shard");
+     const now=new Date().toISOString().replace(/'/g,"''");
+     cdb.exec(`INSERT INTO shard_catalog(
+       shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at
+     ) VALUES(
+       'bars_recent','${recentName}','bars_daily',NULL,NULL,'bars-v1','ready','${now}'
+     )
+     ON CONFLICT(shard_key) DO UPDATE SET
+       logical_name='${recentName}',
+       dataset='bars_daily',
+       schema_version='bars-v1',
+       state='ready',
+       updated_at='${now}'`);
+
+     mark("07-catalog-readback","Catalog readback");
+     const catalogRows=execRows(cdb,"SELECT * FROM shard_catalog ORDER BY shard_key");
+
+     mark("08-catalog-close","Catalog close");
+     cdb.close();cdb=null;
+
+     self.postMessage({
+       ok:true,type:"result",stage:"PASS",
+       catalogName,recentName,catalogRows,
+       poolFiles:p.getFileNames(),
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }catch(err){
+     self.postMessage({
+       ok:false,type:"error",stage,
+       message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }finally{
+     try{if(rdb)rdb.close()}catch(_){}
+     try{if(cdb)cdb.close()}catch(_){}
+   }
+ }
+
+ if(cmd==="shard-migrate-pilot"){
+   const catalogName="/jq_catalog_v1.sqlite", recentName="/jq_bars_recent_v1.sqlite";
+   const sourceName=name, dayLimit=Math.max(1,Math.min(10,Number(d.payload?.days||5)));
+   let srcDb=null,dstDb=null,catDb=null,stage="start";
+   const mark=(s,detail="")=>{stage=s;status(s,detail)};
+   try{
+     mark("01-source-open",`Legacy DataLake read-only: ${sourceName}`);
+     const resolved=resolveExistingMarketDb(p,sourceName);
+     srcDb=new p.OpfsSAHPoolDb(resolved.name,"r");
+     mark("02-source-dates",`Latest ${dayLimit} trading dates`);
+     const dates=execRows(srcDb,`SELECT date,COUNT(*) AS rows FROM bars_daily GROUP BY date ORDER BY date DESC LIMIT ${dayLimit}`)
+       .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+     if(!dates.length)throw new Error("No bars_daily dates found");
+     const from=String(dates[0].date),to=String(dates[dates.length-1].date);
+     const expected=dates.reduce((a,x)=>a+Number(x.rows||0),0);
+
+     mark("03-destination-open",`bars_recent: ${from} - ${to}`);
+     dstDb=new p.OpfsSAHPoolDb(recentName,"c");
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS bars_daily(code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,upper_limit REAL,lower_limit REAL,value REAL,adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,PRIMARY KEY(code,date)) WITHOUT ROWID`);
+     dstDb.exec(`CREATE INDEX IF NOT EXISTS idx_bars_recent_date ON bars_daily(date)`);
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+
+     const srcCols=new Set(tableInfo(srcDb,"bars_daily").map(x=>x.name));
+     const cols=tableInfo(dstDb,"bars_daily").map(x=>x.name).filter(x=>srcCols.has(x));
+     if(!cols.includes("code")||!cols.includes("date"))throw new Error("Schema mismatch: code/date missing");
+     const updates=cols.filter(x=>!["code","date"].includes(x)).map(x=>`${qident(x)}=excluded.${qident(x)}`).join(",");
+     const sql=`INSERT INTO bars_daily(${cols.map(qident).join(",")}) VALUES(${cols.map(()=>"?").join(",")}) ON CONFLICT(code,date) DO UPDATE SET ${updates}`;
+     const stmt=dstDb.prepare(sql); let written=0;
+     try{
+       dstDb.exec("BEGIN");
+       for(const x of dates){
+         const day=String(x.date); mark("04-copy",`${day}: ${Number(x.rows||0).toLocaleString()} rows`);
+         srcDb.exec({sql:`SELECT ${cols.map(qident).join(",")} FROM bars_daily WHERE date=? ORDER BY code`,bind:[day],rowMode:"array",
+           callback:r=>{stmt.bind(r).stepReset();written++}});
+       }
+       dstDb.exec("COMMIT");
+     }catch(err){try{dstDb.exec("ROLLBACK")}catch(_){} throw err}
+     finally{stmt.finalize()}
+
+     mark("05-verify","Row/date/quick_check verification");
+     const actual=Number(scalar(dstDb,`SELECT COUNT(*) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const distinctDates=Number(scalar(dstDb,`SELECT COUNT(DISTINCT date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const minDate=scalar(dstDb,"SELECT MIN(date) FROM bars_daily"),maxDate=scalar(dstDb,"SELECT MAX(date) FROM bars_daily");
+     const qc=String(scalar(dstDb,"PRAGMA quick_check")||"");
+     if(actual!==expected)throw new Error(`Row mismatch source=${expected}, destination=${actual}`);
+     if(distinctDates!==dates.length)throw new Error(`Date mismatch source=${dates.length}, destination=${distinctDates}`);
+     if(qc!=="ok")throw new Error(`quick_check=${qc}`);
+     const at=new Date().toISOString().replace(/'/g,"''");
+     dstDb.exec(`INSERT INTO shard_meta(key,value) VALUES('range_start','${minDate}') ON CONFLICT(key) DO UPDATE SET value='${minDate}'`);
+     dstDb.exec(`INSERT INTO shard_meta(key,value) VALUES('range_end','${maxDate}') ON CONFLICT(key) DO UPDATE SET value='${maxDate}'`);
+     dstDb.close();dstDb=null; srcDb.close();srcDb=null;
+
+     mark("06-catalog-update","Catalog update after verification");
+     catDb=new p.OpfsSAHPoolDb(catalogName,"c");
+     catDb.exec(`UPDATE shard_catalog SET range_start='${minDate}',range_end='${maxDate}',state='pilot-migrated',updated_at='${at}' WHERE shard_key='bars_recent'`);
+     const catalogRows=execRows(catDb,"SELECT * FROM shard_catalog WHERE shard_key='bars_recent'");
+     catDb.close();catDb=null;
+     self.postMessage({ok:true,type:"result",stage:"PASS",source:resolved.name,days:dates.length,dates,
+       expectedRows:expected,writtenRows:written,verifiedRows:actual,minDate,maxDate,quickCheck:qc,catalogRows,
+       elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return;
+   }finally{try{if(catDb)catDb.close()}catch(_){} try{if(dstDb)dstDb.close()}catch(_){} try{if(srcDb)srcDb.close()}catch(_){}}
+ }
+
+
+
+ if(cmd==="pool-capacity-status"){
+   const files=poolFileNamesSafe(p);
+   const actualCapacity=typeof p.getCapacity==="function"?Number(p.getCapacity()):null;
+   const actualFileCount=typeof p.getFileCount==="function"?Number(p.getFileCount()):files.length;
+   self.postMessage({
+     ok:true,type:"result",stage:"PASS",
+     poolFiles:files,
+     actualCapacity,
+     actualFileCount,
+     freeSlots:actualCapacity==null?null:Math.max(0,actualCapacity-actualFileCount),
+     elapsedMs:Math.round(performance.now()-t0)
+   });
+   return;
+ }
+ if(cmd==="shard-year-inventory"){
+   let srcDb=null,stage="01-source-open";
+   try{
+     const resolved=resolveExistingMarketDb(p,name);
+     srcDb=new p.OpfsSAHPoolDb(resolved.name,"r");
+     stage="02-inventory";
+     const years=execRows(srcDb,`
+       SELECT substr(date,1,4) AS year,
+              COUNT(*) AS rows,
+              COUNT(DISTINCT date) AS trading_days,
+              MIN(date) AS min_date,
+              MAX(date) AS max_date
+       FROM bars_daily
+       GROUP BY substr(date,1,4)
+       ORDER BY year DESC`);
+     srcDb.close();srcDb=null;
+     self.postMessage({ok:true,type:"result",stage:"PASS",source:resolved.name,years,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,
+       message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(srcDb)srcDb.close()}catch(_){}}
+ }
+ if(cmd==="shard-migrate-year"){
+   const catalogName="/jq_catalog_v1.sqlite";
+   const sourceName=name;
+   let srcDb=null,dstDb=null,catDb=null,stage="start";
+   const mark=(s,detail="")=>{stage=s;status(s,detail)};
+   try{
+     mark("01-source-open",`Legacy DataLake read-only: ${sourceName}`);
+     const resolved=resolveExistingMarketDb(p,sourceName);
+     srcDb=new p.OpfsSAHPoolDb(resolved.name,"r");
+
+     mark("02-resolve-year","Resolve latest calendar year");
+     const maxDate=String(scalar(srcDb,"SELECT MAX(date) FROM bars_daily")||"");
+     if(!maxDate) throw new Error("bars_daily max(date) is empty");
+     const latestYear=Number(maxDate.slice(0,4));
+     const requested=Number(d.payload?.year||latestYear);
+     const year=Math.max(2000,Math.min(2100,requested));
+     const from=`${year}-01-01`, to=`${year}-12-31`;
+     const shardKey=`bars_${year}`;
+     const shardName=`/jq_bars_${year}_v1.sqlite`;
+
+     mark("03-source-scan",`${year} source scan`);
+     const sourceStats=execRows(srcDb,`
+       SELECT COUNT(*) AS rows,
+              COUNT(DISTINCT date) AS trading_days,
+              MIN(date) AS min_date,
+              MAX(date) AS max_date
+       FROM bars_daily
+       WHERE date>=? AND date<=?`,[from,to])[0]||{};
+     const expected=Number(sourceStats.rows||0);
+     const tradingDays=Number(sourceStats.trading_days||0);
+     const minDate=String(sourceStats.min_date||"");
+     const maxYearDate=String(sourceStats.max_date||"");
+     if(expected<=0 || tradingDays<=0) throw new Error(`No bars_daily rows for ${year}`);
+
+     mark("04-destination-open",`${shardName} create/open`);
+     dstDb=new p.OpfsSAHPoolDb(shardName,"c");
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS bars_daily(
+       code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,
+       upper_limit REAL,lower_limit REAL,value REAL,
+       adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,
+       adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,
+       PRIMARY KEY(code,date)
+     ) WITHOUT ROWID`);
+     dstDb.exec(`CREATE INDEX IF NOT EXISTS idx_bars_year_date ON bars_daily(date)`);
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+
+     const srcCols=new Set(tableInfo(srcDb,"bars_daily").map(x=>x.name));
+     const cols=tableInfo(dstDb,"bars_daily").map(x=>x.name).filter(x=>srcCols.has(x));
+     if(!cols.includes("code")||!cols.includes("date"))
+       throw new Error("Schema mismatch: code/date missing");
+     const updates=cols.filter(x=>!["code","date"].includes(x))
+       .map(x=>`${qident(x)}=excluded.${qident(x)}`).join(",");
+     const sql=`INSERT INTO bars_daily(${cols.map(qident).join(",")})
+       VALUES(${cols.map(()=>"?").join(",")})
+       ON CONFLICT(code,date) DO UPDATE SET ${updates}`;
+     const stmt=dstDb.prepare(sql);
+
+     mark("05-copy",`${year}: ${expected.toLocaleString()} rows / ${tradingDays} days`);
+     let written=0;
+     try{
+       dstDb.exec("BEGIN");
+       srcDb.exec({
+         sql:`SELECT ${cols.map(qident).join(",")}
+              FROM bars_daily
+              WHERE date>=? AND date<=?
+              ORDER BY date,code`,
+         bind:[from,to],
+         rowMode:"array",
+         callback:r=>{
+           stmt.bind(r).stepReset();
+           written++;
+           if(written%50000===0) mark("05-copy",`${year}: ${written.toLocaleString()} / ${expected.toLocaleString()} rows`);
+         }
+       });
+       dstDb.exec("COMMIT");
+     }catch(err){
+       try{dstDb.exec("ROLLBACK")}catch(_){}
+       throw err;
+     }finally{
+       stmt.finalize();
+     }
+
+     mark("06-verify","Row/day/range/quick_check verification");
+     const actual=Number(scalar(dstDb,`SELECT COUNT(*) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const actualDays=Number(scalar(dstDb,`SELECT COUNT(DISTINCT date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const dstMin=String(scalar(dstDb,`SELECT MIN(date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||"");
+     const dstMax=String(scalar(dstDb,`SELECT MAX(date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||"");
+     const qc=String(scalar(dstDb,"PRAGMA quick_check")||"");
+
+     if(actual!==expected) throw new Error(`Row mismatch source=${expected}, destination=${actual}`);
+     if(actualDays!==tradingDays) throw new Error(`Trading-day mismatch source=${tradingDays}, destination=${actualDays}`);
+     if(dstMin!==minDate || dstMax!==maxYearDate) throw new Error(`Range mismatch source=${minDate}..${maxYearDate}, destination=${dstMin}..${dstMax}`);
+     if(qc!=="ok") throw new Error(`quick_check=${qc}`);
+
+     const at=new Date().toISOString().replace(/'/g,"''");
+     const meta={
+       role:shardKey,
+       schema_version:"bars-v1",
+       calendar_year:String(year),
+       range_start:dstMin,
+       range_end:dstMax,
+       source_db:resolved.name,
+       migrated_at:at
+     };
+     for(const [k,v] of Object.entries(meta)){
+       const kk=String(k).replace(/'/g,"''"), vv=String(v).replace(/'/g,"''");
+       dstDb.exec(`INSERT INTO shard_meta(key,value) VALUES('${kk}','${vv}')
+         ON CONFLICT(key) DO UPDATE SET value='${vv}'`);
+     }
+     dstDb.close(); dstDb=null;
+     srcDb.close(); srcDb=null;
+
+     mark("07-catalog-register",`${shardKey} register`);
+     catDb=new p.OpfsSAHPoolDb(catalogName,"c");
+     catDb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+       shard_key TEXT PRIMARY KEY,
+       logical_name TEXT NOT NULL,
+       dataset TEXT NOT NULL,
+       range_start TEXT,
+       range_end TEXT,
+       schema_version TEXT NOT NULL,
+       state TEXT NOT NULL,
+       updated_at TEXT NOT NULL
+     )`);
+     const safeName=shardName.replace(/'/g,"''");
+     catDb.exec(`INSERT INTO shard_catalog(
+       shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at
+     ) VALUES(
+       '${shardKey}','${safeName}','bars_daily','${dstMin}','${dstMax}','bars-v1','ready','${at}'
+     )
+     ON CONFLICT(shard_key) DO UPDATE SET
+       logical_name='${safeName}',
+       dataset='bars_daily',
+       range_start='${dstMin}',
+       range_end='${dstMax}',
+       schema_version='bars-v1',
+       state='ready',
+       updated_at='${at}'`);
+     const catalogRows=execRows(catDb,`SELECT * FROM shard_catalog WHERE shard_key='${shardKey}'`);
+     catDb.close(); catDb=null;
+
+     self.postMessage({
+       ok:true,type:"result",stage:"PASS",
+       source:resolved.name,year,shardKey,shardName,
+       expectedRows:expected,writtenRows:written,verifiedRows:actual,
+       tradingDays,verifiedTradingDays:actualDays,
+       minDate:dstMin,maxDate:dstMax,quickCheck:qc,catalogRows,
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }catch(err){
+     self.postMessage({
+       ok:false,type:"error",stage,
+       message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }finally{
+     try{if(catDb)catDb.close()}catch(_){}
+     try{if(dstDb)dstDb.close()}catch(_){}
+     try{if(srcDb)srcDb.close()}catch(_){}
+   }
+ }
+
+
+
+ if(cmd==="shard-backup-inventory"){
+   const files=poolFileNamesSafe(p);
+   const wanted=new Set();
+   const catalogName="/jq_catalog_v1.sqlite";
+   let cdb=null;
+   try{
+     if(files.includes(catalogName)){
+       wanted.add(catalogName);
+       try{
+         cdb=new p.OpfsSAHPoolDb(catalogName,"r");
+         const hasCatalog=Number(scalar(cdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='shard_catalog'")||0)>0;
+         if(hasCatalog){
+           for(const r of execRows(cdb,"SELECT logical_name FROM shard_catalog WHERE state='ready' ORDER BY shard_key")){
+             let n=String(r.logical_name||"");
+             if(n && !n.startsWith("/")) n="/"+n;
+             if(n) wanted.add(n);
+           }
+         }
+       }finally{try{if(cdb)cdb.close()}catch(_){} cdb=null}
+     }
+     for(const n of files){
+       if(/^\/jq_bars_(?:recent|\d{4})_v1\.sqlite$/.test(n)) wanted.add(n);
+       if(/^\/jq_(?:financials|supply_demand|private)(?:_[a-z0-9_-]+)?_v\d+\.sqlite$/i.test(n)) wanted.add(n);
+     }
+
+     const items=[];
+     for(const name of Array.from(wanted).sort()){
+       if(!files.includes(name)) continue;
+       let dbx=null;
+       try{
+         dbx=new p.OpfsSAHPoolDb(name,"r");
+         const qc=String(scalar(dbx,"PRAGMA quick_check")||"");
+         const pc=Number(scalar(dbx,"PRAGMA page_count")||0);
+         const ps=Number(scalar(dbx,"PRAGMA page_size")||0);
+         const tables=execRows(dbx,"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").map(r=>String(r.name));
+         let rows=null,minDate=null,maxDate=null,tradingDays=null;
+         if(tables.includes("bars_daily")){
+           rows=Number(scalar(dbx,"SELECT COUNT(*) FROM bars_daily")||0);
+           minDate=scalar(dbx,"SELECT MIN(date) FROM bars_daily");
+           maxDate=scalar(dbx,"SELECT MAX(date) FROM bars_daily");
+           tradingDays=Number(scalar(dbx,"SELECT COUNT(DISTINCT date) FROM bars_daily")||0);
+         }
+         items.push({name,fileName:name.replace(/^\/+/,""),bytes:pc*ps,quickCheck:qc,tables,rows,minDate,maxDate,tradingDays});
+       }catch(err){
+         items.push({name,fileName:name.replace(/^\/+/,""),bytes:0,quickCheck:"ERROR",error:String(err?.message||err),tables:[]});
+       }finally{try{if(dbx)dbx.close()}catch(_){}}
+     }
+     const totalBytes=items.reduce((a,x)=>a+Number(x.bytes||0),0);
+     const allOk=items.length>0 && items.every(x=>x.quickCheck==="ok");
+     self.postMessage({ok:true,type:"result",stage:"PASS",items,totalBytes,allOk,
+       capacity:typeof p.getCapacity==="function"?p.getCapacity():null,
+       allocated:typeof p.getFileCount==="function"?p.getFileCount():null,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage:"backup-inventory",message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(cdb)cdb.close()}catch(_){}}
+ }
+
+ if(cmd==="shard-backup-export"){
+   const payload=e.data.payload||{};
+   let name=String(payload.name||"");
+   if(name && !name.startsWith("/")) name="/"+name;
+   try{
+     const files=poolFileNamesSafe(p);
+     if(!files.includes(name)) throw new Error(`backup target not found: ${name}`);
+     status("backup-export",`exportFile ${name}`);
+     const bytes=p.exportFile(name);
+     if(!(bytes instanceof Uint8Array)) throw new Error("exportFile did not return Uint8Array");
+     let sha256=null;
+     try{
+       const digest=await crypto.subtle.digest("SHA-256",bytes);
+       sha256=Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,"0")).join("");
+     }catch(_){}
+     const ab=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);
+     self.postMessage({ok:true,type:"result",stage:"PASS",name,fileName:name.replace(/^\/+/,""),
+       bytes:bytes.byteLength,sha256,buffer:ab,elapsedMs:Math.round(performance.now()-t0)},[ab]);
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage:"backup-export",message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }
+ }
+
+ if(cmd==="shard-restore-import"){
+   const payload=e.data.payload||{};
+   let name=String(payload.name||"");
+   if(name && !name.startsWith("/")) name="/"+name;
+   if(!/^\/jq_[a-zA-Z0-9_.-]+\.sqlite$/.test(name)){
+     self.postMessage({ok:false,type:"error",stage:"restore-validate",message:`unsafe restore name: ${name}`});
+     return;
+   }
+   if(!e.data.file){
+     self.postMessage({ok:false,type:"error",stage:"restore-validate",message:"restore file missing"});
+     return;
+   }
+   let rdb=null;
+   try{
+     status("restore-import",`${name}: streaming import start`);
+     const out=await importFile(e.data.file,name);
+     status("restore-verify",`${name}: quick_check`);
+     rdb=new p.OpfsSAHPoolDb(name,"r");
+     const qc=String(scalar(rdb,"PRAGMA quick_check")||"");
+     const pc=Number(scalar(rdb,"PRAGMA page_count")||0);
+     const ps=Number(scalar(rdb,"PRAGMA page_size")||0);
+     const tables=execRows(rdb,"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").map(r=>String(r.name));
+     let rows=null,minDate=null,maxDate=null,tradingDays=null;
+     if(tables.includes("bars_daily")){
+       rows=Number(scalar(rdb,"SELECT COUNT(*) FROM bars_daily")||0);
+       minDate=scalar(rdb,"SELECT MIN(date) FROM bars_daily");
+       maxDate=scalar(rdb,"SELECT MAX(date) FROM bars_daily");
+       tradingDays=Number(scalar(rdb,"SELECT COUNT(DISTINCT date) FROM bars_daily")||0);
+     }
+     rdb.close();rdb=null;
+     if(qc!=="ok") throw new Error(`quick_check=${qc}`);
+     self.postMessage({ok:true,type:"result",stage:"PASS",name,fileName:name.replace(/^\/+/,""),
+       importedBytes:out.bytes,chunks:out.chunks,dbBytes:pc*ps,quickCheck:qc,tables,rows,minDate,maxDate,tradingDays,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage:"restore-import",message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(rdb)rdb.close()}catch(_){}}
+ }
+
+
+
+ if(cmd==="gap-repair-date-write"){
+   const payload=e.data.payload||{}, date=String(payload.date||""), rows=payload.rows||[];
+   let db=null,cdb=null,stage="01-validate";
+   try{
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("invalid date");
+     if(!Array.isArray(rows)||!rows.length) throw new Error("rows empty");
+     const year=Number(date.slice(0,4)), name=`/jq_bars_${year}_v1.sqlite`;
+     const aliases={
+       date:["Date","date"],code:["Code","code"],o:["O","o","Open","open"],h:["H","h","High","high"],
+       l:["L","l","Low","low"],c:["C","c","Close","close"],upper_limit:["UL","UpperLimit","upper_limit"],
+       lower_limit:["LL","LowerLimit","lower_limit"],volume:["Vo","Volume","volume"],
+       value:["Va","Value","TurnoverValue","value","turnover_value"],adj_factor:["AdjFactor","AdjustmentFactor","adj_factor","adjustment_factor"],
+       adj_o:["AdjO","AdjustmentOpen","adj_o","adjustment_open"],adj_h:["AdjH","AdjustmentHigh","adj_h","adjustment_high"],
+       adj_l:["AdjL","AdjustmentLow","adj_l","adjustment_low"],adj_c:["AdjC","AdjustmentClose","adj_c","adjustment_close"],
+       adj_volume:["AdjVo","AdjustmentVolume","adj_volume","adjustment_volume"],turnover_value:["Va","TurnoverValue","turnover_value"],
+       raw_json:["__RAW_JSON__"]
+     };
+     function pick(obj,c){if(c==="raw_json")return JSON.stringify(obj);for(const k of (aliases[c]||[c]))if(Object.prototype.hasOwnProperty.call(obj,k))return obj[k];return null}
+     stage="02-open"; db=new p.OpfsSAHPoolDb(name,"c");
+     db.exec(`CREATE TABLE IF NOT EXISTS bars_daily(
+       code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,upper_limit REAL,lower_limit REAL,value REAL,
+       adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,
+       PRIMARY KEY(code,date)) WITHOUT ROWID`);
+     db.exec(`CREATE INDEX IF NOT EXISTS idx_bars_date ON bars_daily(date)`);
+     const cols=tableInfo(db,"bars_daily").map(x=>x.name);
+     const ins=cols.filter(c=>pick(rows[0],c)!==null||["date","code"].includes(c));
+     const upd=ins.filter(c=>!["code","date"].includes(c)).map(c=>`${qident(c)}=excluded.${qident(c)}`).join(",");
+     const st=db.prepare(`INSERT INTO bars_daily(${ins.map(qident).join(",")}) VALUES(${ins.map(()=>"?").join(",")})
+       ON CONFLICT(code,date) DO UPDATE SET ${upd}`);
+     stage="03-write";
+     try{db.exec("BEGIN");for(const r of rows)st.bind(ins.map(c=>pick(r,c))).stepReset();db.exec("COMMIT")}
+     catch(err){try{db.exec("ROLLBACK")}catch(_){}throw err}finally{st.finalize()}
+     stage="04-verify";
+     const cnt=Number(scalarBind(db,"SELECT COUNT(*) FROM bars_daily WHERE date=?",[date])||0);
+     const qc=String(scalar(db,"PRAGMA quick_check")||"");
+     if(cnt!==rows.length)throw new Error(`verify mismatch API=${rows.length} shard=${cnt}`);
+     if(qc!=="ok")throw new Error(`quick_check=${qc}`);
+     const mn=String(scalar(db,"SELECT MIN(date) FROM bars_daily")||""),mx=String(scalar(db,"SELECT MAX(date) FROM bars_daily")||"");
+     db.close();db=null;
+     stage="05-catalog";cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+     const at=new Date().toISOString().replace(/'/g,"''");
+     cdb.exec(`UPDATE shard_catalog SET range_start='${mn}',range_end='${mx}',state='ready',updated_at='${at}' WHERE shard_key='bars_${year}'`);
+     cdb.close();cdb=null;
+     self.postMessage({ok:true,type:"result",stage:"PASS",date,year,rows:cnt,quickCheck:qc,minDate:mn,maxDate:mx,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}
+   finally{try{if(cdb)cdb.close()}catch(_){}try{if(db)db.close()}catch(_){}}
+ }
+
+
+
+ if(cmd==="my-stocks-list"||cmd==="my-stocks-upsert"||cmd==="my-stocks-delete"||cmd==="my-stocks-import"){
+   let db=null,stage="01-open";
+   try{
+     db=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     db.exec(`CREATE TABLE IF NOT EXISTS user_stocks(
+       code TEXT NOT NULL,
+       name TEXT,
+       account TEXT NOT NULL DEFAULT '',
+       shares REAL,
+       avg_cost REAL,
+       strategy TEXT,
+       memo TEXT,
+       created_at TEXT NOT NULL,
+       updated_at TEXT NOT NULL,
+       PRIMARY KEY(code,account)
+     ) WITHOUT ROWID`);
+     const now=new Date().toISOString();
+     if(cmd==="my-stocks-upsert"){
+       stage="02-upsert";
+       const x=e.data.payload||{},code=String(x.code||"").trim().toUpperCase(),account=String(x.account||"").trim();
+       if(!/^[0-9A-Z]{4,5}$/.test(code))throw new Error("銘柄コードが不正です");
+       db.exec({sql:`INSERT INTO user_stocks(code,name,account,shares,avg_cost,strategy,memo,created_at,updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(code,account) DO UPDATE SET name=excluded.name,shares=excluded.shares,avg_cost=excluded.avg_cost,
+         strategy=excluded.strategy,memo=excluded.memo,updated_at=excluded.updated_at`,
+         bind:[code,String(x.name||""),account,x.shares==null?null:Number(x.shares),x.avgCost==null?null:Number(x.avgCost),
+         String(x.strategy||""),String(x.memo||""),now,now]});
+     }else if(cmd==="my-stocks-delete"){
+       stage="02-delete"; const x=e.data.payload||{};
+       db.exec({sql:"DELETE FROM user_stocks WHERE code=? AND account=?",bind:[String(x.code||""),String(x.account||"")]});
+     }else if(cmd==="my-stocks-import"){
+       stage="02-import"; const rows=(e.data.payload||{}).rows||[]; let n=0;
+       db.exec("BEGIN");
+       try{
+         for(const x of rows){
+           const code=String(x.code||"").trim().toUpperCase(),account=String(x.account||"").trim();
+           if(!/^[0-9A-Z]{4,5}$/.test(code))continue;
+           db.exec({sql:`INSERT INTO user_stocks(code,name,account,shares,avg_cost,strategy,memo,created_at,updated_at)
+             VALUES(?,?,?,?,?,?,?,?,?)
+             ON CONFLICT(code,account) DO UPDATE SET name=excluded.name,shares=excluded.shares,avg_cost=excluded.avg_cost,
+             strategy=excluded.strategy,updated_at=excluded.updated_at`,
+             bind:[code,String(x.name||""),account,x.shares==null?null:Number(x.shares),x.avgCost==null?null:Number(x.avgCost),
+             String(x.strategy||""),"",now,now]}); n++;
+         }
+         db.exec("COMMIT");
+       }catch(err){try{db.exec("ROLLBACK")}catch(_){}throw err}
+       self.postMessage({ok:true,type:"result",stage:"PASS",imported:n,elapsedMs:Math.round(performance.now()-t0)});
+       return;
+     }
+     stage="03-list";
+     const rows=execRows(db,`SELECT code,name,account,shares,avg_cost,strategy,memo,created_at,updated_at
+       FROM user_stocks ORDER BY CASE account WHEN 'NISA' THEN 1 WHEN '現物' THEN 2 WHEN '信用買' THEN 3 WHEN '信用売' THEN 4 ELSE 9 END,code`);
+     self.postMessage({ok:true,type:"result",stage:"PASS",rows,count:rows.length,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}
+   finally{try{if(db)db.close()}catch(_){}}
+ }
+
+ if(cmd==="my-stocks-analysis"){
+   const payload=e.data.payload||{},asOf=String(payload.asOf||"");
+   let pdb=null,cdb=null,stage="01-validate";
+   try{
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+
+     stage="02-private";
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS user_stocks(
+       code TEXT NOT NULL,name TEXT,account TEXT NOT NULL DEFAULT '',shares REAL,avg_cost REAL,
+       strategy TEXT,memo TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+       PRIMARY KEY(code,account)) WITHOUT ROWID`);
+     const stocks=execRows(pdb,"SELECT code,name,account,shares,avg_cost,strategy,memo FROM user_stocks ORDER BY code,account");
+     pdb.close();pdb=null;
+     if(!stocks.length){
+       self.postMessage({ok:true,type:"result",stage:"PASS",asOf,rows:[],count:0,technicalCount:0,elapsedMs:Math.round(performance.now()-t0)});
+       return;
+     }
+
+     const jqCode=x=>{
+       const s=String(x||"").trim().toUpperCase();
+       return s.length===4?s+"0":s;
+     };
+     const norm=x=>{
+       const s=String(x||"").trim().toUpperCase();
+       return s.length===5&&s.endsWith("0")?s.slice(0,4):s;
+     };
+     const wanted=[...new Set(stocks.map(x=>jqCode(x.code)))];
+
+     stage="03-catalog";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end
+       FROM shard_catalog WHERE dataset='bars_daily' AND state='ready'
+       AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key DESC`);
+     cdb.close();cdb=null;
+
+     const dates=[];
+     for(const s of cats.filter(x=>String(x.range_start||"")<=asOf)){
+       let db=null;
+       try{
+         const n=String(s.logical_name||"");
+         db=new p.OpfsSAHPoolDb(n.startsWith("/")?n:"/"+n,"r");
+         const rs=execRows(db,"SELECT DISTINCT date FROM bars_daily WHERE date<=? ORDER BY date DESC LIMIT 100",[asOf]);
+         for(const r of rs){const d=String(r.date);if(!dates.includes(d))dates.push(d)}
+         dates.sort().reverse();
+         if(dates.length>=100)break;
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+
+     const chosen=dates.sort().slice(-100);
+     if(chosen.length<75)throw new Error(`Need >=75 dates, got ${chosen.length}`);
+     const from=chosen[0],actualAsOf=chosen[chosen.length-1],chosenSet=new Set(chosen);
+
+     stage="04-bars";
+     const byCode=new Map(),usedShards=[];
+     for(const s of cats.slice().reverse()){
+       if(String(s.range_end||"")<from||String(s.range_start||"")>actualAsOf)continue;
+       let db=null;
+       try{
+         const n=String(s.logical_name||"");
+         db=new p.OpfsSAHPoolDb(n.startsWith("/")?n:"/"+n,"r");
+         const ph=wanted.map(()=>"?").join(",");
+         const rs=execRows(db,`SELECT code,date,
+                  COALESCE(adj_h,h,adj_c,c) AS h,
+                  COALESCE(adj_l,l,adj_c,c) AS l,
+                  COALESCE(adj_c,c) AS c,
+                  volume AS volume
+           FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph})
+           AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,actualAsOf,...wanted]);
+         usedShards.push(String(s.shard_key));
+         for(const r of rs){
+           const d=String(r.date);if(!chosenSet.has(d))continue;
+           const code=String(r.code),c=Number(r.c),v=(r.volume==null||r.volume==="")?null:Number(r.volume),
+                 h=Number(r.h),l=Number(r.l);
+           if(!Number.isFinite(c)||c<=0)continue;
+           if(!byCode.has(code))byCode.set(code,[]);
+           byCode.get(code).push({date:d,c,v,tv:Number.isFinite(tv)?tv:null,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c});
+         }
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+
+     const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+     const pct=(a,b)=>b?((a/b)-1)*100:null;
+     function rsi14(xs){
+       if(xs.length<15)return null;
+       let gain=0,loss=0;
+       for(let i=1;i<=14;i++){
+         const d=xs[i]-xs[i-1];
+         if(d>0)gain+=d;else loss-=d;
+       }
+       let avgGain=gain/14,avgLoss=loss/14;
+       for(let i=15;i<xs.length;i++){
+         const d=xs[i]-xs[i-1],g=d>0?d:0,l=d<0?-d:0;
+         avgGain=((avgGain*13)+g)/14;
+         avgLoss=((avgLoss*13)+l)/14;
+       }
+       if(avgLoss===0)return 100;
+       const rs=avgGain/avgLoss;
+       return 100-(100/(1+rs));
+     }
+
+     const metrics=new Map();
+     for(const [jq,a0] of byCode){
+       const a=a0.sort((x,y)=>x.date.localeCompare(y.date));
+       if(a.length<75||a[a.length-1].date!==actualAsOf)continue;
+       const closes=a.map(x=>x.c),vols=a.map(x=>x.v),highs=a.map(x=>x.h),lows=a.map(x=>x.l),last=a[a.length-1];
+       const ms5=rollingMA(closes,5),ms25=rollingMA(closes,25),ms75=rollingMA(closes,75),ms200=rollingMA(closes,200);
+       const ma5=ms5.at(-1),ma25=ms25.at(-1),ma75=ms75.at(-1),ma200=ms200.at(-1);
+       const slope5=slopePct(ms5,5),slope25=slopePct(ms25,5),slope75=slopePct(ms75,20),slope200=slopePct(ms200,20);
+       const ret5=closes.length>=6?pct(last.c,closes[closes.length-6]):null;
+       const ret20=closes.length>=21?pct(last.c,closes[closes.length-21]):null;
+       const vol20vals=vols.slice(-20).filter(v=>Number.isFinite(v));
+       const vol20=vol20vals.length?avg(vol20vals):null;
+       const volRatio=(Number.isFinite(last.v)&&vol20>0)?last.v/vol20:null;
+       const high52=closes.length>=252?Math.max(...closes.slice(-252)):null,low52=closes.length>=252?Math.min(...closes.slice(-252)):null;
+       const atr14=atrWilder(highs,lows,closes),atr14Pct=(atr14!=null&&last.c)?atr14/last.c*100:null;
+       const [new20H,new20L]=breakout(last.c,highs,lows,20),[new60H,new60L]=breakout(last.c,highs,lows,60),[new52H,new52L]=breakout(last.c,highs,lows,252);
+       const e12=emaSeries(closes,12),e26=emaSeries(closes,26),macs=e12.map((x,i)=>x-e26[i]),sigs=emaSeries(macs,9);
+       const macd=closes.length>=26?macs.at(-1):null,macdSignal=closes.length>=34?sigs.at(-1):null,macdHistogram=(macd!=null&&macdSignal!=null)?macd-macdSignal:null;
+       let macdState="";if(macdSignal!=null&&macs.length>=2){const pd=macs.at(-2)-sigs.at(-2),cd=macs.at(-1)-sigs.at(-1);macdState=pd<=0&&cd>0?"GoldenCross":pd>=0&&cd<0?"DeadCross":cd>0?"AboveSignal":cd<0?"BelowSignal":"OnSignal"}
+       const ichi=ichimoku(highs,lows,closes),maAlignment=alignment(ma5,ma25,ma75,ma200),trend=trendState(last.c,ma5,ma25,ma75,ma200,slope25,slope75,slope200);
+       const high20=Math.max(...highs.slice(-20)),low20=Math.min(...lows.slice(-20));
+       const high60=Math.max(...highs.slice(-60)),low60=Math.min(...lows.slice(-60));
+       const lowClose20=Math.min(...closes.slice(-20)),lowClose60=Math.min(...closes.slice(-60));
+       metrics.set(norm(jq),{
+         close:last.c,ma5,ma25,ma75,
+         distMa25:pct(last.c,ma25),distMa75:pct(last.c,ma75),
+         ret5,ret20,rsi14:rsi14(closes),
+         volume:last.v,vol20,volRatio,high20,low20,high60,low60,lowClose20,lowClose60,
+         pos20:high20>low20?((last.c-low20)/(high20-low20))*100:null,
+         pos60:high60>low60?((last.c-low60)/(high60-low60))*100:null
+       });
+     }
+
+     const rows=stocks.map(s=>{
+       const m=metrics.get(norm(s.code))||{};
+       const close=Number(m.close),shares=Number(s.shares),cost=Number(s.avg_cost);
+       const pnlPct=Number.isFinite(close)&&Number.isFinite(cost)&&cost!==0?((close/cost)-1)*100:null;
+       const pnl=Number.isFinite(close)&&Number.isFinite(cost)&&Number.isFinite(shares)?(close-cost)*shares:null;
+       return {...s,...m,pnlPct,pnl,hasTechnical:Number.isFinite(close),date:actualAsOf};
+     });
+
+     self.postMessage({ok:true,type:"result",stage:"PASS",
+       requestedAsOf:asOf,asOf:actualAsOf,from,usedShards,
+       count:rows.length,technicalCount:rows.filter(x=>x.hasTechnical).length,rows,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{
+     try{if(cdb)cdb.close()}catch(_){}
+     try{if(pdb)pdb.close()}catch(_){}
+   }
+ }
+
+
+ if(cmd==="discovery-master-import-recalc" || cmd==="discovery-recalc"){
+   let pdb=null,cdb=null,tdb=null,stage="01-input";
+   try{
+     const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10), incoming=Array.isArray(payload.rows)?payload.rows:[];
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+     const norm=v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+     const jq=v=>{const c=norm(v);return c.length===4?c+"0":c};
+     const n=v=>{if(v==null||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)?x:null};
+     const round6=v=>Number.isFinite(v)?Math.round((v+Number.EPSILON)*1e6)/1e6:null;
+     const ret=(a,b)=>Number.isFinite(a)&&a!==0&&Number.isFinite(b)?round6((b/a-1)*100):null;
+     const relative=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)?round6(a-b):null;
+     const plus3Months=iso=>{const z=new Date(iso+"T00:00:00Z");if(Number.isNaN(z.getTime()))return "";const y=z.getUTCFullYear(),m=z.getUTCMonth(),day=z.getUTCDate();const targetM=m+3,ty=y+Math.floor(targetM/12),tm=((targetM%12)+12)%12;const last=new Date(Date.UTC(ty,tm+1,0)).getUTCDate();return `${String(ty).padStart(4,"0")}-${String(tm+1).padStart(2,"0")}-${String(Math.min(day,last)).padStart(2,"0")}`};
+
+     stage="02-private";
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS discovery_episode_master(
+       event_id TEXT PRIMARY KEY, code TEXT NOT NULL, episode_start_date TEXT NOT NULL,
+       row_json TEXT NOT NULL, imported_at TEXT NOT NULL, updated_at TEXT NOT NULL
+     ) WITHOUT ROWID`);
+     if(cmd==="discovery-master-import-recalc"){
+       if(!incoming.length)throw new Error("Discovery master rows missing");
+       const st=pdb.prepare(`INSERT INTO discovery_episode_master(event_id,code,episode_start_date,row_json,imported_at,updated_at)
+         VALUES(?,?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET code=excluded.code,episode_start_date=excluded.episode_start_date,row_json=excluded.row_json,updated_at=excluded.updated_at`);
+       try{
+         pdb.exec("BEGIN IMMEDIATE");const now=new Date().toISOString();let count=0;
+         for(const row of incoming){const code=norm(row.Code??row.NormalizedCode),start=String(row.EpisodeStartDate??row.DiscoveryDate??"").slice(0,10);let id=String(row.EventID??"").trim();if(!code||!start)continue;if(!id)id=start.replaceAll("-","")+"-"+code;st.bind([id,code,start,JSON.stringify(row),now,now]);st.step();st.reset();count++}
+         pdb.exec("COMMIT");status("discovery-import",`${count} Episodes imported/upserted`);
+       }catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
+     }
+     const stored=execRows(pdb,"SELECT event_id,code,episode_start_date,row_json FROM discovery_episode_master ORDER BY episode_start_date,event_id");
+     if(!stored.length){pdb.close();pdb=null;self.postMessage({ok:true,type:"result",asOf,count:0,rows:[],from:"",elapsedMs:Math.round(performance.now()-t0)});return}
+     const episodes=stored.map(x=>{let row={};try{row=JSON.parse(String(x.row_json||"{}"))}catch(_){}return {eventId:String(x.event_id),code:norm(x.code),start:String(x.episode_start_date),row}}).filter(x=>x.code&&/^\d{4}-\d{2}-\d{2}$/.test(x.start));
+     const earliest=episodes.map(x=>x.start).sort()[0];const wanted=[...new Set(episodes.map(x=>jq(x.code)))];
+     pdb.close();pdb=null;
+
+     stage="03-bars";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end FROM shard_catalog
+       WHERE dataset='bars_daily' AND state='ready' AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key`);
+     cdb.close();cdb=null;
+     const byCode=new Map();
+     for(const sh of cats){
+       if(String(sh.range_end||"")<earliest||String(sh.range_start||"")>asOf)continue;let bdb=null;
+       try{
+         const nm=String(sh.logical_name||"");bdb=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");
+         const ph=wanted.map(()=>"?").join(",");if(!ph)continue;
+         const rs=execRows(bdb,`SELECT code,date,COALESCE(adj_c,c) AS close FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[earliest,asOf,...wanted]);
+         for(const r of rs){const code=norm(r.code),date=String(r.date),close=Number(r.close);if(!Number.isFinite(close)||close<=0)continue;if(!byCode.has(code))byCode.set(code,new Map());byCode.get(code).set(date,close)}
+       }finally{try{if(bdb)bdb.close()}catch(_){}}
+     }
+
+     stage="04-topix";
+     const topix=new Map();tdb=new p.OpfsSAHPoolDb("/jq_topix_v1.sqlite","r");
+     for(const rr of execRows(tdb,"SELECT raw_json FROM topix"))try{const o=JSON.parse(String(rr.raw_json||"{}")),date=String(o.Date??o.date??"").slice(0,10),close=Number(o.C??o.Close??o.c??o.close);if(date&&date>=earliest&&date<=asOf&&Number.isFinite(close)&&close>0)topix.set(date,close)}catch(_){}
+     tdb.close();tdb=null;
+
+     stage="05-calc";const result=[];let noBars=0;
+     for(const ep of episodes){
+       const row={...ep.row};row.EventID=ep.eventId;row.Code=norm(row.Code||ep.code);row.DiscoveryDate=String(row.DiscoveryDate||ep.start).slice(0,10);row.EpisodeStartDate=ep.start;
+       const planned=plus3Months(ep.start);row.EpisodePlannedEndDate=planned;
+       const end=(planned&&planned<asOf)?planned:asOf;
+       const mp=byCode.get(ep.code)||new Map(), series=[...mp.entries()].filter(([date])=>date>=ep.start&&date<=end).sort((a,b)=>a[0].localeCompare(b[0]));
+       if(!series.length){noBars++;result.push(row);continue}
+       const startClose=mp.get(ep.start),locked=String(row.InitialPriceLocked??"")==="1";let initial=n(row.InitialPrice);
+       if(!locked&&Number.isFinite(startClose)){const old=initial;initial=startClose;row.InitialPrice=startClose;row.InitialPriceLocked="1";row.InitialPriceSource="DataLakeEpisodeStartClose";row.InitialPriceRepairReason=old==null?"FilledMissingInitialPrice":Math.abs(old-startClose)>Math.max(1e-9,Math.abs(startClose)*1e-9)?`RepairedPreAlpha21:${old}->${startClose}`:(row.InitialPriceRepairReason||"Verified")}
+       if(!Number.isFinite(initial))initial=series[0][1];
+       const dates=series.map(x=>x[0]),vals=series.map(x=>x[1]);row.PerfCurrentDate=dates.at(-1);row.PerfCurrentPrice=vals.at(-1);row.PerfTradingDaysElapsed=Math.max(0,vals.length-1);
+       for(const days of [1,5,10,20,60])if(vals.length>days){const sr=ret(initial,vals[days]),tr=ret(topix.get(dates[0]),topix.get(dates[days]));row[`PerfReturn${days}D`]=sr??"";row[`PerfRelativeTOPIX${days}D`]=relative(sr,tr)??""}
+       for(const horizon of [20,60]){const win=vals.slice(0,Math.min(vals.length,horizon+1));if(win.length&&initial){row[`PerfMaxReturn${horizon}D`]=round6((Math.max(...win)/initial-1)*100);let peak=win[0],dd=0;for(const v of win){peak=Math.max(peak,v);if(peak)dd=Math.min(dd,(v/peak-1)*100)}row[`PerfMaxDrawdown${horizon}D`]=round6(dd)}}
+       row.PerfLastUpdatedDate=asOf;if(planned&&asOf>=planned){row.PerfActiveWatchFlag="0";row.PerfEpisodeStatus="Closed";row.PerfEpisodeEndDate=planned;row.PerfEpisodeEndReason=row.PerfEpisodeEndReason||"Max3Months"}else{row.PerfActiveWatchFlag="1";row.PerfEpisodeStatus=row.PerfEpisodeStatus||"Active"}
+       result.push(row);
+     }
+
+     stage="06-save";pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");const up=pdb.prepare("UPDATE discovery_episode_master SET row_json=?,updated_at=? WHERE event_id=?");
+     try{pdb.exec("BEGIN IMMEDIATE");const now=new Date().toISOString();for(const row of result){up.bind([JSON.stringify(row),now,String(row.EventID||"")]);up.step();up.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{up.finalize()}catch(_){}}
+     pdb.close();pdb=null;
+     self.postMessage({ok:true,type:"result",asOf,from:earliest,count:result.length,noBars,rows:result,elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}try{if(cdb)cdb.close()}catch(_){}try{if(tdb)tdb.close()}catch(_){}throw new Error(`[discovery:${stage}] ${err?.message||err}`)}
+ }
+
+
+
+
+ if(cmd==="factor-state-load"){
+   let pdb=null;try{
+     if(!poolFileNamesSafe(p).some(f=>f.replace(/^\/+/,"")==="jq_private_v1.sqlite")){self.postMessage({ok:true,type:"result",rows:[]});return}
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS factor_state_web(factor_key TEXT PRIMARY KEY,date TEXT NOT NULL,strength REAL,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     const rows=execRows(pdb,"SELECT factor_key,date,strength,row_json FROM factor_state_web ORDER BY factor_key").map(x=>{let r={};try{r=JSON.parse(String(x.row_json||"{}"))}catch(_){}return{factorKey:String(x.factor_key||""),date:String(x.date||""),strength:x.strength,row:r}});
+     pdb.close();pdb=null;self.postMessage({ok:true,type:"result",rows,count:rows.length});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+ if(cmd==="factor-state-save"){
+   let pdb=null;try{
+     const payload=d.payload||{},date=String(payload.date||"").slice(0,10),rows=Array.isArray(payload.rows)?payload.rows:[];
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!rows.length)throw new Error("factor state input invalid");
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS factor_state_web(factor_key TEXT PRIMARY KEY,date TEXT NOT NULL,strength REAL,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     const st=pdb.prepare(`INSERT OR REPLACE INTO factor_state_web(factor_key,date,strength,row_json,updated_at) VALUES(?,?,?,?,?)`),now=new Date().toISOString();
+     try{pdb.exec("BEGIN IMMEDIATE");for(const r of rows){const k=String(r.FactorKey||r.factorKey||"").trim();if(!k)continue;const v=Number(r.Strength);st.bind([k,date,Number.isFinite(v)?v:null,JSON.stringify(r),now]);st.step();st.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
+     const count=Number(scalar(pdb,"SELECT COUNT(*) FROM factor_state_web")||0);pdb.close();pdb=null;self.postMessage({ok:true,type:"result",count,date});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+ if(cmd==="factor-seasonality-cache-load"){
+   let pdb=null;try{
+     const monthKey=String(d.payload?.monthKey||"").replace(/[^0-9]/g,"").slice(0,6);
+     if(!/^\d{6}$/.test(monthKey)){self.postMessage({ok:true,type:"result",rows:[],count:0,monthKey});return}
+     if(!poolFileNamesSafe(p).some(f=>f.replace(/^\/+/,"")==="jq_private_v1.sqlite")){self.postMessage({ok:true,type:"result",rows:[],count:0,monthKey});return}
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS factor_seasonality_cache_web(month_key TEXT NOT NULL,row_key TEXT NOT NULL,row_json TEXT NOT NULL,source TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(month_key,row_key)) WITHOUT ROWID`);
+     const rows=execRows(pdb,"SELECT row_json FROM factor_seasonality_cache_web WHERE month_key=? ORDER BY row_key",[monthKey]).map(x=>{try{return JSON.parse(String(x.row_json||"{}"))}catch(_){return{}}});
+     const source=String(scalarBind(pdb,"SELECT source FROM factor_seasonality_cache_web WHERE month_key=? LIMIT 1",[monthKey])||"");
+     pdb.close();pdb=null;self.postMessage({ok:true,type:"result",rows,count:rows.length,monthKey,source});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+ if(cmd==="factor-seasonality-cache-save"){
+   let pdb=null;try{
+     const payload=d.payload||{},monthKey=String(payload.monthKey||"").replace(/[^0-9]/g,"").slice(0,6),rows=Array.isArray(payload.rows)?payload.rows:[],source=String(payload.source||"WebBuilt");
+     if(!/^\d{6}$/.test(monthKey)||!rows.length)throw new Error("seasonality cache input invalid");
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS factor_seasonality_cache_web(month_key TEXT NOT NULL,row_key TEXT NOT NULL,row_json TEXT NOT NULL,source TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(month_key,row_key)) WITHOUT ROWID`);
+     const st=pdb.prepare(`INSERT OR REPLACE INTO factor_seasonality_cache_web(month_key,row_key,row_json,source,updated_at) VALUES(?,?,?,?,?)`),now=new Date().toISOString();
+     try{pdb.exec("BEGIN IMMEDIATE");pdb.exec("DELETE FROM factor_seasonality_cache_web WHERE month_key='"+monthKey.replace(/'/g,"''")+"'");for(const r of rows){const k=`${String(r.FactorKey||"")}|${String(r.SeasonMonth||"")}`;if(!String(r.FactorKey||"")||!String(r.SeasonMonth||""))continue;st.bind([monthKey,k,JSON.stringify(r),source,now]);st.step();st.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
+     const count=Number(scalarBind(pdb,"SELECT COUNT(*) FROM factor_seasonality_cache_web WHERE month_key=?",[monthKey])||0);pdb.close();pdb=null;self.postMessage({ok:true,type:"result",count,monthKey,source});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+ if(cmd==="factor-seasonality-profile"){
+   const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),pairs=Array.isArray(payload.codeSectors)?payload.codeSectors:[];
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+   const norm=v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const wanted=new Map();for(const x of pairs){const c=norm(x.code??x.NormalizedCode??x.Code),sec=String(x.sector??x.Sector33??"").trim();if(c&&sec)wanted.set(c,sec)}
+   if(!wanted.size){self.postMessage({ok:true,type:"result",profile:[],count:0});return}
+   const year=Number(asOf.slice(0,4)),cutoff=year-1,startYear=Math.max(cutoff-9,2000),from=`${startYear}-01-01`,to=`${cutoff}-12-31`;
+   const n=v=>{if(v==null||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)?x:null};
+   const med=a=>{const z=a.filter(Number.isFinite).sort((a,b)=>a-b),m=z.length;if(!m)return null;const q=Math.floor(m/2);return m%2?z[q]:(z[q-1]+z[q])/2};
+   const mean=a=>{const z=a.filter(Number.isFinite);return z.length?z.reduce((u,v)=>u+v,0)/z.length:null};
+   const clip=(x,lo=0,hi=100)=>x==null?null:Math.min(hi,Math.max(lo,x));
+   const pct=(a,pred)=>{const z=a.filter(Number.isFinite);return z.length?z.filter(pred).length/z.length*100:null};
+   let cdb=null,tdb=null;try{
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cat=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end FROM shard_catalog WHERE dataset='bars_daily' AND state='ready' AND COALESCE(range_end,'9999-12-31')>=? AND COALESCE(range_start,'0000-01-01')<=? ORDER BY range_start,shard_key`,[from,to]);cdb.close();cdb=null;
+     const selected=[];for(let y=startYear;y<=cutoff;y++){const yf=`${y}-01-01`,yt=`${y}-12-31`,segFrom=from>yf?from:yf,segTo=to<yt?to:yt;let e=cat.find(r=>String(r.shard_key)===`bars_${y}`);if(!e)e=cat.find(r=>String(r.shard_key)==="bars_recent"&&String(r.range_end||"9999-12-31")>=segFrom&&String(r.range_start||"0000-01-01")<=segTo);if(e)selected.push({segFrom,segTo,...e})}
+     const stocks=[];
+     for(const sh of selected){let db=null;try{const nm=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");const rs=execRows(db,`WITH b AS (
+       SELECT code,date,substr(date,1,7) AS ym,COALESCE(adj_c,c) AS close,
+              COALESCE(turnover_value,value,COALESCE(adj_c,c)*volume) AS tv
+       FROM bars_daily WHERE date>=? AND date<=? AND COALESCE(adj_c,c)>0
+     ), w AS (
+       SELECT code,date,ym,close,tv,
+              FIRST_VALUE(close) OVER (PARTITION BY code,ym ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS first_close,
+              LAST_VALUE(close) OVER (PARTITION BY code,ym ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_close,
+              MAX(close) OVER (PARTITION BY code,ym ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS peak
+       FROM b
+     ) SELECT code,ym,MAX(first_close) AS first_close,MAX(last_close) AS last_close,
+              MIN((close/peak-1.0)*100.0) AS maxdd,AVG(tv) AS avg_tv
+       FROM w GROUP BY code,ym ORDER BY code,ym`,[sh.segFrom,sh.segTo]);for(const r of rs){const c=norm(r.code);if(!wanted.has(c))continue;const f=n(r.first_close),l=n(r.last_close);if(!(f>0)||l==null)continue;stocks.push({Code:c,Sector33:wanted.get(c),Month:String(r.ym||""),ReturnPct:(l/f-1)*100,MaxDDPct:n(r.maxdd),AvgTradingValue:n(r.avg_tv)})}}finally{try{if(db)db.close()}catch(_){}}}
+     const topix=new Map();tdb=new p.OpfsSAHPoolDb("/jq_topix_v1.sqlite","r");for(const rr of execRows(tdb,"SELECT raw_json FROM topix")){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const dt=String(o.Date??o.date??"").slice(0,10),cl=n(o.C??o.Close??o.TOPIX??o.Value);if(!dt||dt<from||dt>to||!(cl>0))continue;const ym=dt.slice(0,7),rec=topix.get(ym)||{firstDate:dt,firstClose:cl,lastDate:dt,lastClose:cl,peak:cl,maxDD:0};if(dt<rec.firstDate){rec.firstDate=dt;rec.firstClose=cl}if(dt>=rec.lastDate){rec.lastDate=dt;rec.lastClose=cl}rec.peak=Math.max(rec.peak,cl);rec.maxDD=Math.min(rec.maxDD,(cl/rec.peak-1)*100);topix.set(ym,rec)}tdb.close();tdb=null;
+     const topRet=new Map();for(const [ym,r] of topix)if(r.firstClose)topRet.set(ym,{ReturnPct:(r.lastClose/r.firstClose-1)*100,MaxDDPct:r.maxDD});
+     const bySecMonth=new Map();for(const r of stocks)if(topRet.has(r.Month)){const k=`${r.Sector33}\u0000${r.Month}`;if(!bySecMonth.has(k))bySecMonth.set(k,[]);bySecMonth.get(k).push(r)}
+     const grouped=new Map();for(const [k,rows] of bySecMonth){const [sec,ym]=k.split("\u0000");if(!sec||rows.length<3)continue;const sr=med(rows.map(x=>x.ReturnPct));if(sr==null)continue;const tr=topRet.get(ym)?.ReturnPct;if(tr==null)continue;const rec={Year:Number(ym.slice(0,4)),SectorReturnPct:sr,TOPIXReturnPct:tr,ExcessReturnPct:sr-tr,SectorMaxDDPct:med(rows.map(x=>x.MaxDDPct)),BreadthPct:pct(rows.map(x=>x.ReturnPct),v=>v>0),ConstituentCount:rows.length};const m=Number(ym.slice(5,7)),gk=`${sec}\u0000${m}`;if(!grouped.has(gk))grouped.set(gk,[]);grouped.get(gk).push(rec)}
+     const profile=[];for(const [gk,recs] of [...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){const [sec,ms]=gk.split("\u0000"),m=Number(ms),rets=recs.map(r=>r.SectorReturnPct),ex=recs.map(r=>r.ExcessReturnPct),dds=recs.map(r=>r.SectorMaxDDPct),br=recs.map(r=>r.BreadthPct),medEx=med(ex),meanEx=mean(ex),win=pct(rets,v=>v>0),exWin=pct(ex,v=>v>0),years=recs.length,exWinComp=clip(((exWin??50)-35)/40*100),medExComp=clip(((medEx??0)+3)/6*100),winComp=clip(((win??50)-35)/40*100),score=.45*exWinComp+.35*medExComp+.20*winComp,sampleConf=clip(years/5*70),gap=Math.abs((meanEx??0)-(medEx??0)),robust=clip(100-gap*15,20,100);let conf=Math.min(100,sampleConf*.65+robust*.35);if(years<5)conf*=years/5;profile.push({SeasonalityVersion:"SectorSeasonalityV1",AsOfYear:year,FactorType:"Sector",FactorName:sec,FactorKey:`Sector:${sec}`,SeasonMonth:m,HistoricalMembershipQuality:"CurrentMembershipProxy",LookAheadPolicy:`UsesYears<= ${cutoff}`,EffectiveYears:years,SeasonalMeanReturnPct:mean(rets),SeasonalMedianReturnPct:med(rets),SeasonalWinRate:win,SeasonalMeanExcessReturnPct:meanEx,SeasonalMedianExcessReturn:medEx,SeasonalExcessWinRate:exWin,SeasonalMaxDD:dds.filter(Number.isFinite).length?Math.min(...dds.filter(Number.isFinite)):null,SeasonalMedianBreadthPct:med(br),SeasonalityScore:score,SeasonalityConfidence:conf})}
+     self.postMessage({ok:true,type:"result",asOf,from,to,profile,count:profile.length,stockMonths:stocks.length,topixMonths:topRet.size,selectedShards:selected.map(x=>String(x.shard_key||""))});return;
+   }catch(err){try{if(cdb)cdb.close()}catch(_){}try{if(tdb)tdb.close()}catch(_){}throw new Error(`[seasonality] ${err?.message||err}`)}
+ }
+
+ if(cmd==="watchlist-seed-import"){
+   let pdb=null;try{
+     const payload=d.payload||{},master=Array.isArray(payload.master)?payload.master:[],state=Array.isArray(payload.state)?payload.state:[];
+     if(!master.length)throw new Error("Watchlist master rows missing");
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_master_web(watch_id TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_state_web(watch_id TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     const ms=pdb.prepare(`INSERT OR REPLACE INTO watchlist_master_web(watch_id,row_json,updated_at) VALUES(?,?,?)`),ss=pdb.prepare(`INSERT OR REPLACE INTO watchlist_state_web(watch_id,row_json,updated_at) VALUES(?,?,?)`),now=new Date().toISOString();
+     try{pdb.exec("BEGIN IMMEDIATE");pdb.exec("DELETE FROM watchlist_master_web");pdb.exec("DELETE FROM watchlist_state_web");for(const r of master){const id=String(r.WatchID||"").trim();if(!id)continue;ms.bind([id,JSON.stringify(r),now]);ms.step();ms.reset()}for(const r of state){const id=String(r.WatchID||"").trim();if(!id)continue;ss.bind([id,JSON.stringify(r),now]);ss.step();ss.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{ms.finalize()}catch(_){}try{ss.finalize()}catch(_){}}
+     const read=t=>execRows(pdb,`SELECT row_json FROM ${t} ORDER BY watch_id`).map(x=>{try{return JSON.parse(String(x.row_json||"{}"))}catch(_){return{}}});const outM=read("watchlist_master_web"),outS=read("watchlist_state_web");pdb.close();pdb=null;self.postMessage({ok:true,type:"result",master:outM,state:outS,masterCount:outM.length,stateCount:outS.length});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+
+ if(cmd==="discovery-short-trace"){
+   let db=null;try{
+     const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),codes=new Set((payload.codes||[]).map(v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean));
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+     if(!poolFileNamesSafe(p).some(f=>f.replace(/^\/+/,"")==="jq_short_sale_report_v1.sqlite")){self.postMessage({ok:true,type:"result",rows:[]});return}
+     db=new p.OpfsSAHPoolDb("/jq_short_sale_report_v1.sqlite","r");
+     const raw=execRows(db,"SELECT data_date,raw_json FROM short_sale_report ORDER BY data_date,row_key"),out=[];
+     for(const rr of raw){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}let c=String(o.Code??o.code??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);const disc=String(o.DiscDate??rr.data_date??"").slice(0,10),calc=String(o.CalcDate??"").slice(0,10);if(!c||!codes.has(c)||!disc||disc>asOf)continue;out.push({Code:c,DiscDate:disc,CalcDate:calc,SSName:o.SSName??"",SSAddr:o.SSAddr??"",DICName:o.DICName??"",DICAddr:o.DICAddr??"",FundName:o.FundName??"",ShrtPosToSO:o.ShrtPosToSO??"",ShrtPosShares:o.ShrtPosShares??"",PrevRptDate:o.PrevRptDate??"",PrevRptRatio:o.PrevRptRatio??"",StoredDataDate:rr.data_date??""})}
+     db.close();db=null;self.postMessage({ok:true,type:"result",rows:out,count:out.length});return;
+   }catch(err){try{if(db)db.close()}catch(_){}throw err}
+ }
+
+ if(cmd==="discovery-technical-trace"){
+   const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),from=String(payload.from||"").slice(0,10),want=new Set((payload.codes||[]).map(v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean)),out=[];
+   if(!want.size){self.postMessage({ok:true,type:"result",rows:[],count:0});return}
+   let cdb=null;try{cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");let cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end FROM shard_catalog WHERE dataset='bars_daily' AND state='ready' ORDER BY shard_key`);cdb.close();cdb=null;cats=cats.filter(x=>(!from||String(x.range_end||"")>=from)&&(!asOf||String(x.range_start||"")<=asOf)).sort((a,b)=>{const pa=String(a.shard_key)==="bars_recent"?2:1,pb=String(b.shard_key)==="bars_recent"?2:1;return pa-pb||String(a.shard_key).localeCompare(String(b.shard_key))});const jq=[...want].map(c=>c.length===4?c+"0":c);for(const sh of cats){let db=null;try{const nm=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");for(let off=0;off<jq.length;off+=400){const chunk=jq.slice(off,off+400),ph=chunk.map(()=>"?").join(",");if(!ph)continue;const rs=execRows(db,`SELECT code,date,c,h,l,adj_c,adj_h,adj_l,adj_factor,volume,turnover_value,raw_json FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[from||"0000-01-01",asOf||"9999-12-31",...chunk]);for(const r of rs){let o={};try{o=JSON.parse(String(r.raw_json||"{}"))}catch(_){}let c=String(r.code||"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);const n=v=>{if(v==null||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)?x:null},selClose=n(o.AdjC)??n(o.AdjustmentClose)??n(o.AdjClose)??n(o.C)??n(o.Close)??n(r.adj_c)??n(r.c),selHigh=n(o.AdjustmentHigh)??n(o.AdjHigh)??n(o.High)??n(o.H)??n(r.h)??selClose,selLow=n(o.AdjustmentLow)??n(o.AdjLow)??n(o.Low)??n(o.L)??n(r.l)??selClose,selFactor=n(o.AdjFactor)??n(r.adj_factor)??1;out.push({Shard:String(sh.shard_key||""),Code:c,Date:String(r.date||""),DbC:r.c??"",DbH:r.h??"",DbL:r.l??"",DbAdjC:r.adj_c??"",DbAdjH:r.adj_h??"",DbAdjL:r.adj_l??"",DbAdjFactor:r.adj_factor??"",Volume:r.volume??"",TurnoverValue:r.turnover_value??"",RawAdjC:o.AdjC??"",RawAdjustmentClose:o.AdjustmentClose??"",RawAdjClose:o.AdjClose??"",RawC:o.C??"",RawClose:o.Close??"",RawAdjustmentHigh:o.AdjustmentHigh??"",RawAdjHigh:o.AdjHigh??"",RawHigh:o.High??"",RawH:o.H??"",RawAdjustmentLow:o.AdjustmentLow??"",RawAdjLow:o.AdjLow??"",RawLow:o.Low??"",RawL:o.L??"",RawAdjFactor:o.AdjFactor??"",RawAdjustmentFactor:o.AdjustmentFactor??"",SelectedClose:selClose??"",SelectedHigh:selHigh??"",SelectedLow:selLow??"",SelectedAdjFactor:selFactor??""})}}}finally{try{if(db)db.close()}catch(_){}}}self.postMessage({ok:true,type:"result",rows:out,count:out.length});return}catch(err){try{if(cdb)cdb.close()}catch(_){}throw err}
+ }
+
+ if(cmd==="discovery-daily-import-seed"){
+   let pdb=null;try{
+     const payload=d.payload||{},rows=Array.isArray(payload.rows)?payload.rows:[];
+     if(!rows.length)throw new Error("Discovery Daily seed rows empty");
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS discovery_episode_daily_web(event_id TEXT NOT NULL,date TEXT NOT NULL,row_json TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(event_id,date)) WITHOUT ROWID`);
+     const st=pdb.prepare(`INSERT OR REPLACE INTO discovery_episode_daily_web(event_id,date,row_json,updated_at) VALUES(?,?,?,?)`);
+     let count=0,minDate="",maxDate="";const now=new Date().toISOString();
+     try{pdb.exec("BEGIN IMMEDIATE");pdb.exec("DELETE FROM discovery_episode_daily_web");for(const r of rows){const id=String(r.EventID||"").trim(),dt=String(r.Date||"").slice(0,10);if(!id||!/^\d{4}-\d{2}-\d{2}$/.test(dt))continue;st.bind([id,dt,JSON.stringify(r),now]);st.step();st.reset();count++;minDate=!minDate||dt<minDate?dt:minDate;maxDate=!maxDate||dt>maxDate?dt:maxDate}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
+     const stored=Number(scalar(pdb,"SELECT COUNT(*) FROM discovery_episode_daily_web")||0);pdb.close();pdb=null;
+     self.postMessage({ok:true,type:"result",count:stored,imported:count,minDate,maxDate});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+
+ if(cmd==="discovery-daily-recalc"){
+   let pdb=null,cdb=null,tdb=null,mdb=null,stage="01-input";
+   try{
+     const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10);
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+     const norm=v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+     const jq=v=>{const c=norm(v);return c.length===4?c+"0":c};
+     const num=v=>{if(v==null||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)?x:null};
+     const round6=v=>Number.isFinite(v)?Math.round((v+Number.EPSILON)*1e6)/1e6:null;
+     const pct=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b!==0?(a/b-1)*100:null;
+     const ret6=(a,b)=>Number.isFinite(a)&&a!==0&&Number.isFinite(b)?round6((b/a-1)*100):null;
+     const rel6=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)?round6(a-b):null;
+     const subDays=(iso,days)=>{const z=new Date(iso+"T12:00:00Z");z.setUTCDate(z.getUTCDate()-days);return z.toISOString().slice(0,10)};
+     const minIso=(a,b)=>!a?b:!b?a:(a<b?a:b);
+     const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+     const fmtNum=v=>Number.isFinite(v)?round6(v):null;
+     const dbExists=name=>poolFileNamesSafe(p).some(f=>f.replace(/^\/+/,"")===String(name).replace(/^\/+/,""));
+
+     stage="02-private-master";
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     const hasMaster=Number(scalar(pdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='discovery_episode_master'")||0)>0;
+     if(!hasMaster)throw new Error("Discovery master未移行です。先に⑥を実行してください。");
+     const stored=execRows(pdb,"SELECT event_id,code,episode_start_date,row_json FROM discovery_episode_master ORDER BY episode_start_date,event_id");
+     if(!stored.length)throw new Error("Discovery masterが空です");
+     const episodes=[];let earliest="";
+     for(const x of stored){let row={};try{row=JSON.parse(String(x.row_json||"{}"))}catch(_){}
+       const code=norm(x.code),start=String(x.episode_start_date||row.EpisodeStartDate||row.DiscoveryDate||"").slice(0,10);
+       if(!code||!/^\d{4}-\d{2}-\d{2}$/.test(start))continue;
+       let planned=String(row.PerfEpisodeEndDate||row.EpisodePlannedEndDate||"").slice(0,10);
+       const end=planned&&planned<asOf?planned:asOf;
+       episodes.push({eventId:String(x.event_id),code,start,end,row});earliest=minIso(earliest,start);
+     }
+     if(!episodes.length)throw new Error("有効なDiscovery Episodeがありません");
+     const tracked=[...new Set(episodes.map(x=>x.code))],trackedJq=tracked.map(jq),historyStart=subDays(earliest,430),
+       // Margin weekly features only require the current observation plus the 1W reference;
+       // large-short subject-state reconstruction needs the long 470-day window.
+       marginHistoryStart=subDays(earliest,21),shortHistoryStart=subDays(earliest,470),supplyHistoryStart=shortHistoryStart;
+
+     stage="03-master-sector";
+     const sectorMap=new Map();let masterDate="";
+     try{
+       mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");
+       masterDate=String(scalarBind(mdb,"SELECT max(effective_date) FROM equities_master WHERE effective_date<=?",[asOf])||"");
+       if(masterDate){
+         const ms=execRows(mdb,"SELECT code,sector33_name,market_name,product_category FROM equities_master WHERE effective_date=?",[masterDate]);
+         // PC discovery sector benchmark reads Sector33 from all securities, but its price cache
+         // contains only the current screening investable universe (Prime/Standard/Growth + ProdCat=011).
+         // Therefore the effective constituent set is the same filtered universe.
+         const targetMarkets=new Set(["プライム","スタンダード","グロース"]);
+         for(const r of ms){const sec=String(r.sector33_name||"").trim(),c=norm(r.code),mkt=String(r.market_name||"").trim(),prod=String(r.product_category||"").trim();if(!sec||!c||!targetMarkets.has(mkt)||prod!=="011")continue;if(!sectorMap.has(sec))sectorMap.set(sec,[]);sectorMap.get(sec).push(c)}
+       }
+       mdb.close();mdb=null;
+     }catch(_){try{if(mdb)mdb.close()}catch(__){}mdb=null}
+     const episodeSectors=[...new Set(episodes.map(x=>String(x.row.Sector33||"").trim()).filter(Boolean))];
+     const sectorCodes=[...new Set(episodeSectors.flatMap(s=>sectorMap.get(s)||[]))],sectorJq=sectorCodes.map(jq);
+
+     stage="04-catalog-bars";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     let cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end FROM shard_catalog
+       WHERE dataset='bars_daily' AND state='ready' ORDER BY shard_key`);
+     cdb.close();cdb=null;
+     cats=cats.filter(s=>String(s.range_end||"")>=historyStart&&String(s.range_start||"")<=asOf)
+       .sort((a,b)=>{const pa=String(a.shard_key)==="bars_recent"?2:1,pb=String(b.shard_key)==="bars_recent"?2:1;return pa-pb||String(a.shard_key).localeCompare(String(b.shard_key))});
+     if(!cats.length)throw new Error("bars_daily Shardがありません");
+     const trackedHistory=new Map(),sectorPrices=new Map();
+     // Reconstruct the exact PC discovery price input from raw_json.
+     // PC datalake_access.price_rows uses AdjC first for the close, while
+     // technical._adjusted_entries deliberately does NOT consume AdjH/AdjL aliases
+     // (it uses AdjustmentHigh/AdjHigh/High/H and AdjustmentLow/AdjLow/Low/L).
+     // Reading transformed DB adj_h/adj_l here caused split factors to be applied twice.
+     const addTracked=r=>{let o={};try{o=JSON.parse(String(r.raw_json||"{}"))}catch(_){}
+       const c=norm(r.code),dt=String(r.date),base=num(o.AdjC)??num(o.AdjustmentClose)??num(o.AdjClose)??num(o.C)??num(o.Close)??num(r.adj_c)??num(r.c),
+         // Web historical shards may contain a retroactively adjusted AdjC in raw_json.
+         // PC historical technicals apply AdjFactor themselves, so feeding AdjC into that
+         // adjustment loop double-adjusts split history. Keep base for Discovery return/Close,
+         // but use the unadjusted close for technical reconstruction.
+         techClose=num(o.C)??num(o.Close)??num(r.c)??base,
+         h=num(o.AdjustmentHigh)??num(o.AdjHigh)??num(o.High)??num(o.H)??num(r.h)??techClose,
+         l=num(o.AdjustmentLow)??num(o.AdjLow)??num(o.Low)??num(o.L)??num(r.l)??techClose,
+         factor=num(o.AdjFactor)??num(o.AdjustmentFactor)??num(r.adj_factor)??1,
+         vol=num(o.Vo)??num(o.Volume)??num(r.volume),tv=num(o.Va)??num(o.TradingValue)??num(r.turnover_value)??num(r.value);
+       if(!c||!dt||!Number.isFinite(base)||!Number.isFinite(techClose))return;if(!trackedHistory.has(c))trackedHistory.set(c,new Map());trackedHistory.get(c).set(dt,{date:dt,close:base,techClose,h,l,adjFactor:factor,volume:vol,tradingValue:tv});};
+     const addSector=r=>{const c=norm(r.code),dt=String(r.date),close=num(r.c)??num(r.adj_c);if(!c||!dt||!Number.isFinite(close))return;if(!sectorPrices.has(c))sectorPrices.set(c,new Map());sectorPrices.get(c).set(dt,close)};
+     for(const sh of cats){let db=null;try{const nm=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");
+       for(let off=0;off<trackedJq.length;off+=400){const chunk=trackedJq.slice(off,off+400),ph=chunk.map(()=>"?").join(",");if(!ph)continue;
+         const rs=execRows(db,`SELECT code,date,c,h,l,adj_c,adj_h,adj_l,adj_factor,volume,turnover_value,value,raw_json FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[historyStart,asOf,...chunk]);for(const r of rs)addTracked(r)}
+       for(let off=0;off<sectorJq.length;off+=400){const chunk=sectorJq.slice(off,off+400),ph=chunk.map(()=>"?").join(",");if(!ph)continue;
+         const rs=execRows(db,`SELECT code,date,c,adj_c FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[earliest,asOf,...chunk]);for(const r of rs)addSector(r)}
+     }finally{try{if(db)db.close()}catch(_){}}}
+     const trackedSeries=new Map([...trackedHistory].map(([c,m])=>[c,[...m.values()].sort((a,b)=>a.date.localeCompare(b.date))]));
+
+     stage="05-topix";
+     const topix=new Map();tdb=new p.OpfsSAHPoolDb("/jq_topix_v1.sqlite","r");
+     for(const rr of execRows(tdb,"SELECT raw_json FROM topix")){try{const o=JSON.parse(String(rr.raw_json||"{}")),dt=String(o.Date??o.date??"").slice(0,10),cl=num(o.C??o.Close??o.c??o.close);if(dt&&dt>=historyStart&&dt<=asOf&&Number.isFinite(cl))topix.set(dt,cl)}catch(_){}}
+     tdb.close();tdb=null;const topixRows=[...topix.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+
+     stage="06-supply-load";
+     let marginAvailable=false,shortAvailable=false,alertAvailable=false,marginMin="",shortMin="",alertMin="";
+     const marginBy=new Map(),shortBy=new Map();let alertRows=[];
+     if(dbExists("/jq_margin_interest_v1.sqlite")){let db=null;try{db=new p.OpfsSAHPoolDb("/jq_margin_interest_v1.sqlite","r");const rs=execRows(db,"SELECT data_date,raw_json FROM margin_interest ORDER BY data_date");marginAvailable=true;
+       for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const c=norm(o.Code??o.code),dt=String(o.Date??rr.data_date??"").slice(0,10);if(!c||!tracked.includes(c)||!dt||dt>asOf)continue;marginMin=minIso(marginMin,dt);if(!marginBy.has(c))marginBy.set(c,[]);marginBy.get(c).push({dt,o})}
+       for(const a of marginBy.values())a.sort((x,y)=>x.dt.localeCompare(y.dt));db.close();db=null}catch(_){try{if(db)db.close()}catch(__){}}}
+     if(dbExists("/jq_short_sale_report_v1.sqlite")){let db=null;try{db=new p.OpfsSAHPoolDb("/jq_short_sale_report_v1.sqlite","r");const rs=execRows(db,"SELECT data_date,raw_json FROM short_sale_report ORDER BY data_date");shortAvailable=true;
+       for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const c=norm(o.Code??o.code),dd=String(o.DiscDate??rr.data_date??"").slice(0,10),cd=String(o.CalcDate??"").slice(0,10);if(!c||!tracked.includes(c)||!dd||dd>asOf)continue;shortMin=minIso(shortMin,dd);if(!shortBy.has(c))shortBy.set(c,[]);shortBy.get(c).push({dd,cd,o})}
+       for(const a of shortBy.values())a.sort((x,y)=>(x.dd+"|"+x.cd).localeCompare(y.dd+"|"+y.cd));db.close();db=null}catch(_){try{if(db)db.close()}catch(__){}}}
+     if(dbExists("/jq_margin_alert_v1.sqlite")){let db=null;try{db=new p.OpfsSAHPoolDb("/jq_margin_alert_v1.sqlite","r");const rs=execRows(db,"SELECT data_date,raw_json FROM margin_alert ORDER BY data_date");alertAvailable=true;
+       for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const pub=String(o.PubDate??rr.data_date??"").slice(0,10),app=String(o.AppDate??"").slice(0,10),c=norm(o.Code??o.code);if(!pub||pub>asOf)continue;alertMin=minIso(alertMin,pub);alertRows.push({pub,app,c,o})}db.close();db=null}catch(_){try{if(db)db.close()}catch(__){}}}
+
+     const rowOnBefore=(arr,cut)=>{let z=null;for(const x of arr||[]){const dt=x.dt??x.dd??x.pub??"";if(dt<=cut)z=x;else break}return z};
+     const supplyStatus=available=>available?"Available":"SourceMissing";
+     const marginFeat=(code,cut)=>{const arr=marginBy.get(code)||[],cur=rowOnBefore(arr,cut);const out={MarginInterestStatus:supplyStatus(marginAvailable),MarginLongVol:null,MarginShortVol:null,MarginLongShortRatio:null,MarginLongChangePct1W:null};if(!cur)return out;
+       const lv=num(cur.o.LongVol),sv=num(cur.o.ShrtVol);out.MarginLongVol=lv;out.MarginShortVol=sv;out.MarginLongShortRatio=(Number.isFinite(lv)&&Number.isFinite(sv)&&sv!==0)?lv/sv:null;
+       const refCut=subDays(cur.dt,7),pr=rowOnBefore(arr,refCut),pv=pr?num(pr.o.LongVol):null;out.MarginLongChangePct1W=(Number.isFinite(lv)&&Number.isFinite(pv)&&pv!==0)?fmtNum((lv/pv-1)*100):null;return out};
+     const subjectKey=o=>[norm(o.Code),o.SSName??"",o.SSAddr??"",o.DICName??"",o.DICAddr??"",o.FundName??""].map(x=>String(x).trim()).join("|");
+     const freshOne=(cut,cd)=>{if(!cd)return"Unknown";const age=(Date.parse(cut)-Date.parse(cd))/86400000;if(age<0)return"FutureDateError";if(age<=7)return"Fresh";if(age<=30)return"Recent";return"Stale"};
+     const shortAgg=(code,cut,windowStart)=>{const latest=new Map();for(const x of shortBy.get(code)||[]){if(windowStart&&x.dd<windowStart)continue;if(x.dd>cut)break;const k=subjectKey(x.o),old=latest.get(k),mk=x.dd+"|"+x.cd;if(!old||mk>=(old.dd+"|"+old.cd))latest.set(k,x)}
+       const ratios=[],counts={Fresh:0,Recent:0,Stale:0,Unknown:0,FutureDateError:0};for(const x of latest.values()){const v=num(x.o.ShrtPosToSO);if(v!=null)ratios.push(v);const f=freshOne(cut,x.cd);counts[f]=(counts[f]||0)+1}
+       let fr="Unknown";if(latest.size){fr=counts.FutureDateError?"FutureDateError":counts.Stale?"Stale":counts.Recent?"Recent":counts.Unknown?"Unknown":"Fresh"}
+       return {ratio:ratios.length?ratios.reduce((a,b)=>a+b,0):null,fresh:fr}};
+     const shortFeat=(code,cut)=>{const windowStart=subDays(cut,470),cur=shortAgg(code,cut,windowStart),pr=shortAgg(code,subDays(cut,7),windowStart);return {LargeShortReportStatus:supplyStatus(shortAvailable),LargeShortRatioSum:cur.ratio==null?null:fmtNum(cur.ratio),LargeShortRatioChange1W:(cur.ratio!=null&&pr.ratio!=null)?fmtNum(cur.ratio-pr.ratio):null,LargeShortAggregateFreshness:cur.fresh}};
+     const alertFeat=(code,cut)=>{if(!alertAvailable)return {MarginAlertStatus:"SourceMissing",MarginAlertPresent:null};let latestPub="";for(const x of alertRows)if(x.pub<=cut&&x.pub>latestPub)latestPub=x.pub;if(!latestPub)return {MarginAlertStatus:"Available",MarginAlertPresent:null};return {MarginAlertStatus:"Available",MarginAlertPresent:alertRows.some(x=>x.pub===latestPub&&x.c===code)?1:0}};
+
+     stage="07-helpers";
+     const rollingMA=(xs,w)=>{const out=Array(xs.length).fill(null);let run=0;for(let i=0;i<xs.length;i++){run+=xs[i];if(i>=w)run-=xs[i-w];if(i>=w-1)out[i]=run/w}return out};
+     const slopePct=(series,n)=>{if(series.length<=n)return null;const c=series.at(-1),pr=series.at(-1-n);return(c==null||pr==null||pr===0)?null:(c/pr-1)*100};
+     const rsi14=xs=>{if(xs.length<15)return null;const gains=[],losses=[];for(let i=1;i<xs.length;i++){const z=xs[i]-xs[i-1];gains.push(Math.max(z,0));losses.push(Math.max(-z,0))}let ag=avg(gains.slice(0,14)),al=avg(losses.slice(0,14));for(let i=14;i<gains.length;i++){ag=((ag*13)+gains[i])/14;al=((al*13)+losses[i])/14}if(al===0)return ag>0?100:50;const rs=ag/al;return 100-(100/(1+rs))};
+     const ema=(xs,n)=>{if(!xs.length)return[];const a=2/(n+1),o=[xs[0]];for(let i=1;i<xs.length;i++)o.push(a*xs[i]+(1-a)*o.at(-1));return o};
+     const technicalFor=(series,cut)=>{const src=(series||[]).filter(x=>x.date<=cut);if(!src.length)return{};let cumulative=1,rev=[];for(let i=src.length-1;i>=0;i--){const x=src[i],rawClose=Number.isFinite(x.techClose)?x.techClose:x.close,cl=rawClose*cumulative,h=(Number.isFinite(x.h)?x.h:rawClose)*cumulative,l=(Number.isFinite(x.l)?x.l:rawClose)*cumulative;rev.push({date:x.date,c:cl,h,l,v:x.volume,tv:x.tradingValue});const f=Number.isFinite(x.adjFactor)&&x.adjFactor>0?x.adjFactor:1;cumulative*=f}const a=rev.reverse(),cs=a.map(x=>x.c),hs=a.map(x=>x.h),ls=a.map(x=>x.l),vs=a.map(x=>x.v),last=cs.at(-1);
+       const m25=rollingMA(cs,25),m75=rollingMA(cs,75),e12=ema(cs,12),e26=ema(cs,26),mac=e12.map((x,i)=>x-e26[i]),sig=ema(mac,9);const macd=cs.length>=26?mac.at(-1):null,signal=cs.length>=34?sig.at(-1):null,hist=(macd!=null&&signal!=null)?macd-signal:null;let state="";if(signal!=null&&mac.length>=2){const pd=mac.at(-2)-sig.at(-2),cd=mac.at(-1)-sig.at(-1);state=pd<=0&&cd>0?"GoldenCross":pd>=0&&cd<0?"DeadCross":cd>0?"AboveSignal":cd<0?"BelowSignal":"OnSignal"}
+       const r5=vs.slice(-5).filter(Number.isFinite),r20=vs.slice(-20).filter(Number.isFinite),vRatio=(r5.length&&r20.length&&r20.reduce((x,y)=>x+y,0)!==0)?avg(r5)/avg(r20):null;const h52=hs.length>=252?Math.max(...hs.slice(-252)):null,l52=ls.length>=252?Math.min(...ls.slice(-252)):null;
+       return {RSI14:rsi14(cs),MA25Slope5DPct:slopePct(m25,5),MA75Slope20DPct:slopePct(m75,20),MACDHistogram:hist,MACDState:state,DistanceFrom52WHighPct:(h52!=null&&h52!==0)?pct(last,h52):null,DistanceFrom52WLowPct:(l52!=null&&l52!==0)?pct(last,l52):null,VolumeRatio5To20:vRatio}};
+     const marketRegime=cut=>{const cl=topixRows.filter(x=>x[0]<=cut).map(x=>x[1]);if(!cl.length)return ["","","DiscoveryV1_TOPIXPriceOnly"];const c=cl.at(-1),r5=cl.length>5?ret6(cl.at(-6),c):null,r20=cl.length>20?ret6(cl.at(-21),c):null,ma25=cl.length>=25?avg(cl.slice(-25)):null;let reg;if((r5!=null&&r5<=-8)||(r20!=null&&r20<=-12))reg="Shock";else if((r5!=null&&r5<=-5)||(r20!=null&&r20<=-8))reg="Shock-Watch";else if((r20!=null&&r20<=-5)||(ma25!=null&&c<ma25&&r5!=null&&r5<=-2))reg="Risk-Off";else if((ma25!=null&&c<ma25)||(r20!=null&&r20<0))reg="Caution";else reg="Normal";let ph;if(r5!=null&&r5<=-2)ph="Deteriorating";else if(r5!=null&&r5>=2&&["Caution","Risk-Off","Shock-Watch","Shock"].includes(reg))ph="Recovering";else ph="Stable";return [reg,ph,"DiscoveryV1_TOPIXPriceOnly"]};
+
+     stage="08-calc";const out=[];
+     for(const ep of episodes){const all=trackedSeries.get(ep.code)||[],series=all.filter(x=>x.date>=ep.start&&x.date<=ep.end);if(!series.length)continue;let initial=num(ep.row.InitialPrice);if(initial==null)initial=series[0].close;const startDate=series[0].date,startTopix=topix.get(startDate),sector=String(ep.row.Sector33||"").trim(),secCodes=sectorMap.get(sector)||[];
+       for(let idx=0;idx<series.length;idx++){const x=series[idx],dte=x.date,stockRet=ret6(initial,x.close),topRet=(startTopix!=null&&topix.get(dte)!=null)?ret6(startTopix,topix.get(dte)):null;const sre=[];for(const c of secCodes){const mp=sectorPrices.get(c),a=mp?.get(startDate),b=mp?.get(dte);if(Number.isFinite(a)&&a!==0&&Number.isFinite(b))sre.push((b/a-1)*100)}const sectorRet=sre.length?round6(avg(sre)):null,sectorStatus=sectorMap.size?(sre.length?"Available":"NoObservation"):"SourceMissing";const tech=technicalFor(all,dte),mf=marginFeat(ep.code,dte),sf=shortFeat(ep.code,dte),af=alertFeat(ep.code,dte),[reg,phase,model]=marketRegime(dte);const statuses=[mf.MarginInterestStatus,sf.LargeShortReportStatus,af.MarginAlertStatus],unavail=[...new Set(statuses.filter(z=>z&&z!=="Available"))].sort();
+         out.push({EventID:ep.eventId,Code:ep.code,Date:dte,DaysFromStart:idx,EpisodeStartDate:ep.start,InitialPrice:initial,Close:x.close,Volume:x.volume??"",TradingValue:x.tradingValue??"",ReturnFromStart:stockRet??"",TOPIXClose:topix.get(dte)??"",TOPIXReturnFromStart:topRet??"",RelativeTOPIX:rel6(stockRet,topRet)??"",Sector33:sector,SectorReturnFromStart:sectorRet??"",RelativeSector:rel6(stockRet,sectorRet)??"",SectorBenchmarkStatus:sectorStatus,SectorConstituentCount:sre.length||"",SectorBenchmarkMethod:"EqualWeightScreeningUniverse_CurrentMembership_BackfillApproximation",RSI14:tech.RSI14??"",MA25Slope5DPct:tech.MA25Slope5DPct??"",MA75Slope20DPct:tech.MA75Slope20DPct??"",MACDHistogram:tech.MACDHistogram??"",MACDState:tech.MACDState??"",DistanceFrom52WHighPct:tech.DistanceFrom52WHighPct??"",DistanceFrom52WLowPct:tech.DistanceFrom52WLowPct??"",VolumeRatio5To20:tech.VolumeRatio5To20??"",MarginInterestStatus:mf.MarginInterestStatus,MarginLongVol:mf.MarginLongVol??"",MarginShortVol:mf.MarginShortVol??"",MarginLongShortRatio:mf.MarginLongShortRatio??"",MarginLongChangePct1W:mf.MarginLongChangePct1W??"",LargeShortReportStatus:sf.LargeShortReportStatus,LargeShortRatioSum:sf.LargeShortRatioSum??"",LargeShortRatioChange1W:sf.LargeShortRatioChange1W??"",LargeShortAggregateFreshness:sf.LargeShortAggregateFreshness??"",MarginAlertStatus:af.MarginAlertStatus,MarginAlertPresent:af.MarginAlertPresent??"",MarketRegime:reg,MarketPhase:phase,MarketRegimeModel:model,PlanAdaptiveNote:unavail.join(";")});
+       }}
+     out.sort((a,b)=>String(a.EventID).localeCompare(String(b.EventID))||String(a.Date).localeCompare(String(b.Date)));
+
+     stage="09-save";pdb.exec(`CREATE TABLE IF NOT EXISTS discovery_episode_daily_web(event_id TEXT NOT NULL,date TEXT NOT NULL,row_json TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(event_id,date)) WITHOUT ROWID`);
+     // Discovery Daily is append/freeze by design on PC.  A migrated PC history seed must never
+     // be rewritten from today's Web DataLake; only previously unseen Episode×Date rows append.
+     const st=pdb.prepare(`INSERT INTO discovery_episode_daily_web(event_id,date,row_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(event_id,date) DO NOTHING`);try{pdb.exec("BEGIN IMMEDIATE");
+       // Past Discovery Daily rows are frozen, but the current analysis date is provisional
+       // until all same-day J-Quants publications have settled. Rebuild only asOf rows.
+       const delCurrent=pdb.prepare(`DELETE FROM discovery_episode_daily_web WHERE date=?`);
+       try{delCurrent.bind([asOf]);delCurrent.step()}finally{try{delCurrent.finalize()}catch(_){}}
+       const now=new Date().toISOString();for(const r of out){st.bind([String(r.EventID),String(r.Date),JSON.stringify(r),now]);st.step();st.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
+     const storedRows=execRows(pdb,"SELECT row_json FROM discovery_episode_daily_web ORDER BY event_id,date").map(x=>{try{return JSON.parse(String(x.row_json||"{}"))}catch(_){return {}}}).filter(x=>x.EventID&&x.Date);pdb.close();pdb=null;
+     const coverage={historyStart,supplyHistoryStart,marginHistoryStart,shortHistoryStart,marginMinDate:marginMin||"",shortMinDate:shortMin||"",alertMinDate:alertMin||"",marginHistorySufficient:!marginAvailable||!marginMin||marginMin<=marginHistoryStart,shortHistorySufficient:!shortAvailable||!shortMin||shortMin<=shortHistoryStart,sourceStatusMode:"WebContentOnly_NoPCDatasetStatusMetadata"};
+     self.postMessage({ok:true,type:"result",asOf,from:earliest,historyStart,masterDate,episodes:episodes.length,count:out.length,rows:out,storedRows,storedCount:storedRows.length,coverage,elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}try{if(cdb)cdb.close()}catch(_){}try{if(tdb)tdb.close()}catch(_){}try{if(mdb)mdb.close()}catch(_){}throw new Error(`[discovery-daily:${stage}] ${err?.message||err}`)}
+ }
+
+ if(cmd==="equities-master-write"){
+   const payload=d.payload||{}, rows=payload.rows||[], requestedDate=String(payload.date||"");
+   const dbName="/jq_equities_master_v1.sqlite"; let mdb=null;
+   try{
+     status("master-open","銘柄マスターShardを開いています");
+     mdb=new p.OpfsSAHPoolDb(dbName,"c");
+     mdb.exec(`CREATE TABLE IF NOT EXISTS equities_master(
+       code TEXT NOT NULL,
+       effective_date TEXT NOT NULL,
+       company_name TEXT, company_name_en TEXT,
+       market_code TEXT, market_name TEXT,
+       sector17_code TEXT, sector17_name TEXT,
+       sector33_code TEXT, sector33_name TEXT,
+       scale_category TEXT, margin_code TEXT, margin_name TEXT,
+       product_category TEXT, base_price REAL,
+       raw_json TEXT,
+       PRIMARY KEY(code,effective_date)
+     ) WITHOUT ROWID`);
+     mdb.exec(`CREATE INDEX IF NOT EXISTS idx_eq_master_date ON equities_master(effective_date)`);
+     const stmt=mdb.prepare(`INSERT OR REPLACE INTO equities_master(
+       code,effective_date,company_name,company_name_en,market_code,market_name,
+       sector17_code,sector17_name,sector33_code,sector33_name,scale_category,
+       margin_code,margin_name,product_category,base_price,raw_json
+     ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+     mdb.exec("BEGIN");
+     try{
+       for(const r of rows){
+         const code=String(r.Code??r.code??"").trim();
+         const ed=String(r.Date??r.date??requestedDate??"").slice(0,10);
+         if(!code||!ed) continue;
+         stmt.bind([
+           code,ed,
+           r.CoName??r.CompanyName??null,r.CoNameEn??r.CompanyNameEnglish??null,
+           r.Mkt??r.MarketCode??null,r.MktNm??r.MarketCodeName??null,
+           r.S17??r.Sector17Code??null,r.S17Nm??r.Sector17CodeName??null,
+           r.S33??r.Sector33Code??null,r.S33Nm??r.Sector33CodeName??null,
+           r.ScaleCat??r.ScaleCategory??null,
+           r.Mrgn??r.MarginCode??null,r.MrgnNm??r.MarginCodeName??null,
+           r.ProdCat??r.ProductCategory??null,
+           Number.isFinite(Number(r.BasePrice))?Number(r.BasePrice):null,
+           JSON.stringify(r)
+         ]).stepReset();
+       }
+       mdb.exec("COMMIT");
+     }catch(err){try{mdb.exec("ROLLBACK")}catch(_){} throw err}
+     stmt.finalize();
+     const count=Number(scalar(mdb,"SELECT count(*) FROM equities_master")||0);
+     const minDate=scalar(mdb,"SELECT min(effective_date) FROM equities_master");
+     const maxDate=scalar(mdb,"SELECT max(effective_date) FROM equities_master");
+     const quickCheck=scalar(mdb,"PRAGMA quick_check");
+     mdb.close();mdb=null;
+
+     let cdb=null;
+     try{
+       cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+       cdb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+         shard_key TEXT PRIMARY KEY, logical_name TEXT NOT NULL, dataset TEXT NOT NULL,
+         range_start TEXT, range_end TEXT, schema_version TEXT, state TEXT NOT NULL, updated_at TEXT NOT NULL
+       )`);
+       const now=new Date().toISOString().replace(/'/g,"''");
+       const esc=x=>String(x||"").replaceAll("'","''");
+       cdb.exec(`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at)
+         VALUES('equities_master','${esc(dbName)}','equities_master','${esc(minDate)}','${esc(maxDate)}','master-v1','ready','${now}')
+         ON CONFLICT(shard_key) DO UPDATE SET logical_name=excluded.logical_name,dataset=excluded.dataset,
+         range_start=excluded.range_start,range_end=excluded.range_end,schema_version=excluded.schema_version,
+         state=excluded.state,updated_at=excluded.updated_at`);
+       cdb.close();
+     }catch(_){try{if(cdb)cdb.close()}catch(__){}}
+     self.postMessage({ok:true,type:"result",dbName,rows:count,minDate,maxDate,quickCheck});
+     return;
+   }catch(err){
+     try{if(mdb)mdb.close()}catch(_){}
+     throw err;
+   }
+ }
+
+
+ if(cmd==="equities-master-parity"){
+   const payload=d.payload||{}, input=payload.rows||[], fields=payload.fields||[];
+   let db=null;
+   try{
+     db=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");
+     const rows=[];
+     db.exec({sql:`SELECT code,company_name,market_name,sector17_name,sector33_name,margin_name
+                   FROM equities_master
+                   WHERE effective_date=(SELECT max(effective_date) FROM equities_master)`,
+              rowMode:"object",callback:r=>rows.push(r)});
+     const norm=v=>{const s=String(v??"").trim().toUpperCase();return s.length===5&&s.endsWith("0")?s.slice(0,4):s};
+     const wm=new Map(rows.map(r=>[norm(r.code),r]));
+     const stats=Object.fromEntries(fields.map(([pc])=>[pc,{field:pc,compared:0,match:0}]));
+     let compared=0,perfect=0,missing=0,mismatch=0;const diffs=[];
+     for(const p of input){
+       const x=wm.get(norm(p.code)); if(!x){missing++;diffs.push({code:p.code,field:"Code",pc:p.code,web:"欠損"});continue}
+       compared++;let ok=true;
+       for(const [pc,wf] of fields){
+         const pv=String(p[pc]??"").trim(),wv=String(x[wf]??"").trim();
+         stats[pc].compared++;
+         if(pv===wv)stats[pc].match++;else{ok=false;diffs.push({code:p.code,field:pc,pc:pv,web:wv})}
+       }
+       if(ok)perfect++;else mismatch++;
+     }
+     db.close();
+     self.postMessage({ok:true,type:"result",total:input.length,compared,perfect,missing,mismatch,
+       fieldStats:Object.values(stats),diffs});
+     return;
+   }catch(err){try{if(db)db.close()}catch(_){} throw err}
+ }
+
+ if(cmd==="fins-summary-covered-dates"){
+   let db=null;try{db=new p.OpfsSAHPoolDb("/jq_fins_summary_v1.sqlite","r");const rows=execRows(db,"SELECT DISTINCT data_date FROM fins_summary ORDER BY data_date");db.close();db=null;self.postMessage({ok:true,type:"result",dates:rows.map(x=>String(x.data_date))});return}catch(e){try{if(db)db.close()}catch(_){}self.postMessage({ok:true,type:"result",dates:[]});return}
+ }
+ if(cmd==="fins-summary-write" || cmd==="earnings-calendar-write"){
+   const payload=d.payload||{}, rows=payload.rows||[], requestedDate=String(payload.date||"");
+   const isFins=cmd==="fins-summary-write";
+   const dbName=isFins?"/jq_fins_summary_v1.sqlite":"/jq_earnings_calendar_v1.sqlite";
+   const table=isFins?"fins_summary":"earnings_calendar";
+   const dataset=table, shardKey=table;
+   let db=null;
+   try{
+     db=new p.OpfsSAHPoolDb(dbName,"c");
+     db.exec(`CREATE TABLE IF NOT EXISTS ${table}(
+       row_key TEXT PRIMARY KEY,
+       data_date TEXT NOT NULL,
+       code TEXT,
+       disclosed_date TEXT,
+       disclosed_time TEXT,
+       raw_json TEXT NOT NULL
+     ) WITHOUT ROWID`);
+     db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_date ON ${table}(data_date)`);
+     db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_code ON ${table}(code)`);
+     const stmt=db.prepare(`INSERT OR REPLACE INTO ${table}(row_key,data_date,code,disclosed_date,disclosed_time,raw_json) VALUES(?,?,?,?,?,?)`);
+     db.exec("BEGIN");
+     try{
+       if(isFins && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)){const ds=db.prepare(`DELETE FROM ${table} WHERE data_date=?`);try{ds.bind([requestedDate]);ds.step()}finally{try{ds.finalize()}catch(_){}}}
+       let seq=0;
+       for(const r of rows){
+         const code=String(r.Code??r.code??"").trim();
+         const disc=String(r.DiscDate??r.DisclosedDate??r.Date??r.date??requestedDate).slice(0,10);
+         const time=String(r.DiscTime??r.DisclosedTime??r.Time??"");
+         const stable=[requestedDate,code,disc,time,r.DocType??r.Type??"",r.CurPerType??r.FY??"",seq++].join("|");
+         stmt.bind([stable,requestedDate,code||null,disc||null,time||null,JSON.stringify(r)]).stepReset();
+       }
+       db.exec("COMMIT");
+     }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
+     stmt.finalize();
+     const count=Number(scalar(db,`SELECT count(*) FROM ${table}`)||0);
+     const minDate=scalar(db,`SELECT min(data_date) FROM ${table}`);
+     const maxDate=scalar(db,`SELECT max(data_date) FROM ${table}`);
+     const quickCheck=scalar(db,"PRAGMA quick_check");
+     db.close();db=null;
+     let cdb=null;
+     try{
+       cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+       cdb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+         shard_key TEXT PRIMARY KEY, logical_name TEXT NOT NULL, dataset TEXT NOT NULL,
+         range_start TEXT, range_end TEXT, schema_version TEXT, state TEXT NOT NULL, updated_at TEXT NOT NULL
+       )`);
+       const esc=x=>String(x||"").replaceAll("'","''"),now=new Date().toISOString().replaceAll("'","''");
+       cdb.exec(`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at)
+         VALUES('${shardKey}','${esc(dbName)}','${dataset}','${esc(minDate)}','${esc(maxDate)}','raw-v1','ready','${now}')
+         ON CONFLICT(shard_key) DO UPDATE SET logical_name=excluded.logical_name,dataset=excluded.dataset,
+         range_start=excluded.range_start,range_end=excluded.range_end,schema_version=excluded.schema_version,
+         state=excluded.state,updated_at=excluded.updated_at`);
+       cdb.close();
+     }catch(_){try{if(cdb)cdb.close()}catch(__){}}
+     self.postMessage({ok:true,type:"result",dbName,rows:count,minDate,maxDate,quickCheck});
+     return;
+   }catch(err){try{if(db)db.close()}catch(_){} throw err}
+ }
+
+
+ if(cmd==="raw-range-covered-dates"){
+   const payload=d.payload||{},writerCmd=String(payload.writerCmd||"");
+   const map={
+     "margin-interest-write":["/jq_margin_interest_v1.sqlite","margin_interest"],
+     "margin-alert-write":["/jq_margin_alert_v1.sqlite","margin_alert"],
+     "short-ratio-write":["/jq_short_ratio_v1.sqlite","short_ratio"],
+     "short-sale-report-write":["/jq_short_sale_report_v1.sqlite","short_sale_report"],
+     "investor-types-write":["/jq_investor_types_v1.sqlite","investor_types"]
+   },cfg=map[writerCmd];if(!cfg){self.postMessage({ok:true,type:"result",dates:[]});return}
+   let db=null;try{if(!poolFileNamesSafe(p).some(f=>f.replace(/^\/+/ ,"")===cfg[0].replace(/^\/+/ ,""))){self.postMessage({ok:true,type:"result",dates:[],coverage:[]});return}db=new p.OpfsSAHPoolDb(cfg[0],"r");const has=Number(scalarBind(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='fetch_coverage'",[])||0)>0,covMap=new Map();if(has)for(const x of execRows(db,"SELECT query_date,row_count,fetched_at FROM fetch_coverage ORDER BY query_date")){const dt=String(x.query_date||"");if(dt)covMap.set(dt,{date:dt,rowCount:Number(x.row_count||0),fetchedAt:String(x.fetched_at||"")})}for(const x of execRows(db,`SELECT data_date,raw_json FROM ${cfg[1]}`)){let dt=String(x.data_date||"").slice(0,10);if(!dt&&writerCmd==="short-sale-report-write"){try{const o=JSON.parse(String(x.raw_json||"{}"));dt=[o.DiscDate,o.CalcDate].map(v=>String(v??"").slice(0,10)).find(Boolean)||""}catch(_){}}if(!dt)continue;const z=covMap.get(dt)||{date:dt,rowCount:0,fetchedAt:""};if(!covMap.has(dt))covMap.set(dt,z);z.rowCount++}db.close();db=null;const coverage=[...covMap.values()].sort((a,b)=>a.date.localeCompare(b.date));self.postMessage({ok:true,type:"result",dates:coverage.map(x=>x.date),coverage});return}catch(_){try{if(db)db.close()}catch(_){}self.postMessage({ok:true,type:"result",dates:[],coverage:[]});return}
+ }
+
+ const RAW_RANGE_DATASETS={
+   "topix-write":{db:"/jq_topix_v1.sqlite",table:"topix",key:"topix",dataset:"topix"},
+   "market-calendar-write":{db:"/jq_market_calendar_v1.sqlite",table:"market_calendar",key:"market_calendar",dataset:"market_calendar"},
+   "margin-interest-write":{db:"/jq_margin_interest_v1.sqlite",table:"margin_interest",key:"margin_interest",dataset:"margin_interest"},
+   "margin-alert-write":{db:"/jq_margin_alert_v1.sqlite",table:"margin_alert",key:"margin_alert",dataset:"margin_alert"},
+   "short-ratio-write":{db:"/jq_short_ratio_v1.sqlite",table:"short_ratio",key:"short_ratio",dataset:"short_ratio"},
+   "short-sale-report-write":{db:"/jq_short_sale_report_v1.sqlite",table:"short_sale_report",key:"short_sale_report",dataset:"short_sale_report"},
+   "investor-types-write":{db:"/jq_investor_types_v1.sqlite",table:"investor_types",key:"investor_types",dataset:"investor_types"}
+ };
+ if(RAW_RANGE_DATASETS[cmd]){
+   const cfg=RAW_RANGE_DATASETS[cmd],payload=d.payload||{},rows=payload.rows||[],from=String(payload.from||""),to=String(payload.to||""),coverageDates=Array.isArray(payload.coverageDates)?payload.coverageDates.map(x=>String(x||"").slice(0,10)).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x)):[];
+   let db=null;
+   try{
+     db=new p.OpfsSAHPoolDb(cfg.db,"c");
+     db.exec(`CREATE TABLE IF NOT EXISTS ${cfg.table}(
+       row_key TEXT PRIMARY KEY,
+       data_date TEXT,
+       code TEXT,
+       raw_json TEXT NOT NULL
+     ) WITHOUT ROWID`);
+     db.exec(`CREATE INDEX IF NOT EXISTS idx_${cfg.table}_date ON ${cfg.table}(data_date)`);
+     db.exec(`CREATE INDEX IF NOT EXISTS idx_${cfg.table}_code ON ${cfg.table}(code)`);
+     db.exec(`CREATE TABLE IF NOT EXISTS fetch_coverage(query_date TEXT PRIMARY KEY,row_count INTEGER NOT NULL,fetched_at TEXT NOT NULL) WITHOUT ROWID`);
+     const stmt=db.prepare(`INSERT OR REPLACE INTO ${cfg.table}(row_key,data_date,code,raw_json) VALUES(?,?,?,?)`);
+     db.exec("BEGIN");
+     try{
+       // Short-sale report API can be revised at multiple publication times on the same day.
+       // Re-querying a disclosure date replaces that date's stored snapshot.
+       if(cmd==="short-sale-report-write"&&coverageDates.length){
+         const del=db.prepare(`DELETE FROM ${cfg.table} WHERE data_date=?`);
+         try{for(const dt of coverageDates){del.bind([dt]);del.step();del.reset()}}finally{try{del.finalize()}catch(_){}}
+       }
+       let seq=0;
+       for(const r of rows){
+         const date=[r.Date,r.date,r.DiscDate,r.CalcDate,r.StartDate,r.PubDate].map(v=>String(v??"").slice(0,10)).find(Boolean)||"";
+         const code=String(r.Code??r.code??r.S33??r.Sector33Code??r.Section??"").trim();
+         const signature=JSON.stringify(r);
+         const rowKey=[date,code,signature.slice(0,120),seq++].join("|");
+         stmt.bind([rowKey,date||null,code||null,signature]).stepReset();
+       }
+       if(coverageDates.length){const counts=new Map();for(const r of rows){const dt=String(r.Date??r.date??r.DiscDate??r.CalcDate??r.StartDate??r.PubDate??"").slice(0,10);if(dt)counts.set(dt,(counts.get(dt)||0)+1)}const cov=db.prepare(`INSERT OR REPLACE INTO fetch_coverage(query_date,row_count,fetched_at) VALUES(?,?,?)`);try{const now=new Date().toISOString();for(const dt of coverageDates){cov.bind([dt,Number(counts.get(dt)||0),now]);cov.step();cov.reset()}}finally{try{cov.finalize()}catch(_){}}}
+       db.exec("COMMIT");
+     }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
+     stmt.finalize();
+     const count=Number(scalar(db,`SELECT count(*) FROM ${cfg.table}`)||0);
+     const minDate=scalar(db,`SELECT min(data_date) FROM ${cfg.table}`);
+     const maxDate=scalar(db,`SELECT max(data_date) FROM ${cfg.table}`);
+     const quickCheck=scalar(db,"PRAGMA quick_check");
+     db.close();db=null;
+     let cdb=null;
+     try{
+       cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+       cdb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+         shard_key TEXT PRIMARY KEY, logical_name TEXT NOT NULL, dataset TEXT NOT NULL,
+         range_start TEXT, range_end TEXT, schema_version TEXT, state TEXT NOT NULL, updated_at TEXT NOT NULL
+       )`);
+       const esc=x=>String(x||"").replaceAll("'","''"),now=new Date().toISOString().replaceAll("'","''");
+       cdb.exec(`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at)
+       VALUES('${cfg.key}','${esc(cfg.db)}','${cfg.dataset}','${esc(minDate||from)}','${esc(maxDate||to)}','raw-v1','ready','${now}')
+       ON CONFLICT(shard_key) DO UPDATE SET logical_name=excluded.logical_name,dataset=excluded.dataset,
+       range_start=excluded.range_start,range_end=excluded.range_end,schema_version=excluded.schema_version,
+       state=excluded.state,updated_at=excluded.updated_at`);
+       cdb.close();
+     }catch(_){try{if(cdb)cdb.close()}catch(__){}}
+     self.postMessage({ok:true,type:"result",dbName:cfg.db,rows:count,minDate,maxDate,quickCheck});
+     return;
+   }catch(err){try{if(db)db.close()}catch(_){} throw err}
+ }
+
+
+ if(cmd==="catalog-list"){
+   let db=null;
+   try{db=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");const rows=execRows(db,"SELECT * FROM shard_catalog ORDER BY dataset, shard_key");db.close();db=null;self.postMessage({ok:true,type:"result",rows});return}
+   catch(err){try{if(db)db.close()}catch(_){} throw err}
+ }
+ if(cmd==="supply-demand-summary"){
+   const defs=[["/jq_margin_interest_v1.sqlite","margin_interest","信用取引週末残高"],["/jq_margin_alert_v1.sqlite","margin_alert","日々公表信用"],["/jq_short_ratio_v1.sqlite","short_ratio","空売り比率"],["/jq_short_sale_report_v1.sqlite","short_sale_report","空売り報告"],["/jq_investor_types_v1.sqlite","investor_types","投資部門別"]];
+   const out=[];
+   for(const [dbName,table,label] of defs){
+     let db=null;
+     try{
+       db=new p.OpfsSAHPoolDb(dbName,"r");const count=Number(scalar(db,`SELECT count(*) FROM ${table}`)||0);
+       const minDate=scalar(db,`SELECT min(data_date) FROM ${table}`),maxDate=scalar(db,`SELECT max(data_date) FROM ${table}`);
+       const samples=execRows(db,`SELECT raw_json FROM ${table} ORDER BY data_date DESC LIMIT 30`),fields=new Set();
+       for(const x of samples){try{Object.keys(JSON.parse(String(x.raw_json||"{}"))).forEach(k=>fields.add(k))}catch(_){}}
+       out.push({label,dbName,count,minDate,maxDate,fields:[...fields].sort()});db.close();db=null;
+     }catch(e){try{if(db)db.close()}catch(_){} out.push({label,dbName,count:0,error:String(e?.message||e),fields:[]})}
+   }
+   self.postMessage({ok:true,type:"result",datasets:out});return;
+ }
+ if(cmd==="financial-normalize-latest"){
+   let db=null;
+   try{
+     db=new p.OpfsSAHPoolDb("/jq_fins_summary_v1.sqlite","r");
+     const asOf=String(d.payload?.asOf||"").slice(0,10),hasAsOf=/^\d{4}-\d{2}-\d{2}$/.test(asOf);
+     const rs=hasAsOf?execRows(db,"SELECT data_date,raw_json FROM fins_summary WHERE data_date<=? ORDER BY data_date",[asOf]):execRows(db,"SELECT data_date,raw_json FROM fins_summary ORDER BY data_date");
+     const byCode=new Map();
+     const n=(o,...ks)=>{for(const k of ks){const v=o?.[k];if(v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)))return Number(v)}return null};
+     const s=(o,...ks)=>{for(const k of ks){const v=o?.[k];if(v!==null&&v!==undefined&&String(v).trim())return String(v).trim()}return ""};
+     const pct=(x,y)=>Number.isFinite(x)&&Number.isFinite(y)&&y!==0?(x/y-1)*100:null;
+     const ratio=(x,y)=>Number.isFinite(x)&&Number.isFinite(y)&&y!==0?x/y*100:null;
+     const primary=o=>{const op=n(o,"OP","NCOP");if(op!=null)return [op,"OperatingProfit"];const od=n(o,"OdP","NCOdP");if(od!=null)return [od,"OrdinaryProfit"];return n(o,"NP","NCNP")!=null?[null,"NetProfitOnly"]:[null,"Unavailable"]};
+     const fprimary=o=>n(o,"FOP","FNCOP")??n(o,"FOdP","FNCOdP");
+     for(const rr of rs){
+       let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}
+       const od=s(o,"DiscDate","DisclosedDate");if(hasAsOf&&od&&od>asOf)continue;
+       let code=s(o,"Code","code");if(!code)continue;if(code.length===5&&code.endsWith("0"))code=code.slice(0,4);
+       if(!byCode.has(code))byCode.set(code,[]);byCode.get(code).push(o);
+     }
+     db.close();db=null;
+     const rows=[];
+     for(const [code,hist] of byCode){
+       const disc=o=>s(o,"DiscDate","DisclosedDate"), perEnd=o=>s(o,"CurPerEn","CurFYEn"), fyEnd=o=>s(o,"CurFYEn","CurPerEn");
+       const actual=hist.filter(o=>["Sales","OP","OdP","NP","NCSales","NCOP","NCOdP","NCNP"].some(k=>n(o,k)!=null));
+       if(!actual.length)continue;
+       actual.sort((a,b)=>(perEnd(a)+"|"+disc(a)+"|"+s(a,"DiscNo")).localeCompare(perEnd(b)+"|"+disc(b)+"|"+s(b,"DiscNo")));
+       const cur=actual.at(-1),curType=s(cur,"CurPerType").toUpperCase(),curEnd=perEnd(cur),curDt=Date.parse(curEnd||"1970-01-01");
+       const eventDates=actual.filter(x=>s(x,"CurPerType").toUpperCase()===curType&&perEnd(x)===curEnd&&disc(x)).map(x=>disc(x)).sort();
+       const earningsEventDate=eventDates[0]||disc(cur);
+       let prev=null,best=1e99;
+       for(const x of hist){if(x===cur||s(x,"CurPerType").toUpperCase()!==curType)continue;const pe=perEnd(x);if(!pe)continue;const dd=(curDt-Date.parse(pe))/86400000;if(dd>=330&&dd<=400&&Math.abs(dd-365)<best){best=Math.abs(dd-365);prev=x}}
+       const [cp,ptype]=primary(cur),[pp]=primary(prev||{});
+       const sales=n(cur,"Sales","NCSales"),psales=n(prev||{},"Sales","NCSales"),margin=ratio(cp,sales),pmargin=ratio(pp,psales);
+       const currentFY=s(cur,"CurFYEn","CurPerEn"),expectedFY=(curType==="FY"?s(cur,"NxtFYEn"):"")||currentFY||s(cur,"NxtFYEn");
+       const forecasts=hist.filter(x=>disc(x)&&["FSales","FOP","FOdP","FNP","FNCSales","FNCOP","FNCOdP","FNCNP"].some(k=>n(x,k)!=null));
+       const forecastFY=x=>{const t=s(x,"CurPerType").toUpperCase();return t==="FY"&&s(x,"NxtFYEn")?s(x,"NxtFYEn"):s(x,"CurFYEn","NxtFYEn")};
+       const fcands=expectedFY?forecasts.filter(x=>forecastFY(x)===expectedFY):forecasts;
+       fcands.sort((a,b)=>(disc(a)+"|"+s(a,"DiscTime")+"|"+s(a,"DiscNo")).localeCompare(disc(b)+"|"+s(b,"DiscTime")+"|"+s(b,"DiscNo")));
+       const fc=fcands.at(-1)||null,fp=fprimary(fc||{}),fs=n(fc||{},"FSales","FNCSales");
+       let prevFY=null,pfbest=1e99;
+       const targetFY=expectedFY||forecastFY(fc||{});
+       if(targetFY){const td=Date.parse(targetFY);for(const x of hist){if(s(x,"CurPerType").toUpperCase()!=="FY")continue;/* Match the PC _previous_fy resolver exactly: FY baseline is anchored by CurFYEn first, with CurPerEn only as fallback. */const fe=s(x,"CurFYEn","CurPerEn");if(!fe)continue;const dd=(td-Date.parse(fe))/86400000;if(dd>=300&&dd<=430&&Math.abs(dd-365)<pfbest){pfbest=Math.abs(dd-365);prevFY=x}}}
+       const [prevFYp]=primary(prevFY||{}),prevFYs=n(prevFY||{},"Sales","NCSales");
+       const fyRows=hist.filter(x=>s(x,"CurPerType").toUpperCase()==="FY"&&disc(x));
+       fyRows.sort((a,b)=>(fyEnd(a)+"|"+disc(a)).localeCompare(fyEnd(b)+"|"+disc(b)));
+       const latestFY=fyRows.at(-1)||null;
+       const actualEPS=n(latestFY||{},"EPS","NCEPS"),forecastEPS=n(fc||{},"FEPS","FNCEPS");
+       const effectiveSharesOf=(row,fallback)=>{
+         const issued=n(row||{},"ShOutFY","ShOut")??n(fallback||{},"ShOutFY","ShOut");
+         const treasury=n(row||{},"TrShFY","TrSh")??n(fallback||{},"TrShFY","TrSh")??0;
+         return issued!=null?issued-treasury:null;
+       };
+       let bps=n(cur,"BPS","NCBPS"),bpsSource=bps!=null?"LatestActualDirect":"",bpsDate=bps!=null?disc(cur):"",bpsPeriod=bps!=null?curType:"";
+       if(bps==null){const sheq=n(cur,"ShEq","NCShEq"),sh=effectiveSharesOf(cur,latestFY);if(sheq!=null&&sh){bps=sheq/sh;bpsSource="LatestActualCalculated";bpsDate=disc(cur);bpsPeriod=curType}}
+       if(bps==null&&latestFY){bps=n(latestFY,"BPS","NCBPS");if(bps!=null)bpsSource="LatestFYDirect";else{const sheq=n(latestFY,"ShEq","NCShEq"),sh=effectiveSharesOf(latestFY,null);if(sheq!=null&&sh){bps=sheq/sh;bpsSource="LatestFYCalculated"}}if(bps!=null){bpsDate=disc(latestFY);bpsPeriod=s(latestFY,"CurPerType")}}
+       // V2 fins/summary includes Shareholders' Equity aliases ShEq/NCShEq.
+       const eq=n(cur,"Eq","NCEq","ShEq","NCShEq")??n(latestFY||{},"Eq","NCEq","ShEq","NCShEq"),ta=n(cur,"TA","NCTA")??n(latestFY||{},"TA","NCTA"),fyNP=n(latestFY||{},"NP","NCNP");
+       let roe=n(latestFY,"ROE","NCROE"),roeSource=roe!=null?"JQuantsReported":"";
+       if(roe!=null&&Math.abs(roe)<=1.5)roe*=100;
+       if(roe==null&&eq){
+         let priorFY=null,pbest=1e99;
+         const curFYEnd=s(latestFY||{},"CurFYEn","CurPerEn");
+         if(curFYEnd){
+           const td=Date.parse(curFYEnd);
+           for(const x of hist){
+             if(x===latestFY||s(x,"CurPerType").toUpperCase()!=="FY")continue;
+             const fe=s(x,"CurFYEn","CurPerEn");if(!fe)continue;
+             const dd=(td-Date.parse(fe))/86400000;
+             if(dd>=300&&dd<=430&&Math.abs(dd-365)<pbest){pbest=Math.abs(dd-365);priorFY=x}
+           }
+         }
+         const priorEq=n(priorFY||{},"Eq","NCEq","ShEq","NCShEq");
+         const den=priorEq!=null&&priorEq!==0?(eq+priorEq)/2:eq;
+         roe=ratio(fyNP,den);
+         if(roe!=null)roeSource="CalculatedNetProfitAverageEquity";
+       }
+       let eqRatio=n(cur,"EqAR","NCEqAR"),eqRatioSource=eqRatio!=null?"LatestActualDirect":"",eqRatioDate=eqRatio!=null?disc(cur):"",eqRatioPeriod=eqRatio!=null?curType:"";
+       if(eqRatio!=null&&Math.abs(eqRatio)<=1.5)eqRatio*=100;
+       if(eqRatio==null){const ceq=n(cur,"Eq","NCEq","ShEq","NCShEq"),cta=n(cur,"TA","NCTA");if(ceq!=null&&cta){eqRatio=ratio(ceq,cta);eqRatioSource="LatestActualCalculated";eqRatioDate=disc(cur);eqRatioPeriod=curType}}
+       if(eqRatio==null&&latestFY){eqRatio=n(latestFY,"EqAR","NCEqAR");if(eqRatio!=null){if(Math.abs(eqRatio)<=1.5)eqRatio*=100;eqRatioSource="LatestFYDirect"}else{const feq=n(latestFY,"Eq","NCEq","ShEq","NCShEq"),fta=n(latestFY,"TA","NCTA");if(feq!=null&&fta){eqRatio=ratio(feq,fta);eqRatioSource="LatestFYCalculated"}}if(eqRatio!=null){eqRatioDate=disc(latestFY);eqRatioPeriod=s(latestFY,"CurPerType")}}
+       const cfo=n(cur,"CFO"),cfi=n(cur,"CFI"),cff=n(cur,"CFF");
+       let lacfo=cfo,lacfi=cfi,lacff=cff,cfDate=disc(cur);
+       if(lacfo==null&&lacfi==null&&lacff==null&&latestFY){lacfo=n(latestFY,"CFO");lacfi=n(latestFY,"CFI");lacff=n(latestFY,"CFF");cfDate=disc(latestFY)}
+       const issuedFY=n(latestFY||{},"ShOutFY"),treasuryFY=n(latestFY||{},"TrShFY")??0;
+       const effectiveShares=issuedFY!=null?issuedFY-treasuryFY:null;
+       const fdiv=n(fc||{},"FDivAnn","FDivTotalAnn"),adiv=n(latestFY||{},"DivAnn","DivTotalAnn");
+       rows.push({code,discDate:disc(cur),earningsEventDate,curPerType:curType,ProfitType:ptype,
+         sales,op:n(cur,"OP","NCOP"),odp:n(cur,"OdP","NCOdP"),np:n(cur,"NP","NCNP"),
+         eps:actualEPS,bps,equity:eq,totalAssets:ta,cfo,cfi,cff,
+         forecastSales:fs,forecastOP:n(fc||{},"FOP","FNCOP"),forecastOdP:n(fc||{},"FOdP","FNCOdP"),forecastNP:n(fc||{},"FNP","FNCNP"),forecastEPS,
+         SalesYoY:pct(sales,psales),PrimaryProfitYoY:(cp>0&&pp>0)?pct(cp,pp):null,
+         CurrentOperatingMarginPct:ptype==="OperatingProfit"?margin:null,PreviousOperatingMarginPct:ptype==="OperatingProfit"?pmargin:null,
+         OperatingMarginChangePt:(margin!=null&&pmargin!=null)?margin-pmargin:null,
+         ForecastSalesGrowthPct:pct(fs,prevFYs),ForecastPrimaryProfitGrowthPct:(fp>0&&prevFYp>0)?pct(fp,prevFYp):null,
+         CurrentPrimaryProfit:cp,ForecastPrimaryProfit:fp,ActualEPS:actualEPS,ForecastEPS:forecastEPS,BPS:bps,BPSSource:bpsSource,BPSReferenceDate:bpsDate,BPSSourcePeriod:bpsPeriod,ROE:roe,ROESource:roeSource,ROEReferenceDate:latestFY?disc(latestFY):"",ROESourcePeriod:latestFY?s(latestFY,"CurPerType"):"",EquityRatioPct:eqRatio,EquityRatioSource:eqRatioSource,EquityRatioReferenceDate:eqRatioDate,EquityRatioSourcePeriod:eqRatioPeriod,
+         CFO:cfo,CFI:cfi,CFF:cff,LatestAvailableCFO:lacfo,LatestAvailableCFI:lacfi,LatestAvailableCFF:lacff,
+         LatestAvailableFCF:(lacfo!=null&&lacfi!=null)?lacfo+lacfi:null,CashFlowReferenceDate:cfDate,
+         EffectiveShares:effectiveShares,FactorCurrentDisclosureDate:disc(cur),FactorLatestFYDisclosureDate:latestFY?disc(latestFY):"",FactorForecastDisclosureDate:fc?disc(fc):"",FactorForecastFYEnd:fc?forecastFY(fc):"",FactorPreviousFYDisclosureDate:prevFY?disc(prevFY):"",FactorPreviousFYEnd:prevFY?s(prevFY,"CurFYEn","CurPerEn"):"",FactorPreviousFYPrimaryProfit:prevFYp,ActualAnnualDividend:adiv,ForecastAnnualDividend:fdiv,
+         FinancialDataFlag:(["OperatingProfit","OrdinaryProfit"].includes(ptype)&&prev)?"":(ptype==="NetProfitOnly"?"WebRequired":"HistoryInsufficient"),
+         FinancialHistoryCount:hist.length,ComparablePriorFound:!!prev
+       });
+     }
+     rows.sort((a,b)=>a.code.localeCompare(b.code));
+     self.postMessage({ok:true,type:"result",rows,count:rows.length,comparablePrior:rows.filter(x=>x.ComparablePriorFound).length,yoyReady:rows.filter(x=>x.SalesYoY!=null||x.PrimaryProfitYoY!=null).length});
+     return;
+   }catch(err){try{if(db)db.close()}catch(_){}throw err}
+ }
+ if(cmd==="supply-demand-normalize"){
+ const defs=[["/jq_margin_interest_v1.sqlite","margin_interest","marginInterest"],["/jq_margin_alert_v1.sqlite","margin_alert","marginAlert"],["/jq_short_ratio_v1.sqlite","short_ratio","shortRatio"],["/jq_short_sale_report_v1.sqlite","short_sale_report","shortSaleReport"],["/jq_investor_types_v1.sqlite","investor_types","investorTypes"]],result={};
+ for(const [dbName,table,key] of defs){let db=null;try{db=new p.OpfsSAHPoolDb(dbName,"r");const rs=execRows(db,`SELECT data_date,raw_json FROM ${table} ORDER BY data_date DESC LIMIT 5000`),byCode=new Map(),market=[];
+  for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}let c=String(o.Code??o.code??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);const x={date:String(rr.data_date??o.Date??""),raw:o};if(c&&!byCode.has(c))byCode.set(c,x);else if(!c&&market.length<50)market.push(x)}
+  result[key]={rows:rs.length,codeSnapshots:byCode.size,marketSnapshots:market.length};db.close();db=null}catch(e){try{if(db)db.close()}catch(_){}result[key]={rows:0,error:String(e?.message||e)}}}
+ self.postMessage({ok:true,type:"result",result});return;
+ }
+
+ if(cmd==="supply-demand-portfolio-snapshot"){
+   const normCode=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const defs=[
+     ["/jq_margin_interest_v1.sqlite","margin_interest","marginInterest"],
+     ["/jq_margin_alert_v1.sqlite","margin_alert","marginAlert"],
+     ["/jq_short_ratio_v1.sqlite","short_ratio","shortRatio"],
+     ["/jq_short_sale_report_v1.sqlite","short_sale_report","shortSaleReport"],
+     ["/jq_investor_types_v1.sqlite","investor_types","investorTypes"]
+   ];
+   const result={};
+   const pickNum=(o,keys)=>{for(const k of keys){const v=o?.[k];if(v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v)))return Number(v)}return null};
+   const pickStr=(o,keys)=>{for(const k of keys){const v=o?.[k];if(v!==null&&v!==undefined&&String(v).trim())return String(v).trim()}return null};
+   for(const [dbName,table,key] of defs){
+     let db=null;
+     try{
+       db=new p.OpfsSAHPoolDb(dbName,"r");
+       const rs=execRows(db,`SELECT data_date,raw_json FROM ${table} ORDER BY data_date DESC LIMIT 20000`);
+       const byCode=new Map(); const market=[];
+       for(const rr of rs){
+         let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}
+         const code=normCode(o.Code??o.code??o.IssueCode??"");
+         const date=String(rr.data_date??o.Date??o.date??o.DiscDate??o.CalculationDate??"").slice(0,10);
+         const rec={date,
+           longMargin:pickNum(o,["LongMarginTradeVolume","LongMarginOutstanding","BuyBalance","LongMarginTradeBalance","LongMargin"]),
+           shortMargin:pickNum(o,["ShortMarginTradeVolume","ShortMarginOutstanding","SellBalance","ShortMarginTradeBalance","ShortMargin"]),
+           longNeg:pickNum(o,["LongNegotiableMarginTradeVolume","LongNegotiableBalance"]),
+           shortNeg:pickNum(o,["ShortNegotiableMarginTradeVolume","ShortNegotiableBalance"]),
+           shortRatio:pickNum(o,["ShortRatio","ShortSellingRatio","Ratio"]),
+           shortVolume:pickNum(o,["ShortSellingVolume","ShortVolume","ShortSaleVolume"]),
+           shortValue:pickNum(o,["ShortSellingValue","ShortValue","ShortSaleValue"]),
+           category:pickStr(o,["Category","Section","InvestorType","Type"]),
+           value:pickNum(o,["Value","TradingValue","NetTradingValue","Amount"]),
+           raw:o
+         };
+         if(code){
+           if(!byCode.has(code))byCode.set(code,rec);
+         }else if(market.length<200){
+           market.push(rec);
+         }
+       }
+       result[key]={byCode:[...byCode.entries()].map(([code,v])=>({code,...v})),market};
+       db.close();db=null;
+     }catch(e){
+       try{if(db)db.close()}catch(_){}
+       result[key]={byCode:[],market:[],error:String(e?.message||e)};
+     }
+   }
+   self.postMessage({ok:true,type:"result",result});return;
+ }
+
+ if(cmd==="screening-supply-features"){
+   const payload=d.payload||{},asOf=String(payload.asOf||""),want=new Set((payload.codes||[]).map(v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean));
+   const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const num=(o,k)=>{const v=o?.[k];return v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v))?Number(v):null};
+   const dateDiff=(a,b)=>(Date.parse(a)-Date.parse(b))/86400000;
+   const pct=(a,b)=>a!=null&&b!=null&&b!==0?(a/b-1)*100:null;
+   const result=new Map([...want].map(c=>[c,{NormalizedCode:c}]));
+   // Weekly margin interest: reproduce PC row_on_or_before(target) and target-7d reference.
+   try{let db=new p.OpfsSAHPoolDb("/jq_margin_interest_v1.sqlite","r");const rs=execRows(db,"SELECT data_date,raw_json FROM margin_interest ORDER BY data_date");db.close();const by=new Map();
+     for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const c=norm(o.Code??o.code);if(!want.has(c))continue;const dt=String(o.Date??rr.data_date??"").slice(0,10);if(!dt||dt>asOf)continue;if(!by.has(c))by.set(c,[]);by.get(c).push({dt,o})}
+     for(const c of want){const arr=by.get(c)||[];if(!arr.length)continue;const cur=arr.at(-1),cut=new Date(Date.parse(cur.dt)-7*86400000).toISOString().slice(0,10);let prior=null;for(const x of arr){if(x.dt<=cut)prior=x;else break}const long=num(cur.o,"LongVol");const prev=prior?num(prior.o,"LongVol"):null;Object.assign(result.get(c),{MarginDate:cur.dt,MarginLongChangePct1W:pct(long,prev)})}
+   }catch(_){}
+   // Large short reports: reconstruct latest known report per reporting identity at asOf and asOf-7d.
+   try{let db=new p.OpfsSAHPoolDb("/jq_short_sale_report_v1.sqlite","r");const rs=execRows(db,"SELECT data_date,raw_json FROM short_sale_report ORDER BY data_date");db.close();const by=new Map();
+     for(const rr of rs){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const c=norm(o.Code??o.code);if(!want.has(c))continue;const dd=String(o.DiscDate??"").slice(0,10),cd=String(o.CalcDate??"").slice(0,10);if(!dd||dd>asOf)continue;if(!by.has(c))by.set(c,[]);by.get(c).push({dd,cd,o})}
+     const state=(arr,cut)=>{const m=new Map();for(const x of arr){if(x.dd>cut)continue;const o=x.o,key=[norm(o.Code),o.SSName??"",o.SSAddr??"",o.DICName??"",o.DICAddr??"",o.FundName??""].join("|");const old=m.get(key);if(!old||(x.dd+"|"+x.cd)>=(old.dd+"|"+old.cd))m.set(key,x)}return m};
+     const agg=(arr,cut)=>{const st=state(arr,cut),rat=[],dates=[];for(const x of st.values()){const v=num(x.o,"ShrtPosToSO");if(v!=null)rat.push(v);if(x.cd)dates.push(x.cd)}const ratioSum=rat.length?rat.reduce((a,b)=>a+b,0):null;let fresh="Unknown";if(dates.length){const oldest=dates.sort()[0],age=dateDiff(cut,oldest);fresh=age<0?"FutureDateError":age<=7?"Fresh":age<=30?"Recent":"Stale"}return {ratioSum,fresh}};
+     for(const c of want){const arr=by.get(c)||[];if(!arr.length)continue;const cur=agg(arr,asOf),cut=new Date(Date.parse(asOf)-7*86400000).toISOString().slice(0,10),pr=agg(arr,cut);Object.assign(result.get(c),{LargeShortRatioChange1W:cur.ratioSum!=null&&pr.ratioSum!=null?cur.ratioSum-pr.ratioSum:null,LargeShortAggregateFreshness:cur.fresh})}
+   }catch(_){}
+   self.postMessage({ok:true,type:"result",rows:[...result.values()]});return;
+ }
+
+ if(cmd==="screening-event-features"){
+   let cdb=null,tdb=null,stage="01-input";
+   try{
+     const payload=d.payload||{},asOf=String(payload.asOf||""),events=Array.isArray(payload.events)?payload.events:[];
+     const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+     const active=events.map(x=>({code:norm(x.code),disc:String(x.disclosureDate||"").slice(0,10)})).filter(x=>x.code&&x.disc);
+     if(!asOf||!active.length){self.postMessage({ok:true,type:"result",rows:[]});return}
+
+     // TOPIX dates are the PC screen's ordered trading calendar.
+     stage="02-trade-dates";
+     tdb=new p.OpfsSAHPoolDb("/jq_topix_v1.sqlite","r");
+     const trs=execRows(tdb,"SELECT raw_json FROM topix");
+     const tradeDates=[];
+     for(const rr of trs){try{const o=JSON.parse(String(rr.raw_json||"{}")),dt=String(o.Date??o.date??"").slice(0,10);if(dt&&dt<=asOf)tradeDates.push(dt)}catch(_){}}
+     tdb.close();tdb=null;
+     tradeDates.sort();
+     const uniqueDates=[...new Set(tradeDates)];
+     const eligible=active.filter(x=>{
+       const elapsed=uniqueDates.filter(dt=>x.disc<=dt&&dt<=asOf).length-1;
+       return x.disc===asOf || (elapsed>=0&&elapsed<=22);
+     });
+     if(!eligible.length){self.postMessage({ok:true,type:"result",rows:[]});return}
+     const minDisc=eligible.map(x=>x.disc).sort()[0];
+     const minIdx=uniqueDates.findIndex(x=>x>=minDisc);
+     const from=uniqueDates[Math.max(0,minIdx-3)]||minDisc;
+     const codes=new Set(eligible.map(x=>x.code));
+
+     // Load only the small event window across ready annual bars shards.
+     stage="03-bars";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end
+       FROM shard_catalog WHERE dataset='bars_daily' AND state='ready'
+       AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key`);
+     cdb.close();cdb=null;
+     const byCode=new Map();
+     for(const sh of cats){
+       if(String(sh.range_end||"")<from||String(sh.range_start||"")>asOf)continue;
+       let db=null;
+       try{
+         const name=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
+         const rs=execRows(db,`SELECT code,date,COALESCE(adj_c,c) AS c
+           FROM bars_daily WHERE date>=? AND date<=? AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,asOf]);
+         for(const r of rs){
+           const code=norm(r.code);if(!codes.has(code))continue;
+           const c=Number(r.c);if(!Number.isFinite(c)||c<=0)continue;
+           if(!byCode.has(code))byCode.set(code,[]);
+           byCode.get(code).push({date:String(r.date),c});
+         }
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+
+     stage="04-calc";
+     const pct=(x,b)=>Number.isFinite(x)&&Number.isFinite(b)&&b!==0?(x/b-1)*100:null;
+     const rows=[];
+     for(const ev of eligible){
+       const arr=(byCode.get(ev.code)||[]).sort((x,y)=>x.date.localeCompare(y.date));
+       const elapsed=uniqueDates.filter(dt=>ev.disc<=dt&&dt<=asOf).length-1;
+       const reaction=ev.disc===asOf;
+       const preCandidates=arr.map((x,i)=>[x,i]).filter(([x])=>x.date<ev.disc);
+       const startCandidates=arr.map((x,i)=>[x,i]).filter(([x])=>x.date>=ev.disc);
+       let e1=null,e3=null,e5=null,e10=null,follow=null;
+       if(preCandidates.length&&startCandidates.length){
+         const pre=preCandidates.at(-1)[1],start=startCandidates[0][1],base=arr[pre].c;
+         const ret=win=>{const idx=start+win-1;return idx<arr.length?pct(arr[idx].c,base):null};
+         e1=ret(1);e3=ret(3);e5=ret(5);e10=ret(10);
+         follow=(e5!=null&&e1!=null)?e5-e1:null;
+       }
+       rows.push({code:ev.code,EarningsElapsedTradingDays:elapsed,EarningsReactionPending:reaction,
+         EarningsReturn1D:e1,EarningsReturn3D:e3,EarningsReturn5D:e5,EarningsReturn10D:e10,EarningsFollowThrough5D:follow});
+     }
+     self.postMessage({ok:true,type:"result",rows,tradeDates:uniqueDates.length,from,asOf});
+     return;
+   }catch(err){
+     try{if(cdb)cdb.close()}catch(_){}try{if(tdb)tdb.close()}catch(_){}
+     throw new Error(`[screening-event-features:${stage}] ${err?.message||err}`);
+   }
+ }
+
+ if(cmd==="screening-base-snapshot"){
+   const payload=d.payload||{}, techRows=payload.techRows||[], finRows=payload.finRows||[];
+   const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const fmap=new Map(finRows.map(x=>[norm(x.code),x]));
+   const mmap=new Map(); let mdb=null;
+   try{mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");for(const r of execRows(mdb,"SELECT code,company_name,market_name AS market,sector17_name AS sector17,sector33_name AS sector33,margin_name AS margin_category,product_category FROM equities_master")){mmap.set(norm(r.code),r)}mdb.close();mdb=null}catch(e){try{if(mdb)mdb.close()}catch(_){}}
+   let master=0,financial=0,forecast=0;
+   const rows=techRows.map(t=>{const code=norm(t.code),m=mmap.get(code)||{},f=fmap.get(code)||{};if(m.company_name)master++;if(f.discDate)financial++;if(f.forecastEPS!=null||f.forecastSales!=null||f.forecastOP!=null)forecast++;return {
+     Date:payload.asOf||t.date||null,NormalizedCode:code,CompanyName:m.company_name||null,Market:m.market||null,Sector17:m.sector17||null,Sector33:m.sector33||null,MarginCategory:m.margin_category||null,ProductCategory:m.product_category||null,
+     Close:t.close??null,PriceHistoryDays:t.historyDays??null,AverageTradingValue20D:t.averageTradingValue20D??null,LatestTradingValueRatioTo20D:t.latestTradingValueRatioTo20D??null,VolumeRatio5To20:t.volumeRatio5To20??null,
+     MA5:t.ma5??null,MA25:t.ma25??null,MA75:t.ma75??null,MA200:t.ma200??null,RSI14:t.rsi14??null,Return5D:t.ret5??null,Return20D:t.ret20??null,Return60D:t.ret60??null,Return120D:t.ret120??null,
+     RelativeToTOPIX5D:t.rel5??null,RelativeToTOPIX20D:t.rel20??null,RelativeToTOPIX60D:t.rel60??null,RelativeToTOPIX120D:t.rel120??null,ATR14Pct:t.atr14Pct??null,High20D:t.high20??null,Low20D:t.low20??null,High60D:t.high60??null,Low60D:t.low60??null,High52Week:t.high52??null,Low52Week:t.low52??null,
+     MA25DeviationPct:t.distMa25??null,MA75DeviationPct:t.distMa75??null,MA25Slope5DPct:t.slope25??null,MA75Slope20DPct:t.slope75??null,
+     MACDHistogram:t.macdHistogram??null,MACDHistogramChange5D:t.macdHistogramChange5D??null,MACDState:t.macdState??null,
+     PositionVs60DHighPct:t.positionVs60DHighPct??null,DistanceFrom52WLowPct:t.low52?((t.close/t.low52-1)*100):null,TrendState:t.trendState??null,
+     DiscDate:f.discDate??null,LatestDisclosureDate:f.discDate??null,LatestFinancialDisclosureDate:f.discDate??null,LatestEarningsEventDate:f.earningsEventDate??f.discDate??null,LatestPeriodType:f.curPerType??null,ProfitType:f.ProfitType??null,Sales:f.sales??null,OperatingProfit:f.op??null,OrdinaryProfit:f.odp??null,NetProfit:f.np??null,EPS:f.eps??null,BPS:f.bps??null,Equity:f.equity??null,TotalAssets:f.totalAssets??null,CFO:f.cfo??null,CFI:f.cfi??null,CFF:f.cff??null,ForecastSales:f.forecastSales??null,ForecastOperatingProfit:f.forecastOP??null,ForecastOrdinaryProfit:f.forecastOdP??null,ForecastNetProfit:f.forecastNP??null,ForecastEPS:f.forecastEPS??null,
+     SalesYoY:f.SalesYoY??null,PrimaryProfitYoY:f.PrimaryProfitYoY??null,CurrentOperatingMarginPct:f.CurrentOperatingMarginPct??null,PreviousOperatingMarginPct:f.PreviousOperatingMarginPct??null,OperatingMarginChangePt:f.OperatingMarginChangePt??null,ForecastSalesGrowthPct:f.ForecastSalesGrowthPct??null,ForecastPrimaryProfitGrowthPct:f.ForecastPrimaryProfitGrowthPct??null,ROE:f.ROE??null,ROESource:f.ROESource??"",ROEReferenceDate:f.ROEReferenceDate??"",ROESourcePeriod:f.ROESourcePeriod??"",BPSSource:f.BPSSource??"",BPSReferenceDate:f.BPSReferenceDate??"",BPSSourcePeriod:f.BPSSourcePeriod??"",EquityRatioPct:f.EquityRatioPct??null,EquityRatioSource:f.EquityRatioSource??"",EquityRatioReferenceDate:f.EquityRatioReferenceDate??"",EquityRatioSourcePeriod:f.EquityRatioSourcePeriod??"",CFO:f.CFO??f.cfo??null,LatestAvailableCFO:f.LatestAvailableCFO??null,LatestAvailableFCF:f.LatestAvailableFCF??null,
+     EffectiveShares:f.EffectiveShares??null,FactorCurrentDisclosureDate:f.FactorCurrentDisclosureDate??"",FactorLatestFYDisclosureDate:f.FactorLatestFYDisclosureDate??"",FactorForecastDisclosureDate:f.FactorForecastDisclosureDate??"",FactorForecastFYEnd:f.FactorForecastFYEnd??"",ActualAnnualDividend:f.ActualAnnualDividend??null,ForecastAnnualDividend:f.ForecastAnnualDividend??null,
+     ActualEPS:f.ActualEPS??f.eps??null,FinancialDataFlag:f.FinancialDataFlag??"",
+     ActualPER:(t.close!=null&&f.ActualEPS>0)?t.close/f.ActualEPS:null,ForecastPER:(t.close!=null&&f.ForecastEPS>0)?t.close/f.ForecastEPS:null,
+     PBR:(t.close!=null&&f.BPS>0)?t.close/f.BPS:null,
+     EstimatedMarketCap:(t.close!=null&&f.EffectiveShares>0)?t.close*f.EffectiveShares:null,
+     ForecastDividendYieldPct:(t.close!=null&&f.ForecastAnnualDividend!=null)?f.ForecastAnnualDividend/t.close*100:null,
+     FinancialHistoryCount:f.FinancialHistoryCount??0,ComparablePriorFound:!!f.ComparablePriorFound
+   }});
+   const filtered=rows.filter(r=>["プライム","スタンダード","グロース"].includes(String(r.Market||""))&&String(r.ProductCategory||"")==="011"&&Number(r.AverageTradingValue20D)>=50000000&&Number(r.Close)>=100&&Number(r.PriceHistoryDays)>=60);
+   const postCoverage={
+     technical:filtered.filter(r=>r.Close!=null).length,
+     master:filtered.filter(r=>r.CompanyName!=null&&r.Market!=null).length,
+     financial:filtered.filter(r=>r.LatestDisclosureDate!=null||r.DiscDate!=null).length,
+     forecast:filtered.filter(r=>r.ForecastEPS!=null||r.ForecastSales!=null||r.ForecastOperatingProfit!=null||r.ForecastOrdinaryProfit!=null||r.ForecastNetProfit!=null).length
+   };
+   self.postMessage({ok:true,type:"result",rows:filtered,count:filtered.length,coverage:{preFilter:rows.length,screened:filtered.length,...postCoverage}});return;
+ }
+
+ if(cmd==="portfolio-integrated-snapshot"){
+   const payload=d.payload||{}, stocks=payload.stocks||[], techRows=payload.techRows||[], finRows=payload.finRows||[], supply=payload.supply||{};
+   const normCode=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const tmap=new Map(techRows.map(x=>[normCode(x.code),x]));
+   const fmap=new Map(finRows.map(x=>[normCode(x.code),x]));
+   const smap={};
+   for(const [k,v] of Object.entries(supply)){
+     smap[k]=new Map((v?.byCode||[]).map(x=>[normCode(x.code),x]));
+   }
+   let mdb=null; const names=new Map();
+   try{
+     mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");
+     const rs=execRows(mdb,"SELECT code,company_name,market,sector17,sector33,margin_category FROM equities_master");
+     for(const r of rs){
+       let c=String(r.code||""); if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);
+       names.set(c,r);
+     }
+     mdb.close();mdb=null;
+   }catch(_){try{if(mdb)mdb.close()}catch(__){}}
+   const rows=stocks.map(st=>{
+     let code=String(st.code??st.Code??"").trim(); if(code.length===5&&code.endsWith("0"))code=code.slice(0,4);
+     const t=tmap.get(code)||{},f=fmap.get(code)||{},m=names.get(code)||{};
+     const shares=Number(st.shares??st.Shares??0)||0,avgCost=Number(st.avgCost??st.AvgCost??0)||0;
+     const close=Number.isFinite(Number(t.close))?Number(t.close):null;
+     const marketValue=close!=null?close*shares:null;
+     const cost=avgCost*shares;
+     const unrealized=marketValue!=null?marketValue-cost:null;
+     const unrealizedPct=cost?unrealized/cost*100:null;
+     return {code,name:st.name??st.Name??m.company_name??"",account:st.account??st.Account??"",
+       shares,avgCost,amount:Number(st.amount??st.Amount??0)||cost,strategy:st.strategy??st.Strategy??"",close,marketValue,unrealized,unrealizedPct,
+       date:t.date??null,technicalHistoryDays:t.historyDays??null,technicalPriceBasis:"AdjFactorLatestBasis",
+       ma5:t.ma5??null,ma25:t.ma25??null,ma75:t.ma75??null,ma200:t.ma200??null,rsi14:t.rsi14??null,
+       return5D:t.ret5??null,return20D:t.ret20??null,return60D:t.ret60??null,return120D:t.ret120??null,
+       topixReturn5D:t.topixRet5??null,topixReturn20D:t.topixRet20??null,topixReturn60D:t.topixRet60??null,topixReturn120D:t.topixRet120??null,
+       relativeToTOPIX5D:t.rel5??null,relativeToTOPIX20D:t.rel20??null,relativeToTOPIX60D:t.rel60??null,relativeToTOPIX120D:t.rel120??null,
+       high20D:t.high20??null,low20D:t.low20??null,high60D:t.high60??null,low60D:t.low60??null,
+       high52Week:t.high52??null,low52Week:t.low52??null,
+       distanceFrom52WeekHighPct:(t.high52!=null&&close!=null&&t.high52)?(close/t.high52-1)*100:null,
+       distanceFrom52WeekLowPct:(t.low52!=null&&close!=null&&t.low52)?(close/t.low52-1)*100:null,
+       ma5Slope5DPct:t.slope5??null,ma25Slope5DPct:t.slope25??null,ma75Slope20DPct:t.slope75??null,ma200Slope20DPct:t.slope200??null,
+       deviationFromMA5Pct:t.distMa5??null,deviationFromMA25Pct:t.distMa25??null,deviationFromMA75Pct:t.distMa75??null,deviationFromMA200Pct:t.distMa200??null,
+       atr14:t.atr14??null,atr14Pct:t.atr14Pct??null,
+       macd:t.macd??null,macdSignal:t.macdSignal??null,macdHistogram:t.macdHistogram??null,macdState:t.macdState??"",
+       ichimokuTenkan:t.ichimokuTenkan??null,ichimokuKijun:t.ichimokuKijun??null,ichimokuSenkouA:t.ichimokuSenkouA??null,ichimokuSenkouB:t.ichimokuSenkouB??null,
+       ichimokuAboveCloud:t.ichimokuAboveCloud??"",ichimokuCloudDirection:t.ichimokuCloudDirection??"",
+       aboveMA5:t.aboveMA5??"",aboveMA25:t.aboveMA25??"",aboveMA75:t.aboveMA75??"",aboveMA200:t.aboveMA200??"",maAlignment:t.maAlignment??"",trendState:t.trendState??"",
+
+       companyName:m.company_name??null,market:m.market??null,sector17:m.sector17??null,sector33:m.sector33??null,marginCategory:m.margin_category??null,
+       discDate:f.discDate??null,sales:f.sales??null,op:f.op??null,np:f.np??null,eps:f.eps??null,
+       forecastSales:f.forecastSales??null,forecastOP:f.forecastOP??null,forecastNP:f.forecastNP??null,forecastEPS:f.forecastEPS??null,
+       marginInterestDate:smap.marginInterest?.get(code)?.date??null,
+       marginLong:smap.marginInterest?.get(code)?.longMargin??null,
+       marginShort:smap.marginInterest?.get(code)?.shortMargin??null,
+       marginRatio:(()=>{const x=smap.marginInterest?.get(code),L=x?.longMargin,S=x?.shortMargin;return (Number.isFinite(L)&&Number.isFinite(S)&&S!==0)?L/S:null})(),
+       marginAlertDate:smap.marginAlert?.get(code)?.date??null,
+       shortReportDate:smap.shortSaleReport?.get(code)?.date??null,
+       shortSaleValue:smap.shortSaleReport?.get(code)?.shortValue??null,
+       shortRatioDate:smap.shortRatio?.get(code)?.date??null,
+       shortRatio:smap.shortRatio?.get(code)?.shortRatio??null};
+   });
+   self.postMessage({ok:true,type:"result",rows,count:rows.length});
+   return;
+ }
+
+ if(cmd==="technical-screening-poc"){
+   const payload=e.data.payload||{};
+   const asOf=String(payload.asOf||"");
+   const lookback=Math.max(75,Math.min(360,Number(payload.lookback||320)));
+   const topN=Math.max(10,Math.min(200,Number(payload.topN||50)));
+   let cdb=null,stage="01-validate";
+   try{
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+     stage="02-catalog";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end
+       FROM shard_catalog WHERE dataset='bars_daily' AND state='ready'
+       AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key DESC`);
+     cdb.close();cdb=null;
+     const usable=cats.filter(x=>String(x.range_start||"")<=asOf);
+     if(!usable.length)throw new Error("No ready year shard for asOf");
+
+     // Gather distinct trading dates backwards across only the shards needed.
+     stage="03-dates";
+     const dates=[];
+     for(const s of usable){
+       let db=null;
+       try{
+         const name=String(s.logical_name||"");
+         db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
+         const rs=execRows(db,`SELECT DISTINCT date FROM bars_daily WHERE date<=? ORDER BY date DESC LIMIT ${lookback}`,[asOf]);
+         for(const r of rs){const d=String(r.date);if(!dates.includes(d))dates.push(d)}
+         dates.sort().reverse();
+         if(dates.length>=lookback)break;
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+     const chosen=dates.sort().slice(-lookback);
+     if(chosen.length<75)throw new Error(`Need >=75 trading dates, got ${chosen.length}`);
+     const from=chosen[0],actualAsOf=chosen[chosen.length-1];
+     const chosenSet=new Set(chosen);
+
+     stage="04-bars";
+     const byCode=new Map(),usedShards=[];
+     for(const s of usable.slice().reverse()){
+       if(String(s.range_end||"")<from||String(s.range_start||"")>actualAsOf)continue;
+       let db=null;
+       try{
+         const name=String(s.logical_name||"");
+         db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
+         const rs=execRows(db,`SELECT code,date,
+                  COALESCE(adj_h,h,adj_c,c) AS h,
+                  COALESCE(adj_l,l,adj_c,c) AS l,
+                  COALESCE(adj_c,c) AS c,
+                  volume AS volume,
+                  COALESCE(turnover_value,value) AS turnover_value FROM bars_daily
+           WHERE date>=? AND date<=? AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,actualAsOf]);
+         usedShards.push(String(s.shard_key));
+         for(const r of rs){
+           const d=String(r.date); if(!chosenSet.has(d))continue;
+           const code=String(r.code), c=Number(r.c),v=(r.volume==null||r.volume==="")?null:Number(r.volume),
+                 tv=(r.turnover_value==null||r.turnover_value==="")?null:Number(r.turnover_value),
+                 h=Number(r.h),l=Number(r.l);
+           if(!Number.isFinite(c)||c<=0)continue;
+           if(!byCode.has(code))byCode.set(code,[]);
+           byCode.get(code).push({date:d,c,v,tv:Number.isFinite(tv)?tv:null,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c});
+         }
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+
+     stage="04b-topix";
+     let topixReturns={ret5:null,ret20:null,ret60:null,ret120:null}, topixStatus="missing";
+     let tdb=null;
+     try{
+       tdb=new p.OpfsSAHPoolDb("/jq_topix_v1.sqlite","r");
+       const trs=execRows(tdb,"SELECT raw_json FROM topix");
+       const tm=new Map();
+       for(const rr of trs){
+         try{
+           const o=JSON.parse(String(rr.raw_json||"{}"));
+           const d=String(o.Date??o.date??"").slice(0,10);
+           const c=Number(o.C??o.Close??o.c??o.close);
+           if(d&&Number.isFinite(c)&&c>0)tm.set(d,c);
+         }catch(_){}
+       }
+       const tc=chosen.map(d=>tm.get(d));
+       const li=tc.length-1,last=tc[li];
+       const rp=n=>(li>=n&&Number.isFinite(last)&&Number.isFinite(tc[li-n])&&tc[li-n]>0)?((last/tc[li-n])-1)*100:null;
+       topixReturns={ret5:rp(5),ret20:rp(20),ret60:rp(60),ret120:rp(120)};
+       topixStatus=Number.isFinite(topixReturns.ret20)?"ready":"insufficient";
+       tdb.close();tdb=null;
+     }catch(_){try{if(tdb)tdb.close()}catch(__){}}
+
+     stage="05-calc";
+     const avg=(a)=>a.reduce((x,y)=>x+y,0)/a.length;
+     const pct=(a,b)=>b?((a/b)-1)*100:null;
+     function rsi14(xs){
+       if(xs.length<15)return null;
+       let g=0,l=0;
+       for(let i=1;i<=14;i++){const d=xs[i]-xs[i-1];if(d>0)g+=d;else l-=d}
+       let ag=g/14,al=l/14;
+       for(let i=15;i<xs.length;i++){
+         const d=xs[i]-xs[i-1],gg=d>0?d:0,ll=d<0?-d:0;
+         ag=((ag*13)+gg)/14; al=((al*13)+ll)/14;
+       }
+       if(al===0)return 100;
+       return 100-(100/(1+(ag/al)));
+     }
+     const rollingMA=(xs,n)=>xs.map((_,i)=>i<n-1?null:avg(xs.slice(i-n+1,i+1)));
+     const slopePct=(series,n)=>{if(series.length<=n)return null;const c=series.at(-1),p=series.at(-1-n);return(c==null||p==null||p===0)?null:pct(c,p)};
+     const emaSeries=(xs,n)=>{if(!xs.length)return[];const al=2/(n+1),o=[xs[0]];for(let i=1;i<xs.length;i++)o.push(al*xs[i]+(1-al)*o.at(-1));return o};
+     const midpoint=(hs,ls,end,n)=>{if(end<0)end+=hs.length;const st=end-n+1;if(st<0||end>=hs.length)return null;return(Math.max(...hs.slice(st,end+1))+Math.min(...ls.slice(st,end+1)))/2};
+     const ichimoku=(hs,ls,cs)=>{const last=cs.length-1,ten=midpoint(hs,ls,last,9),kij=midpoint(hs,ls,last,26),fa=(ten!=null&&kij!=null)?(ten+kij)/2:null,fb=midpoint(hs,ls,last,52),src=last-26,ot=midpoint(hs,ls,src,9),ok=midpoint(hs,ls,src,26),sa=(ot!=null&&ok!=null)?(ot+ok)/2:null,sb=midpoint(hs,ls,src,52),cr=cs.length>=27?cs.at(-27):null;let ab="",cd="";if(sa!=null&&sb!=null){const top=Math.max(sa,sb),bot=Math.min(sa,sb);ab=cs.at(-1)>top?"1":cs.at(-1)<bot?"0":"Inside";cd=sa>sb?"Bullish":sa<sb?"Bearish":"Flat"}return{tenkan:ten,kijun:kij,spanA:sa,spanB:sb,futureA:fa,futureB:fb,chikouRef:cr,chikouBullish:cr==null?"":(cs.at(-1)>cr?"1":"0"),aboveCloud:ab,cloudDirection:cd}};
+     const atrWilder=(hs,ls,cs,n=14)=>{if(cs.length<n+1)return null;const tr=[];for(let i=1;i<cs.length;i++)tr.push(Math.max(hs[i]-ls[i],Math.abs(hs[i]-cs[i-1]),Math.abs(ls[i]-cs[i-1])));let at=avg(tr.slice(0,n));for(let i=n;i<tr.length;i++)at=((at*(n-1))+tr[i])/n;return at};
+     const breakout=(close,hs,ls,n)=>hs.length<=n?["",""]:[close>Math.max(...hs.slice(-1-n,-1))?"1":"0",close<Math.min(...ls.slice(-1-n,-1))?"1":"0"];
+     const alignment=(m5,m25,m75,m200)=>[m5,m25,m75,m200].some(x=>x==null)?"":m5>m25&&m25>m75&&m75>m200?"Bullish":m5<m25&&m25<m75&&m75<m200?"Bearish":"Mixed";
+     const trendState=(price,m5,m25,m75,m200,s25,s75,s200)=>{if([m5,m25,m75,m200].every(x=>x!=null)){if(price>m5&&m5>m25&&m25>m75&&m75>m200&&[s25,s75,s200].every(x=>(x||0)>0))return"PerfectOrderBull";if(price<m5&&m5<m25&&m25<m75&&m75<m200&&[s25,s75,s200].every(x=>(x||0)<0))return"PerfectOrderBear"}if(m25!=null&&m75!=null){if(price>m25&&m25>m75&&(s25||0)>0)return"ShortTermBull";if(price>m25&&m25<=m75&&(s25||0)>0)return"Recovery";if(price<m25&&m25<m75&&(s25||0)<0)return"ShortTermBear";if(price<m25&&m25>=m75&&(s25||0)<0)return"Deteriorating"}return"Consolidation"};
+     const rows=[];
+     for(const [code,a0] of byCode){
+       const a=a0.sort((x,y)=>x.date.localeCompare(y.date));
+       if(a.length<60)continue;
+       const closes=a.map(x=>x.c), vols=a.map(x=>x.v), highs=a.map(x=>x.h), lows=a.map(x=>x.l), last=a[a.length-1];
+       if(last.date!==actualAsOf)continue;
+       const ms5=rollingMA(closes,5),ms25=rollingMA(closes,25),ms75=rollingMA(closes,75),ms200=rollingMA(closes,200);
+       const ma5=ms5.at(-1),ma25=ms25.at(-1),ma75=ms75.at(-1),ma200=ms200.at(-1);
+       const slope5=slopePct(ms5,5),slope25=slopePct(ms25,5),slope75=slopePct(ms75,20),slope200=slopePct(ms200,20);
+       const high20=Math.max(...highs.slice(-20)), low20=Math.min(...lows.slice(-20));
+       const high60=Math.max(...highs.slice(-60)), low60=Math.min(...lows.slice(-60));
+       const lowClose20=Math.min(...closes.slice(-20)), lowClose60=Math.min(...closes.slice(-60));
+       const distMa25=pct(last.c,ma25), distMa75=pct(last.c,ma75);
+       const pos20=high20>low20?((last.c-low20)/(high20-low20))*100:null;
+       const pos60=high60>low60?((last.c-low60)/(high60-low60))*100:null;
+       const prev5=closes.length>=6?closes[closes.length-6]:null;
+       const prev20=closes.length>=21?closes[closes.length-21]:null;
+       const prev60=closes.length>=61?closes[closes.length-61]:null;
+       const prev120=closes.length>=121?closes[closes.length-121]:null;
+       const vol20vals=vols.slice(-20).filter(v=>Number.isFinite(v));
+       const vol20=vol20vals.length?avg(vol20vals):null;
+       const rs=rsi14(closes);
+       const ret5=prev5?pct(last.c,prev5):null,ret20=prev20?pct(last.c,prev20):null;
+       const ret60=prev60?pct(last.c,prev60):null,ret120=prev120?pct(last.c,prev120):null;
+       const rel5=(ret5!=null&&topixReturns.ret5!=null)?ret5-topixReturns.ret5:null;
+       const rel20=(ret20!=null&&topixReturns.ret20!=null)?ret20-topixReturns.ret20:null;
+       const rel60=(ret60!=null&&topixReturns.ret60!=null)?ret60-topixReturns.ret60:null;
+       const rel120=(ret120!=null&&topixReturns.ret120!=null)?ret120-topixReturns.ret120:null;
+       const volRatio=(Number.isFinite(last.v)&&vol20>0)?last.v/vol20:null;
+       // PC technical.py: 52-week reference levels intentionally use adjusted CLOSE,
+       // unlike 20D/60D high-low fields which use intraday High/Low.
+       const high52=closes.length>=252?Math.max(...closes.slice(-252)):null;
+       const low52=closes.length>=252?Math.min(...closes.slice(-252)):null;
+       const atr14=atrWilder(highs,lows,closes);
+       const atr14Pct=(atr14!=null&&last.c)?atr14/last.c*100:null;
+       const [new20H,new20L]=breakout(last.c,highs,lows,20);
+       const [new60H,new60L]=breakout(last.c,highs,lows,60);
+       const [new52H,new52L]=breakout(last.c,highs,lows,252);
+       const e12=emaSeries(closes,12),e26=emaSeries(closes,26);
+       const macs=e12.map((x,i)=>x-e26[i]),sigs=emaSeries(macs,9);
+       const macd=closes.length>=26?macs.at(-1):null;
+       const macdSignal=closes.length>=34?sigs.at(-1):null;
+       const macdHistogram=(macd!=null&&macdSignal!=null)?macd-macdSignal:null;
+       let macdState="";
+       if(macdSignal!=null&&macs.length>=2){
+         const pd=macs.at(-2)-sigs.at(-2),cd=macs.at(-1)-sigs.at(-1);
+         macdState=pd<=0&&cd>0?"GoldenCross":pd>=0&&cd<0?"DeadCross":cd>0?"AboveSignal":cd<0?"BelowSignal":"OnSignal";
+       }
+       const recent5v=a.slice(-5).map(x=>x.v).filter(Number.isFinite),recent20v=a.slice(-20).map(x=>x.v).filter(Number.isFinite);
+       const volumeRatio5To20=(recent5v.length&&recent20v.length&&recent20v.reduce((p,c)=>p+c,0)!==0)
+         ?(recent5v.reduce((p,c)=>p+c,0)/recent5v.length)/(recent20v.reduce((p,c)=>p+c,0)/recent20v.length):null;
+       const recentTV=a.slice(-20).map(x=>x.tv).filter(Number.isFinite);
+       const averageTradingValue20D=recentTV.length?recentTV.reduce((p,c)=>p+c,0)/recentTV.length:null;
+       const latestTradingValueRatioTo20D=(Number.isFinite(last.tv)&&averageTradingValue20D>0)?last.tv/averageTradingValue20D:null;
+       const positionVs60DHighPct=closes.length>=60?last.c/Math.max(...closes.slice(-60))*100:null;
+       const macdHist5Ago=(macs.length>=6&&sigs.length>=6)?macs.at(-6)-sigs.at(-6):null;
+       const macdHistogramChange5D=(macdHistogram!=null&&macdHist5Ago!=null)?macdHistogram-macdHist5Ago:null;
+       const ichi=ichimoku(highs,lows,closes);
+       const maAlignment=alignment(ma5,ma25,ma75,ma200);
+       const trend=trendState(last.c,ma5,ma25,ma75,ma200,slope25,slope75,slope200);
+       // Transparent PoC score: trend + momentum + volume. Not yet the desktop production screener.
+       let score=0;
+       if(last.c>ma25)score+=1;
+       if(ma25>ma75)score+=1;
+       if(ret20!=null)score+=Math.max(-2,Math.min(2,ret20/10));
+       if(volRatio!=null)score+=Math.max(-1,Math.min(1,(volRatio-1)));
+       if(!Number.isFinite(ma5)||!Number.isFinite(ma25)){
+         throw new Error(`core technical calculation invalid for ${code}`);
+       }
+       if(!Array.isArray(a)||!a.length){
+         throw new Error(`technical history series missing for ${code}`);
+       }
+       rows.push({code,date:last.date,close:last.c,ma5,ma25,ma75,ma200,slope5,slope25,slope75,slope200,
+         distMa5:pct(last.c,ma5),distMa25,distMa75,distMa200:pct(last.c,ma200),atr14,atr14Pct,
+         high20,low20,high60,low60,high52,low52,distHigh20:pct(last.c,high20),distLow20:pct(last.c,low20),
+         distHigh60:pct(last.c,high60),distLow60:pct(last.c,low60),distHigh52:pct(last.c,high52),distLow52:pct(last.c,low52),
+         new20H,new20L,new60H,new60L,new52H,new52L,pos20,pos60,rsi14:rs,macd,macdSignal,macdHistogram,macdState,
+         ichimokuTenkan:ichi.tenkan,ichimokuKijun:ichi.kijun,ichimokuSenkouA:ichi.spanA,ichimokuSenkouB:ichi.spanB,
+         ichimokuFutureSenkouA:ichi.futureA,ichimokuFutureSenkouB:ichi.futureB,ichimokuChikouReferenceClose:ichi.chikouRef,
+         ichimokuChikouBullish:ichi.chikouBullish,ichimokuAboveCloud:ichi.aboveCloud,ichimokuCloudDirection:ichi.cloudDirection,
+         aboveMA5:ma5!=null?(last.c>ma5?"1":"0"):"",aboveMA25:ma25!=null?(last.c>ma25?"1":"0"):"",
+         aboveMA75:ma75!=null?(last.c>ma75?"1":"0"):"",aboveMA200:ma200!=null?(last.c>ma200?"1":"0"):"",
+         maAlignment,trendState:trend,ret5,ret20,ret60,ret120,topixRet5:topixReturns.ret5,topixRet20:topixReturns.ret20,
+         topixRet60:topixReturns.ret60,topixRet120:topixReturns.ret120,rel5,rel20,rel60,rel120,
+         volume:last.v,vol20,volRatio,volumeRatio5To20,averageTradingValue20D,latestTradingValueRatioTo20D,positionVs60DHighPct,
+         macdHistogramChange5D,historyDays:a.length,score});
+     }
+     rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);
+     self.postMessage({ok:true,type:"result",stage:"PASS",requestedAsOf:asOf,asOf:actualAsOf,
+       from,tradingDates:chosen.length,usedShards,topixStatus,topixReturns,candidates:rows.length,top:rows.slice(0,topN),
+       all:payload.returnAll?rows:undefined,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}
+   finally{try{if(cdb)cdb.close()}catch(_){}}
+ }
+ if(cmd==="scan-missing-weekdays"){
+   let cdb=null,stage="01-catalog";
+   try{
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const years=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end
+       FROM shard_catalog WHERE dataset='bars_daily' AND state='ready'
+       AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key`);
+     cdb.close();cdb=null;
+     const missing=[],stats=[];
+     stage="02-scan";
+     for(const s of years){
+       let db=null;
+       try{
+         const name=String(s.logical_name||""); db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
+         const dates=new Set(execRows(db,"SELECT DISTINCT date FROM bars_daily ORDER BY date").map(r=>String(r.date)));
+         const mn=String(s.range_start||""),mx=String(s.range_end||"");
+         let candidate=0;
+         if(mn&&mx){
+           for(let d=new Date(mn+"T12:00:00Z"),e=new Date(mx+"T12:00:00Z");d<=e;d.setUTCDate(d.getUTCDate()+1)){
+             const dow=d.getUTCDay(); if(dow===0||dow===6)continue;
+             const iso=d.toISOString().slice(0,10);
+             if(!dates.has(iso)){missing.push(iso);candidate++}
+           }
+         }
+         stats.push({shardKey:String(s.shard_key),rangeStart:mn,rangeEnd:mx,tradingDates:dates.size,weekdayCandidates:candidate});
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+     self.postMessage({ok:true,type:"result",stage:"PASS",years:stats,missing,
+       candidateCount:missing.length,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}
+   finally{try{if(cdb)cdb.close()}catch(_){}}
+ }
+ if(cmd==="catalog-coverage-audit"){
+   let cdb=null,stage="01-catalog-open";
+   try{
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const has=Number(scalar(cdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='shard_catalog'")||0)>0;
+     if(!has) throw new Error("shard_catalog missing");
+     const rows=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end,state,updated_at
+       FROM shard_catalog WHERE dataset='bars_daily' AND state='ready' ORDER BY range_start,shard_key`);
+     cdb.close();cdb=null;
+
+     const years=rows.filter(r=>/^bars_\d{4}$/.test(String(r.shard_key||"")));
+     const recent=rows.find(r=>String(r.shard_key)==="bars_recent")||null;
+     const gaps=[];
+     function daysBetween(a,b){
+       if(!a||!b)return null;
+       const x=new Date(a+"T00:00:00Z"),y=new Date(b+"T00:00:00Z");
+       return Math.round((y-x)/86400000);
+     }
+     for(let i=1;i<years.length;i++){
+       const prev=years[i-1],cur=years[i];
+       const d=daysBetween(String(prev.range_end||""),String(cur.range_start||""));
+       if(d!=null && d>14) gaps.push({
+         after:String(prev.shard_key),before:String(cur.shard_key),
+         prevEnd:String(prev.range_end||""),nextStart:String(cur.range_start||""),calendarGapDays:d
+       });
+     }
+     self.postMessage({ok:true,type:"result",stage:"PASS",yearShards:years,recent,gaps,
+       coverageStart:years.length?String(years[0].range_start||""):null,
+       coverageEnd:years.length?String(years[years.length-1].range_end||""):null,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(cdb)cdb.close()}catch(_){}}
+ }
+
+ if(cmd==="catalog-read-bars-range"){
+   const payload=e.data.payload||{};
+   const from=String(payload.from||""),to=String(payload.to||"");
+   const code=String(payload.code||"").trim();
+   const sampleLimit=Math.max(1,Math.min(200,Number(payload.sampleLimit||50)));
+   let cdb=null,stage="01-validate";
+   try{
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)
+       throw new Error("from/to invalid");
+     stage="02-catalog";
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cat=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end,state
+       FROM shard_catalog
+       WHERE dataset='bars_daily' AND state='ready'
+         AND COALESCE(range_end,'9999-12-31')>=?
+         AND COALESCE(range_start,'0000-01-01')<=?
+       ORDER BY range_start,shard_key`,[from,to]);
+     cdb.close();cdb=null;
+
+     // Prefer canonical year shards. Use bars_recent only as fallback for years
+     // which have no ready year shard, preventing duplicate (code,date) reads.
+     const y1=Number(from.slice(0,4)),y2=Number(to.slice(0,4));
+     const selected=[],catalogWarnings=[];
+     for(let y=y1;y<=y2;y++){
+       const yf=`${y}-01-01`,yt=`${y}-12-31`;
+       const segFrom=from>yf?from:yf,segTo=to<yt?to:yt;
+       let entry=cat.find(r=>String(r.shard_key)===`bars_${y}`);
+       if(!entry){
+         const rr=cat.find(r=>String(r.shard_key)==="bars_recent" &&
+           String(r.range_end||"9999-12-31")>=segFrom && String(r.range_start||"0000-01-01")<=segTo);
+         if(rr){
+           entry=rr;
+           catalogWarnings.push(`${y}: year shard missing; bars_recent fallback`);
+         }else{
+           catalogWarnings.push(`${y}: no ready shard for requested range`);
+           continue;
+         }
+       }
+       selected.push({year:y,segFrom,segTo,...entry});
+     }
+     if(!selected.length) throw new Error("Catalog could not resolve any shard for requested range");
+
+     stage="03-read";
+     const shardStats=[],samples=[];
+     let totalRows=0;
+     const seen=new Set();
+     for(const s of selected){
+       let db=null;
+       try{
+         const name=String(s.logical_name||"");
+         db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
+         const where=["date>=?","date<=?"],bind=[s.segFrom,s.segTo];
+         if(code){where.push("code=?");bind.push(code)}
+         const count=Number(scalarBind(db,`SELECT COUNT(*) FROM bars_daily WHERE ${where.join(" AND ")}`,bind)||0);
+         const minDate=scalarBind(db,`SELECT MIN(date) FROM bars_daily WHERE ${where.join(" AND ")}`,bind);
+         const maxDate=scalarBind(db,`SELECT MAX(date) FROM bars_daily WHERE ${where.join(" AND ")}`,bind);
+         totalRows+=count;
+         shardStats.push({shardKey:String(s.shard_key),logicalName:name,segFrom:s.segFrom,segTo:s.segTo,count,minDate,maxDate});
+
+         if(samples.length<sampleLimit){
+           const lim=sampleLimit-samples.length;
+           const rs=execRows(db,`SELECT code,date,o,h,l,c,volume,turnover_value
+             FROM bars_daily WHERE ${where.join(" AND ")}
+             ORDER BY date,code LIMIT ${Number(lim)}`,bind);
+           for(const r of rs){
+             const k=`${r.code}|${r.date}`;
+             if(!seen.has(k)){seen.add(k);samples.push(r)}
+           }
+         }
+       }finally{try{if(db)db.close()}catch(_){}}
+     }
+     self.postMessage({ok:true,type:"result",stage:"PASS",from,to,code:code||null,
+       selected:shardStats,totalRows,samples,catalogWarnings,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(cdb)cdb.close()}catch(_){}}
+ }
+ if(cmd==="shard-native-daily-write"){
+   const payload=e.data.payload||{}, date=String(payload.date||""), rows=payload.rows||[];
+   let recentDb=null,yearDb=null,catDb=null,stage="01-validate";
+   try{
+     if(!/^\d{4}-?\d{2}-?\d{2}$/.test(date)) throw new Error("invalid date");
+     const iso=date.includes("-")?date:`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`;
+     const year=Number(iso.slice(0,4));
+     if(!Array.isArray(rows)||!rows.length) throw new Error("API rows empty");
+
+     const aliases={
+       date:["Date","date"],code:["Code","code"],
+       o:["O","o","Open","open"],h:["H","h","High","high"],l:["L","l","Low","low"],c:["C","c","Close","close"],
+       upper_limit:["UL","UpperLimit","upper_limit"],lower_limit:["LL","LowerLimit","lower_limit"],
+       volume:["Vo","Volume","volume"],value:["Va","Value","TurnoverValue","value","turnover_value"],
+       adj_factor:["AdjFactor","AdjustmentFactor","adj_factor","adjustment_factor"],
+       adj_o:["AdjO","AdjustmentOpen","adj_o","adjustment_open"],
+       adj_h:["AdjH","AdjustmentHigh","adj_h","adjustment_high"],
+       adj_l:["AdjL","AdjustmentLow","adj_l","adjustment_low"],
+       adj_c:["AdjC","AdjustmentClose","adj_c","adjustment_close"],
+       adj_volume:["AdjVo","AdjustmentVolume","adj_volume","adjustment_volume"],
+       turnover_value:["Va","TurnoverValue","turnover_value"],raw_json:["__RAW_JSON__"]
+     };
+     function pick(obj,c){
+       if(c==="raw_json") return JSON.stringify(obj);
+       for(const k of (aliases[c]||[c])) if(Object.prototype.hasOwnProperty.call(obj,k)) return obj[k];
+       return null;
+     }
+     function ensureBars(db){
+       db.exec(`CREATE TABLE IF NOT EXISTS bars_daily(
+         code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,
+         upper_limit REAL,lower_limit REAL,value REAL,
+         adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,
+         adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,
+         PRIMARY KEY(code,date)
+       ) WITHOUT ROWID`);
+       db.exec(`CREATE INDEX IF NOT EXISTS idx_bars_date ON bars_daily(date)`);
+       db.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+     }
+     function writeRows(db){
+       ensureBars(db);
+       const cols=tableInfo(db,"bars_daily").map(x=>x.name);
+       const insertCols=cols.filter(c=>pick(rows[0],c)!==null||["date","code"].includes(c));
+       const updates=insertCols.filter(c=>!["code","date"].includes(c))
+         .map(c=>`${qident(c)}=excluded.${qident(c)}`).join(",");
+       const sql=`INSERT INTO bars_daily(${insertCols.map(qident).join(",")})
+         VALUES(${insertCols.map(()=>"?").join(",")})
+         ON CONFLICT(code,date) DO UPDATE SET ${updates}`;
+       const stmt=db.prepare(sql);
+       try{
+         db.exec("BEGIN");
+         for(const r of rows) stmt.bind(insertCols.map(c=>pick(r,c))).stepReset();
+         db.exec("COMMIT");
+       }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
+       finally{stmt.finalize()}
+     }
+
+     stage="02-open-recent";
+     recentDb=new p.OpfsSAHPoolDb("/jq_bars_recent_v1.sqlite","c");
+     stage="03-write-recent"; writeRows(recentDb);
+
+     // keep recent to most recent 30 distinct trading dates
+     stage="04-trim-recent";
+     recentDb.exec(`DELETE FROM bars_daily
+       WHERE date < (
+         SELECT MIN(date) FROM (
+           SELECT DISTINCT date FROM bars_daily ORDER BY date DESC LIMIT 30
+         )
+       )`);
+
+     stage="05-open-year";
+     const yearName=`/jq_bars_${year}_v1.sqlite`;
+     yearDb=new p.OpfsSAHPoolDb(yearName,"c");
+     stage="06-write-year"; writeRows(yearDb);
+
+     stage="07-verify";
+     const esc=iso.replace(/'/g,"''");
+     const recentCount=Number(scalar(recentDb,`SELECT COUNT(*) FROM bars_daily WHERE date='${esc}'`)||0);
+     const yearCount=Number(scalar(yearDb,`SELECT COUNT(*) FROM bars_daily WHERE date='${esc}'`)||0);
+     const recentQc=String(scalar(recentDb,"PRAGMA quick_check")||"");
+     const yearQc=String(scalar(yearDb,"PRAGMA quick_check")||"");
+     if(recentCount!==rows.length||yearCount!==rows.length)
+       throw new Error(`verify mismatch API=${rows.length} recent=${recentCount} year=${yearCount}`);
+     if(recentQc!=="ok"||yearQc!=="ok")
+       throw new Error(`quick_check recent=${recentQc} year=${yearQc}`);
+
+     const recentMin=String(scalar(recentDb,"SELECT MIN(date) FROM bars_daily")||"");
+     const recentMax=String(scalar(recentDb,"SELECT MAX(date) FROM bars_daily")||"");
+     const yearMin=String(scalar(yearDb,"SELECT MIN(date) FROM bars_daily")||"");
+     const yearMax=String(scalar(yearDb,"SELECT MAX(date) FROM bars_daily")||"");
+     const at=new Date().toISOString().replace(/'/g,"''");
+
+     recentDb.close(); recentDb=null;
+     yearDb.close(); yearDb=null;
+
+     stage="08-catalog";
+     catDb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+     catDb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+       shard_key TEXT PRIMARY KEY,logical_name TEXT NOT NULL,dataset TEXT NOT NULL,
+       range_start TEXT,range_end TEXT,schema_version TEXT NOT NULL,state TEXT NOT NULL,updated_at TEXT NOT NULL)`);
+     for(const x of [
+       {k:"bars_recent",n:"/jq_bars_recent_v1.sqlite",a:recentMin,b:recentMax},
+       {k:`bars_${year}`,n:`/jq_bars_${year}_v1.sqlite`,a:yearMin,b:yearMax}
+     ]){
+       catDb.exec(`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at)
+         VALUES('${x.k}','${x.n}','bars_daily','${x.a}','${x.b}','bars-v1','ready','${at}')
+         ON CONFLICT(shard_key) DO UPDATE SET logical_name='${x.n}',dataset='bars_daily',
+         range_start='${x.a}',range_end='${x.b}',schema_version='bars-v1',state='ready',updated_at='${at}'`);
+     }
+     catDb.close();catDb=null;
+
+     self.postMessage({ok:true,type:"result",stage:"PASS",date:iso,year,apiRows:rows.length,
+       recentRows:recentCount,yearRows:yearCount,recentMin,recentMax,yearMin,yearMax,
+       recentQuickCheck:recentQc,yearQuickCheck:yearQc,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),
+       stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{
+     try{if(catDb)catDb.close()}catch(_){}
+     try{if(yearDb)yearDb.close()}catch(_){}
+     try{if(recentDb)recentDb.close()}catch(_){}
+   }
+ }
+ if(cmd==="shard-write-api-date"){
+   const payload=e.data.payload||{}, date=String(payload.date||""), rows=payload.rows||[];
+   let db=null,stage="01-validate";
+   try{
+     if(!/^\d{4}-?\d{2}-?\d{2}$/.test(date)) throw new Error("invalid date");
+     const iso=date.includes("-")?date:`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`;
+     const year=Number(iso.slice(0,4));
+     if(!Array.isArray(rows)) throw new Error("rows must be an array");
+     const shardName=`/jq_bars_${year}_v1.sqlite`;
+
+     stage="02-open";
+     db=new p.OpfsSAHPoolDb(shardName,"c");
+     db.exec(`CREATE TABLE IF NOT EXISTS bars_daily(
+       code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,
+       upper_limit REAL,lower_limit REAL,value REAL,
+       adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,
+       adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,
+       PRIMARY KEY(code,date)
+     ) WITHOUT ROWID`);
+     db.exec(`CREATE INDEX IF NOT EXISTS idx_bars_year_date ON bars_daily(date)`);
+     db.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+
+     if(rows.length){
+       stage="03-write";
+       const cols=tableInfo(db,"bars_daily").map(x=>x.name);
+       const aliases={
+         date:["Date","date"],code:["Code","code"],
+         o:["O","o","Open","open"],h:["H","h","High","high"],l:["L","l","Low","low"],c:["C","c","Close","close"],
+         upper_limit:["UL","UpperLimit","upper_limit"],lower_limit:["LL","LowerLimit","lower_limit"],
+         volume:["Vo","Volume","volume"],value:["Va","Value","TurnoverValue","value","turnover_value"],
+         adj_factor:["AdjFactor","AdjustmentFactor","adj_factor","adjustment_factor"],
+         adj_o:["AdjO","AdjustmentOpen","adj_o","adjustment_open"],
+         adj_h:["AdjH","AdjustmentHigh","adj_h","adjustment_high"],
+         adj_l:["AdjL","AdjustmentLow","adj_l","adjustment_low"],
+         adj_c:["AdjC","AdjustmentClose","adj_c","adjustment_close"],
+         adj_volume:["AdjVo","AdjustmentVolume","adj_volume","adjustment_volume"],
+         turnover_value:["Va","TurnoverValue","turnover_value"],raw_json:["__RAW_JSON__"]
+       };
+       function pick(obj,c){
+         if(c==="raw_json") return JSON.stringify(obj);
+         for(const k of (aliases[c]||[c])) if(Object.prototype.hasOwnProperty.call(obj,k)) return obj[k];
+         return null;
+       }
+       const insertCols=cols.filter(c=>pick(rows[0],c)!==null||["date","code"].includes(c));
+       const updates=insertCols.filter(c=>!["code","date"].includes(c))
+         .map(c=>`${qident(c)}=excluded.${qident(c)}`).join(",");
+       const sql=`INSERT INTO bars_daily(${insertCols.map(qident).join(",")})
+         VALUES(${insertCols.map(()=>"?").join(",")})
+         ON CONFLICT(code,date) DO UPDATE SET ${updates}`;
+       const stmt=db.prepare(sql);
+       let written=0;
+       try{
+         db.exec("BEGIN");
+         for(const r of rows){
+           stmt.bind(insertCols.map(c=>pick(r,c))).stepReset();
+           written++;
+         }
+         db.exec("COMMIT");
+       }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
+       finally{stmt.finalize()}
+     }
+
+     stage="04-verify-date";
+     const cnt=Number(scalar(db,`SELECT COUNT(*) FROM bars_daily WHERE date='${iso.replace(/'/g,"''")}'`)||0);
+     const qc=String(scalar(db,"PRAGMA quick_check")||"");
+     if(qc!=="ok") throw new Error(`quick_check=${qc}`);
+     if(rows.length && cnt!==rows.length) throw new Error(`date verify mismatch API=${rows.length} DB=${cnt}`);
+     db.close();db=null;
+
+     self.postMessage({ok:true,type:"result",stage:"PASS",date:iso,year,shardName,
+       apiRows:rows.length,verifiedRows:cnt,quickCheck:qc,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,
+       message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(db)db.close()}catch(_){}}
+ }
+
+ if(cmd==="shard-finalize-api-year"){
+   const payload=e.data.payload||{}, year=Number(payload.year);
+   let db=null,catDb=null,stage="01-validate";
+   try{
+     if(!Number.isFinite(year)||year<2000||year>2100) throw new Error("invalid year");
+     const shardKey=`bars_${year}`, shardName=`/jq_bars_${year}_v1.sqlite`;
+     stage="02-open";
+     db=new p.OpfsSAHPoolDb(shardName,"c");
+     if(!tableInfo(db,"bars_daily").length) throw new Error("bars_daily missing");
+
+     stage="03-verify-year";
+     const from=`${year}-01-01`,to=`${year}-12-31`;
+     const verified=Number(scalar(db,`SELECT COUNT(*) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const days=Number(scalar(db,`SELECT COUNT(DISTINCT date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const minDate=String(scalar(db,`SELECT MIN(date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||"");
+     const maxDate=String(scalar(db,`SELECT MAX(date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||"");
+     const qc=String(scalar(db,"PRAGMA quick_check")||"");
+     if(qc!=="ok") throw new Error(`quick_check=${qc}`);
+     if(!verified||!days) throw new Error("year shard is empty");
+
+     const at=new Date().toISOString().replace(/'/g,"''");
+     db.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+     for(const [k,v] of Object.entries({
+       role:shardKey,schema_version:"bars-v1",calendar_year:String(year),
+       range_start:minDate,range_end:maxDate,source_db:"J-Quants V2 API",
+       backfill_mode:"date-by-date",migrated_at:at
+     })){
+       const kk=String(k).replace(/'/g,"''"),vv=String(v).replace(/'/g,"''");
+       db.exec(`INSERT INTO shard_meta(key,value) VALUES('${kk}','${vv}')
+         ON CONFLICT(key) DO UPDATE SET value='${vv}'`);
+     }
+     db.close();db=null;
+
+     stage="04-catalog";
+     catDb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+     catDb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+       shard_key TEXT PRIMARY KEY,logical_name TEXT NOT NULL,dataset TEXT NOT NULL,
+       range_start TEXT,range_end TEXT,schema_version TEXT NOT NULL,state TEXT NOT NULL,updated_at TEXT NOT NULL)`);
+     catDb.exec(`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at)
+       VALUES('${shardKey}','${shardName}','bars_daily','${minDate}','${maxDate}','bars-v1','ready','${at}')
+       ON CONFLICT(shard_key) DO UPDATE SET logical_name='${shardName}',dataset='bars_daily',
+       range_start='${minDate}',range_end='${maxDate}',schema_version='bars-v1',state='ready',updated_at='${at}'`);
+     catDb.close();catDb=null;
+
+     self.postMessage({ok:true,type:"result",stage:"PASS",year,shardKey,shardName,
+       verifiedRows:verified,tradingDays:days,minDate,maxDate,quickCheck:qc,
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,
+       message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),
+       elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(catDb)catDb.close()}catch(_){} try{if(db)db.close()}catch(_){}}
+ }
+ if(cmd==="shard-write-api-year"){
+   const payload=e.data.payload||{}, year=Number(payload.year), rows=payload.rows||[];
+   let dstDb=null,catDb=null,stage="01-validate";
+   try{
+     if(!Number.isFinite(year)||year<2000||year>2100) throw new Error("invalid year");
+     if(!Array.isArray(rows)||!rows.length) throw new Error("API rows empty");
+     const shardKey=`bars_${year}`, shardName=`/jq_bars_${year}_v1.sqlite`;
+     stage="02-destination-open";
+     dstDb=new p.OpfsSAHPoolDb(shardName,"c");
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS bars_daily(
+       code TEXT NOT NULL,date TEXT NOT NULL,o REAL,h REAL,l REAL,c REAL,
+       upper_limit REAL,lower_limit REAL,value REAL,
+       adj_o REAL,adj_h REAL,adj_l REAL,adj_c REAL,
+       adj_factor REAL,adj_volume REAL,volume REAL,turnover_value REAL,raw_json TEXT,
+       PRIMARY KEY(code,date)
+     ) WITHOUT ROWID`);
+     dstDb.exec(`CREATE INDEX IF NOT EXISTS idx_bars_year_date ON bars_daily(date)`);
+     dstDb.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+
+     const cols=tableInfo(dstDb,"bars_daily").map(x=>x.name);
+     const aliases={
+       date:["Date","date"],code:["Code","code"],
+       o:["O","o","Open","open"],h:["H","h","High","high"],l:["L","l","Low","low"],c:["C","c","Close","close"],
+       upper_limit:["UL","UpperLimit","upper_limit"],lower_limit:["LL","LowerLimit","lower_limit"],
+       volume:["Vo","Volume","volume"],value:["Va","Value","TurnoverValue","value","turnover_value"],
+       adj_factor:["AdjFactor","AdjustmentFactor","adj_factor","adjustment_factor"],
+       adj_o:["AdjO","AdjustmentOpen","adj_o","adjustment_open"],
+       adj_h:["AdjH","AdjustmentHigh","adj_h","adjustment_high"],
+       adj_l:["AdjL","AdjustmentLow","adj_l","adjustment_low"],
+       adj_c:["AdjC","AdjustmentClose","adj_c","adjustment_close"],
+       adj_volume:["AdjVo","AdjustmentVolume","adj_volume","adjustment_volume"],
+       turnover_value:["Va","TurnoverValue","turnover_value"],raw_json:["__RAW_JSON__"]
+     };
+     function pick(obj,c){
+       if(c==="raw_json") return JSON.stringify(obj);
+       for(const k of (aliases[c]||[c])) if(Object.prototype.hasOwnProperty.call(obj,k)) return obj[k];
+       return null;
+     }
+     const insertCols=cols.filter(c=>pick(rows[0],c)!==null||["date","code"].includes(c));
+     const updates=insertCols.filter(c=>!["code","date"].includes(c))
+       .map(c=>`${qident(c)}=excluded.${qident(c)}`).join(",");
+     const sql=`INSERT INTO bars_daily(${insertCols.map(qident).join(",")})
+       VALUES(${insertCols.map(()=>"?").join(",")})
+       ON CONFLICT(code,date) DO UPDATE SET ${updates}`;
+     const stmt=dstDb.prepare(sql);
+     let written=0;
+     stage="03-write";
+     try{
+       dstDb.exec("BEGIN");
+       for(const r of rows){
+         stmt.bind(insertCols.map(c=>pick(r,c))).stepReset();
+         written++;
+         if(written%50000===0) status("03-write",`${written.toLocaleString()} / ${rows.length.toLocaleString()} rows`);
+       }
+       dstDb.exec("COMMIT");
+     }catch(err){try{dstDb.exec("ROLLBACK")}catch(_){} throw err}
+     finally{stmt.finalize()}
+
+     stage="04-verify";
+     const from=`${year}-01-01`,to=`${year}-12-31`;
+     const verified=Number(scalar(dstDb,`SELECT COUNT(*) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const days=Number(scalar(dstDb,`SELECT COUNT(DISTINCT date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||0);
+     const minDate=String(scalar(dstDb,`SELECT MIN(date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||"");
+     const maxDate=String(scalar(dstDb,`SELECT MAX(date) FROM bars_daily WHERE date>='${from}' AND date<='${to}'`)||"");
+     const qc=String(scalar(dstDb,"PRAGMA quick_check")||"");
+     if(qc!=="ok") throw new Error(`quick_check=${qc}`);
+     if(!verified||!days) throw new Error("verified year is empty");
+
+     const at=new Date().toISOString().replace(/'/g,"''");
+     for(const [k,v] of Object.entries({
+       role:shardKey,schema_version:"bars-v1",calendar_year:String(year),
+       range_start:minDate,range_end:maxDate,source_db:"J-Quants V2 API",migrated_at:at
+     })){
+       const kk=String(k).replace(/'/g,"''"),vv=String(v).replace(/'/g,"''");
+       dstDb.exec(`INSERT INTO shard_meta(key,value) VALUES('${kk}','${vv}')
+         ON CONFLICT(key) DO UPDATE SET value='${vv}'`);
+     }
+     dstDb.close();dstDb=null;
+
+     stage="05-catalog";
+     catDb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","c");
+     catDb.exec(`CREATE TABLE IF NOT EXISTS shard_catalog(
+       shard_key TEXT PRIMARY KEY,logical_name TEXT NOT NULL,dataset TEXT NOT NULL,
+       range_start TEXT,range_end TEXT,schema_version TEXT NOT NULL,state TEXT NOT NULL,updated_at TEXT NOT NULL)`);
+     catDb.exec(`INSERT INTO shard_catalog(shard_key,logical_name,dataset,range_start,range_end,schema_version,state,updated_at)
+       VALUES('${shardKey}','${shardName}','bars_daily','${minDate}','${maxDate}','bars-v1','ready','${at}')
+       ON CONFLICT(shard_key) DO UPDATE SET logical_name='${shardName}',dataset='bars_daily',
+       range_start='${minDate}',range_end='${maxDate}',schema_version='bars-v1',state='ready',updated_at='${at}'`);
+     catDb.close();catDb=null;
+
+     self.postMessage({ok:true,type:"result",stage:"PASS",year,shardName,
+       apiRows:rows.length,writtenRows:written,verifiedRows:verified,tradingDays:days,
+       minDate,maxDate,quickCheck:qc,elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }catch(err){
+     self.postMessage({ok:false,type:"error",stage,message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),elapsedMs:Math.round(performance.now()-t0)});
+     return;
+   }finally{try{if(catDb)catDb.close()}catch(_){} try{if(dstDb)dstDb.close()}catch(_){}}
+ }
+ if(cmd==="shard-health"){
+   const catalogName="/jq_catalog_v1.sqlite";
+   let cdb=null,sdb=null,stage="start";
+   const mark=(s,detail="")=>{stage=s;status(s,detail)};
+   try{
+     mark("01-catalog-open","Catalog DB open");
+     cdb=new p.OpfsSAHPoolDb(catalogName,"c");
+
+     mark("02-catalog-read","Catalog read");
+     const rows=execRows(cdb,"SELECT * FROM shard_catalog ORDER BY shard_key");
+     const recent=rows.find(x=>x.shard_key==="bars_recent");
+     if(!recent) throw new Error("bars_recent is not registered in catalog");
+
+     mark("03-catalog-close","Catalog close");
+     cdb.close();cdb=null;
+
+     mark("04-shard-open","bars_recent reopen (mode=c)");
+     const open0=performance.now();
+     sdb=new p.OpfsSAHPoolDb(recent.logical_name,"c");
+     const openMs=Math.round(performance.now()-open0);
+
+     mark("05-shard-check","bars_recent health check");
+     const tableOk=Number(scalar(sdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)===1;
+     const count=tableOk?Number(scalar(sdb,"SELECT COUNT(*) FROM bars_daily")||0):0;
+     const meta=execRows(sdb,"SELECT * FROM shard_meta ORDER BY key");
+
+     mark("06-shard-close","bars_recent close");
+     sdb.close();sdb=null;
+
+     self.postMessage({
+       ok:tableOk,type:"result",stage:"PASS",
+       catalogName,shard:recent,tableOk,count,meta,openMs,
+       poolFiles:p.getFileNames(),
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }catch(err){
+     self.postMessage({
+       ok:false,type:"error",stage,
+       message:String(err&&err.message?err.message:err),
+       stack:String(err&&err.stack?err.stack:""),
+       elapsedMs:Math.round(performance.now()-t0)
+     });
+     return;
+   }finally{
+     try{if(sdb)sdb.close()}catch(_){}
+     try{if(cdb)cdb.close()}catch(_){}
+   }
+ }
+
+ if(cmd==="init"){self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,vfs,poolClass:!!p.OpfsSAHPoolDb,capacity:p.getCapacity(),poolName:"jq-sahpool",poolDirectory:".jq-sahpool-v7c-r5",origin:self.location.origin,files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
+ 
+  if(cmd==="backup-stats"){
+ const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;db=new p.OpfsSAHPoolDb(marketName,"r");
+ const pc=Number(scalar(db,"PRAGMA page_count")||0),ps=Number(scalar(db,"PRAGMA page_size")||0),rows=Number(scalar(db,"SELECT MAX(rowid) FROM bars_daily")||0);
+ db.close();db=null;self.postMessage({ok:true,type:"result",dbBytes:pc*ps,rows});return;
+}
+if(cmd==="backup-create"){
+ const resolved=resolveExistingMarketDb(p,name),marketName=resolved.name,backupName="/jq_market_snapshot.sqlite";
+ if(p.getFileNames().includes(backupName))p.unlink(backupName);
+ db=new p.OpfsSAHPoolDb(marketName,"r");status("backup","VACUUM INTO snapshot");db.exec(`VACUUM INTO '${backupName}'`);db.close();db=null;
+ const b=new p.OpfsSAHPoolDb(backupName,"r"),qc=String(scalar(b,"PRAGMA quick_check")||""),rows=Number(scalar(b,"SELECT COUNT(*) FROM bars_daily")||0),minDate=scalar(b,"SELECT MIN(date) FROM bars_daily"),maxDate=scalar(b,"SELECT MAX(date) FROM bars_daily"),pc=Number(scalar(b,"PRAGMA page_count")||0),ps=Number(scalar(b,"PRAGMA page_size")||0);b.close();
+ self.postMessage({ok:qc==="ok",type:"result",backupName,qc,rows,minDate,maxDate,dbBytes:pc*ps,elapsedMs:Math.round(performance.now()-t0)});return;
+}
+
+if(cmd==="market-warm-open"){
+ const marketName=resolveMarketNameWithoutOpen(p,name);
+ const tOpen=performance.now();
+ const h=getCachedMarketDb(p,marketName);
+ const openMs=Math.round(performance.now()-tOpen);
+ const schema=Number(scalar(h,"PRAGMA schema_version")||0);
+ self.postMessage({ok:true,type:"result",marketName,schema,poolFiles:p.getFileNames(),
+   openMs,elapsedMs:Math.round(performance.now()-t0)});
+ return;
+}
+
+if(cmd==="market-fast-health"){
+ let marketName=cachedMarketDbName, h=cachedMarketDb;
+ if(!h){
+   marketName=resolveMarketNameWithoutOpen(p,name);
+   h=getCachedMarketDb(p,marketName);
+ }
+ const tableOk=Number(scalar(h,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)===1;
+ const sample=execRows(h,"SELECT code,date,c FROM bars_daily LIMIT 1")[0]||null;
+ self.postMessage({ok:tableOk&&!!sample,type:"result",marketName,tableOk,sample,
+   poolFiles:p.getFileNames(),reusedOpenHandle:!!cachedMarketDb,elapsedMs:Math.round(performance.now()-t0)});
+ return;
+}
+
+if(cmd==="pool-diagnostic"){
+    const files=poolFileNamesSafe(p);
+    const requested=name, base=String(requested||"").replace(/^\/+/,"");
+    const normalized=files.map(f=>({raw:f,base:String(f).replace(/^\/+/,"")}));
+    self.postMessage({ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsName:p.vfsName,
+      capacity:p.getCapacity(),requested,base,files,normalized,
+      exactRaw:files.includes(requested),exactBase:normalized.filter(x=>x.base===base).map(x=>x.raw),
+      elapsedMs:Math.round(performance.now()-t0)});return;
+  }
+  if(cmd==="pool-probe-candidates"){
+    const files=poolFileNamesSafe(p);
+    const requested=name, base=String(requested||"").replace(/^\/+/,"");
+    const candidates=[]; const add=x=>{if(x&&!candidates.includes(x))candidates.push(x)};
+    add(requested); add("/"+base); add(base);
+    for(const f of files){add(f);add(f.startsWith("/")?f:"/"+f)}
+    const probes=[];
+    for(const candidate of candidates){
+      let q=null;
+      try{
+        q=new p.OpfsSAHPoolDb(candidate,"r");
+        const tables=Number(scalar(q,"SELECT COUNT(*) FROM sqlite_master WHERE type='table'")||0);
+        const hasBars=Number(scalar(q,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)>0;
+        let bars=null,minDate=null,maxDate=null;
+        if(hasBars){bars=Number(scalar(q,"SELECT COUNT(*) FROM bars_daily")||0);minDate=scalar(q,"SELECT MIN(date) FROM bars_daily");maxDate=scalar(q,"SELECT MAX(date) FROM bars_daily")}
+        q.close();q=null; probes.push({candidate,open:"PASS",tables,hasBars,bars,minDate,maxDate});
+      }catch(err){try{if(q)q.close()}catch(_){} probes.push({candidate,open:"FAIL",error:String(err?.message||err)})}
+    }
+    self.postMessage({ok:true,type:"result",requested,files,candidates,probes,elapsedMs:Math.round(performance.now()-t0)});return;
+  }
+  if(cmd==="import"){if(!d.file)throw new Error("File missing"); const out=await importFile(d.file,name); self.postMessage({ok:true,type:"result",...out,vfsName:p.vfsName,files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;}
+ if(cmd==="smoke-write"){
+   const smoke="/jq_sah_smoke.sqlite";
+   try{if(p.getFileNames().includes(smoke))p.unlink(smoke)}catch(_){}
+   db=new p.OpfsSAHPoolDb(smoke,"c");
+   db.exec("CREATE TABLE smoke_test(id INTEGER PRIMARY KEY, value TEXT NOT NULL)");
+   db.exec({sql:"INSERT INTO smoke_test(value) VALUES(?)",bind:["SAHPOOL-PERSIST-OK"]});
+   const rows=Number(scalar(db,"SELECT COUNT(*) FROM smoke_test")||0);
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",smoke,rows,files:p.getFileNames(),elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="smoke-read"){
+   const smoke="/jq_sah_smoke.sqlite";
+   if(!p.getFileNames().includes(smoke))throw new Error("smoke DB missing after Worker restart");
+   db=new p.OpfsSAHPoolDb(smoke,"r");
+   const rows=Number(scalar(db,"SELECT COUNT(*) FROM smoke_test")||0);
+   const value=String(scalar(db,"SELECT value FROM smoke_test LIMIT 1")||"");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",smoke,rows,value,persisted:rows===1&&value==="SAHPOOL-PERSIST-OK",elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+
+
+
+
+
+ if(cmd==="bars-gap-scan"){
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+   const payload=e.data.payload||{}, from=payload.from, to=payload.to;
+   if(!from||!to)throw new Error("from/to missing");
+   db=new p.OpfsSAHPoolDb(marketName,"r");
+   const rows=execRows(db,`SELECT DISTINCT date FROM bars_daily WHERE date>=? AND date<=? ORDER BY date`,[from,to]);
+   let noData=[]; try{noData=execRows(db,`SELECT date FROM web_no_data_dates WHERE dataset='bars_daily' AND date>=? AND date<=? ORDER BY date`,[from,to])}catch(_){}
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",from,to,dates:rows.map(r=>r.date),noDataDates:noData.map(r=>r.date),elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+
+
+ if(cmd==="bars-write-benchmark"){
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+   const payload=e.data.payload||{}, day=payload.date, rows=payload.rows||[];
+   if(!day||!rows.length)throw new Error("benchmark requires date and rows");
+   db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
+   try{db.exec("PRAGMA temp_store=MEMORY; PRAGMA cache_size=-32768;")}catch(_){}
+   const info=tableInfo(db,"bars_daily"), cols=info.map(x=>x.name), pk=primaryKeyCols(info);
+   const aliases={
+     date:["Date","date"], code:["Code","code"], o:["O","o"], h:["H","h"], l:["L","l"], c:["C","c"],
+     upper_limit:["UL","upper_limit"], lower_limit:["LL","lower_limit"], volume:["Vo","Volume","volume"],
+     value:["Va","Value","value"], adj_factor:["AdjFactor","adj_factor"], adj_o:["AdjO","adj_o"],
+     adj_h:["AdjH","adj_h"], adj_l:["AdjL","adj_l"], adj_c:["AdjC","adj_c"], adj_volume:["AdjVo","adj_volume"],
+     raw_json:["__RAW_JSON__"]
+   };
+   function pick2(obj,c){
+     if(c==="raw_json") return JSON.stringify(obj);
+     for(const k of (aliases[c]||[c])) if(Object.prototype.hasOwnProperty.call(obj,k)) return obj[k];
+     return null;
+   }
+   const insertCols=cols.filter(c=>pick2(rows[0],c)!==null || ["date","code"].includes(c.toLowerCase()));
+   const updateCols=insertCols.filter(c=>!pk.includes(c));
+   const conflict=pk.length?` ON CONFLICT(${pk.map(qident).join(",")}) DO UPDATE SET `+
+     updateCols.map(c=>`${qident(c)}=excluded.${qident(c)}`).join(","):"";
+   const sql=`INSERT INTO bars_daily(${insertCols.map(qident).join(",")}) VALUES(${insertCols.map(()=>"?").join(",")})${conflict}`;
+   const tWrite=performance.now();
+   db.exec("BEGIN IMMEDIATE");
+   let n=0, stmt=null;
+   try{
+     stmt=db.prepare(sql);
+     for(const r of rows){
+       stmt.bind(insertCols.map(c=>pick2(r,c)));
+       stmt.step(); stmt.reset(); n++;
+     }
+     stmt.finalize(); stmt=null;
+     db.exec("COMMIT");
+   }catch(err){
+     try{if(stmt)stmt.finalize()}catch(_){}
+     try{db.exec("ROLLBACK")}catch(_){}
+     throw err;
+   }
+   const writeMs=Math.round(performance.now()-tWrite);
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",date:day,rows:n,writeMs,rowsPerSec:writeMs?Math.round(n/(writeMs/1000)):null});return;
+ }
+
+ if(cmd==="bars-auto-state"){
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+   db=new p.OpfsSAHPoolDb(marketName,"r");
+   const stats=execRows(db,`SELECT MIN(date) AS min_date, MAX(date) AS max_date,
+     COUNT(*) AS rows, COUNT(DISTINCT date) AS distinct_dates FROM bars_daily`);
+   let checkpoint=[];
+   try{checkpoint=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='bars_daily_auto'")}catch(_){}
+   let jqcheckpoint=[];
+   try{jqcheckpoint=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='bars_daily_jquants'")}catch(_){}
+   let syncLog=[];
+   try{syncLog=execRows(db,`SELECT COUNT(*) AS n, MIN(sync_date) AS min_date, MAX(sync_date) AS max_date
+     FROM sync_log WHERE dataset='bars_daily' OR dataset LIKE '%bars%'`)}catch(_){}
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",stats:stats[0]||{},checkpoint,jqcheckpoint,syncLog:syncLog[0]||{},elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="bars-auto-no-data"){
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+   const payload=e.data.payload||{}, day=payload.date, progressDataset=payload.progressDataset||"bars_daily_auto";
+   if(!day)throw new Error("date missing");
+   db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
+   db.exec("BEGIN IMMEDIATE");
+   try{
+     db.exec({sql:`INSERT INTO web_no_data_dates(dataset,date,checked_at,reason) VALUES(?,?,?,?)
+       ON CONFLICT(dataset,date) DO UPDATE SET checked_at=excluded.checked_at,reason=excluded.reason`,
+       bind:["bars_daily",day,new Date().toISOString(),"API returned 0 rows"]});
+     db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
+       VALUES(?,?,?,?,?,?)
+       ON CONFLICT(dataset) DO UPDATE SET
+       last_success_date=CASE WHEN excluded.last_success_date>web_sync_checkpoint.last_success_date THEN excluded.last_success_date ELSE web_sync_checkpoint.last_success_date END,
+       updated_at=excluded.updated_at,status=excluded.status,note=excluded.note`,
+       bind:[progressDataset,day,new Date().toISOString(),"OK",0,"API returned 0 rows"]});
+     db.exec("COMMIT");
+   }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
+   const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset=?",[progressDataset]);
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",date:day,rows:0,checkpoint:cp,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+
+ if(cmd==="bars-auto-mark"){
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+   const payload=e.data.payload||{}, day=payload.date, n=Number(payload.rows||0), progressDataset=payload.progressDataset||"bars_daily_auto";
+   if(!day)throw new Error("date missing");
+   db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
+   db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
+     VALUES(?,?,?,?,?,?)
+     ON CONFLICT(dataset) DO UPDATE SET
+     last_success_date=CASE WHEN excluded.last_success_date>web_sync_checkpoint.last_success_date THEN excluded.last_success_date ELSE web_sync_checkpoint.last_success_date END,
+     updated_at=excluded.updated_at,status=excluded.status,
+     rows_written=web_sync_checkpoint.rows_written+excluded.rows_written,note=excluded.note`,
+     bind:[progressDataset,day,new Date().toISOString(),"OK",n,"sync committed"]});
+   const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset=?",[progressDataset]);
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",checkpoint:cp,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+
+ if(cmd==="write-gate-test"){
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+   db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
+   const sample=execRows(db,"SELECT code,date,c FROM bars_daily ORDER BY date DESC, code LIMIT 1");
+   if(!sample.length)throw new Error("bars_daily sample missing");
+   const r=sample[0], before=Number(scalar(db,"SELECT MAX(rowid) FROM bars_daily")||0);
+   db.exec("BEGIN IMMEDIATE");
+   try{
+     db.exec({sql:"UPDATE bars_daily SET c=c WHERE code=? AND date=?",bind:[r.code,r.date]});
+     db.exec("COMMIT");
+   }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
+   const after=Number(scalar(db,"SELECT MAX(rowid) FROM bars_daily")||0);
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",marketName,sample:r,before,after,unchanged:before===after,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="jquants-bars-write"){
+   const resolved=resolveExistingMarketDb(p,name), marketName=resolved.name;
+   const payload=e.data.payload||{}, day=payload.date, rows=payload.rows||[], checkpointDataset=payload.checkpointDataset||"bars_daily_jquants";
+   if(!day)throw new Error("date missing");
+   db=new p.OpfsSAHPoolDb(marketName,"c"); ensureV7dTables(db);
+   try{db.exec("PRAGMA temp_store=MEMORY; PRAGMA cache_size=-32768;")}catch(_){}
+   const info=tableInfo(db,"bars_daily"), cols=info.map(x=>x.name), pk=primaryKeyCols(info);
+   if(!cols.length)throw new Error("bars_daily schema missing");
+   const aliases={
+     date:["Date","date"], code:["Code","code"],
+     o:["O","o","Open","open"], h:["H","h","High","high"], l:["L","l","Low","low"], c:["C","c","Close","close"],
+     upper_limit:["UL","UpperLimit","upper_limit"], lower_limit:["LL","LowerLimit","lower_limit"],
+     volume:["Vo","Volume","volume"], value:["Va","Value","TurnoverValue","value","turnover_value"],
+     adj_factor:["AdjFactor","AdjustmentFactor","adj_factor","adjustment_factor"],
+     adj_o:["AdjO","AdjustmentOpen","adj_o","adjustment_open"],
+     adj_h:["AdjH","AdjustmentHigh","adj_h","adjustment_high"],
+     adj_l:["AdjL","AdjustmentLow","adj_l","adjustment_low"],
+     adj_c:["AdjC","AdjustmentClose","adj_c","adjustment_close"],
+     adj_volume:["AdjVo","AdjustmentVolume","adj_volume","adjustment_volume"],
+     raw_json:["__RAW_JSON__"],
+     open:["O","Open","open"], high:["H","High","high"], low:["L","Low","low"], close:["C","Close","close"],
+     turnover_value:["Va","TurnoverValue","turnover_value"],
+     adjustment_factor:["AdjFactor","AdjustmentFactor","adjustment_factor"],
+     adjustment_open:["AdjO","AdjustmentOpen","adjustment_open"],
+     adjustment_high:["AdjH","AdjustmentHigh","adjustment_high"],
+     adjustment_low:["AdjL","AdjustmentLow","adjustment_low"],
+     adjustment_close:["AdjC","AdjustmentClose","adjustment_close"],
+     adjustment_volume:["AdjVo","AdjustmentVolume","adjustment_volume"],
+     market_cap:["MktCap","MarketCap","market_cap"], ex_rights:["ExRT","ExRights","ex_rights"]
+   };
+   function pick(obj,c){
+     if(c==="raw_json") return JSON.stringify(obj);
+     const candidates=aliases[c]||[c];
+     for(const k of candidates) if(Object.prototype.hasOwnProperty.call(obj,k)) return obj[k];
+     return null;
+   }
+   const insertCols=cols.filter(c=>rows.length && (pick(rows[0],c)!==null || ["date","code"].includes(c.toLowerCase())));
+   if(!insertCols.length)throw new Error("No compatible columns between API response and bars_daily");
+   const conflict=pk.length?` ON CONFLICT(${pk.map(qident).join(",")}) DO UPDATE SET `+
+     insertCols.filter(c=>!pk.includes(c)).map(c=>`${qident(c)}=excluded.${qident(c)}`).join(","):"";
+   const sql=`INSERT INTO ${qident("bars_daily")}(${insertCols.map(qident).join(",")}) VALUES(${insertCols.map(()=>"?").join(",")})${conflict}`;
+   const runId=`jqd-${day}-${Date.now()}`;
+   db.exec({sql:"INSERT INTO web_sync_run(run_id,dataset,started_at,status) VALUES(?,?,?,?)",
+     bind:[runId,checkpointDataset,new Date().toISOString(),"RUNNING"]});
+   db.exec("BEGIN IMMEDIATE");
+   try{
+     let n=0;
+     const stmt=db.prepare(sql);
+     try{
+       const total=rows.length;
+       for(const r of rows){
+         stmt.bind(insertCols.map(c=>pick(r,c)));
+         stmt.step();
+         stmt.reset();
+         n++;
+         if(n%500===0) status("fast-write",`${day}: ${n}/${total} rows`);
+       }
+     } finally {
+       stmt.finalize();
+     }
+     db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
+       VALUES(?,?,?,?,?,?)
+       ON CONFLICT(dataset) DO UPDATE SET
+       last_success_date=CASE WHEN excluded.last_success_date>web_sync_checkpoint.last_success_date THEN excluded.last_success_date ELSE web_sync_checkpoint.last_success_date END,
+       updated_at=excluded.updated_at,status=excluded.status,rows_written=web_sync_checkpoint.rows_written+excluded.rows_written,note=excluded.note`,
+       bind:[checkpointDataset,day,new Date().toISOString(),"OK",n,"J-Quants daily bars committed"]});
+     db.exec("COMMIT");
+     db.exec({sql:"UPDATE web_sync_run SET finished_at=?,status='OK',rows_written=?,last_date=? WHERE run_id=?",
+       bind:[new Date().toISOString(),n,day,runId]});
+     const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset=?",[checkpointDataset]);
+     const verify=execRows(db,`SELECT * FROM ${qident("bars_daily")} WHERE ${qident(pk.includes("date")?"date":insertCols[0])}=? LIMIT 1`,[day]);
+     db.close();db=null;
+     self.postMessage({ok:true,type:"result",date:day,rows:n,columns:insertCols,schemaColumns:cols,pk,checkpoint:cp,verify,elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){
+     try{db.exec("ROLLBACK")}catch(_){}
+     try{db.exec({sql:"UPDATE web_sync_run SET finished_at=?,status='ERROR',error=? WHERE run_id=?",
+       bind:[new Date().toISOString(),String(err),runId]})}catch(_){}
+     throw err;
+   }
+ }
+
+ if(cmd==="schema-probe"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"r");
+   const tables=[];db.exec({sql:"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",rowMode:"array",callback:r=>tables.push(r[0])});
+   const details={};
+   for(const t of tables){
+     const info=tableInfo(db,t);
+     details[t]={columns:info.map(x=>x.name),pk:primaryKeyCols(info),dateCols:dateLikeCols(info),sample:sampleRows(db,t,1)};
+   }
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",tables,details,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="date-batch-test"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   db.exec(`CREATE TABLE IF NOT EXISTS web_daily_batch_probe(
+     date TEXT NOT NULL, code TEXT NOT NULL, close REAL, volume REAL,
+     PRIMARY KEY(date,code)
+   )`);
+   const runId=`probe-${Date.now()}`, days=["2026-08-27","2026-08-28","2026-08-29"];
+   db.exec({sql:"INSERT INTO web_sync_run(run_id,dataset,started_at,status) VALUES(?,?,?,?)",
+     bind:[runId,"web_daily_batch_probe",new Date().toISOString(),"RUNNING"]});
+   let total=0;
+   for(const day of days){
+     db.exec("BEGIN IMMEDIATE");
+     try{
+       for(let i=0;i<5;i++){
+         const code=String(9000+i);
+         db.exec({sql:`INSERT INTO web_daily_batch_probe(date,code,close,volume) VALUES(?,?,?,?)
+           ON CONFLICT(date,code) DO UPDATE SET close=excluded.close,volume=excluded.volume`,
+           bind:[day,code,100+i,1000+i]});
+         total++;
+       }
+       db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,status,rows_written,note)
+         VALUES(?,?,?,?,?,?)
+         ON CONFLICT(dataset) DO UPDATE SET last_success_date=excluded.last_success_date,
+         updated_at=excluded.updated_at,status=excluded.status,rows_written=excluded.rows_written,note=excluded.note`,
+         bind:["web_daily_batch_probe",day,new Date().toISOString(),"OK",total,"date-commit checkpoint"]});
+       db.exec("COMMIT");
+       status("date-commit",`${day}: committed`);
+     }catch(e){try{db.exec("ROLLBACK")}catch(_){} throw e}
+   }
+   db.exec({sql:"UPDATE web_sync_run SET finished_at=?,status='OK',rows_written=?,last_date=? WHERE run_id=?",
+     bind:[new Date().toISOString(),total,days.at(-1),runId]});
+   const count=Number(scalar(db,"SELECT COUNT(*) FROM web_daily_batch_probe")||0);
+   const checkpoint=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='web_daily_batch_probe'");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",count,total,checkpoint,runId,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="date-batch-resume"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureV7dTables(db);
+   const cp=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='web_daily_batch_probe'");
+   if(!cp.length)throw new Error("date-batch checkpoint missing");
+   const last=cp[0].last_success_date;
+   const next="2026-08-30";
+   db.exec("BEGIN IMMEDIATE");
+   try{
+     for(let i=0;i<5;i++) db.exec({sql:`INSERT INTO web_daily_batch_probe(date,code,close,volume) VALUES(?,?,?,?)
+       ON CONFLICT(date,code) DO UPDATE SET close=excluded.close,volume=excluded.volume`,
+       bind:[next,String(9000+i),200+i,2000+i]});
+     db.exec({sql:`UPDATE web_sync_checkpoint SET last_success_date=?,updated_at=?,rows_written=rows_written+5,note=? WHERE dataset=?`,
+       bind:[next,new Date().toISOString(),`resumed after ${last}`,"web_daily_batch_probe"]});
+     db.exec("COMMIT");
+   }catch(e){try{db.exec("ROLLBACK")}catch(_){} throw e}
+   const count=Number(scalar(db,"SELECT COUNT(*) FROM web_daily_batch_probe")||0);
+   const checkpoint=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='web_daily_batch_probe'");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",resumedFrom:last,next,count,checkpoint,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+
+ if(cmd==="runtime-migrate"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureRuntimeTables(db);
+   const mig=Number(scalar(db,"SELECT COUNT(*) FROM web_runtime_migrations WHERE migration_id='v7d-runtime-1'")||0);
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",migration:mig===1,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="append-test"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureRuntimeTables(db);
+   db.exec("BEGIN IMMEDIATE");
+   try{
+     db.exec({sql:`INSERT INTO web_sync_checkpoint(dataset,last_success_date,updated_at,note)
+       VALUES(?,?,?,?)
+       ON CONFLICT(dataset) DO UPDATE SET last_success_date=excluded.last_success_date,
+       updated_at=excluded.updated_at,note=excluded.note`,
+       bind:["v7d_append_test","2026-08-30",new Date().toISOString(),"direct-write checkpoint test"]});
+     db.exec("COMMIT");
+   }catch(e){try{db.exec("ROLLBACK")}catch(_){} throw e}
+   const rows=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='v7d_append_test'");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",rows,elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+ if(cmd==="resume-test"){
+   if(!p.getFileNames().includes(name))throw new Error(`DB not found: ${name}`);
+   db=new p.OpfsSAHPoolDb(name,"c"); ensureRuntimeTables(db);
+   const before=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='v7d_append_test'");
+   if(!before.length)throw new Error("checkpoint missing");
+   db.exec({sql:"UPDATE web_sync_checkpoint SET note=?,updated_at=? WHERE dataset=?",
+     bind:["resume-after-worker-restart",new Date().toISOString(),"v7d_append_test"]});
+   const after=execRows(db,"SELECT * FROM web_sync_checkpoint WHERE dataset='v7d_append_test'");
+   db.close();db=null;
+   self.postMessage({ok:true,type:"result",before,after,resumed:after[0]?.note==="resume-after-worker-restart",elapsedMs:Math.round(performance.now()-t0)});return;
+ }
+
+ if(!p.getFileNames().includes(name)) throw new Error(`SAH pool DB not found: ${name}. Step 2でレスキューSQLiteをImportしてください。`);
+ db=new p.OpfsSAHPoolDb(name,"r");
+ if(cmd==="open"){const hasBars=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bars_daily'")||0)>0,hasSync=Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sync_log'")||0)>0;const out={ok:true,type:"result",sqliteVersion:s.version.libVersion,vfsUsed:p.vfsName,filename:name,tableCount:Number(scalar(db,"SELECT COUNT(*) FROM sqlite_master WHERE type='table'")||0),barsCount:hasBars?Number(scalar(db,"SELECT MAX(rowid) FROM bars_daily")||0):0,minDate:hasBars?scalar(db,"SELECT MIN(date) FROM bars_daily"):null,maxDate:hasBars?scalar(db,"SELECT MAX(date) FROM bars_daily"):null,syncOk:hasSync?Number(scalar(db,"SELECT COUNT(*) FROM sync_log WHERE dataset='bars_daily' AND status='OK'")||0):0,elapsedMs:Math.round(performance.now()-t0)};db.close();self.postMessage(out);return;}
+ if(cmd==="quick"){const quick=String(scalar(db,"PRAGMA quick_check")??"");db.close();self.postMessage({ok:true,type:"result",quick,elapsedMs:Math.round(performance.now()-t0)});return;}
+ throw new Error(`Unknown cmd: ${cmd}`);
+ }catch(err){try{if(db)db.close()}catch(_){} self.postMessage({ok:false,type:"result",stage:"caught-exception",error:String(err?.stack||err)})}};
