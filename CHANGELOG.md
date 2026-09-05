@@ -1,3 +1,13 @@
+# v7e-alpha82 - 2026-09-03
+
+- Factor Monitor parity follow-up from alpha81 diagnostics.
+- Restored PC-equivalent Size factors by adding `EstimatedMarketCap = Close * EffectiveShares` to the Web Screening base.
+- Restored `LatestTradingValueRatioTo20D` from daily turnover and wired it into Factor `MedianTradingValueRatio20D` / `FlowProxy`.
+- Fixed Factor Summary sort comparator precedence so rank ordering follows the PC implementation.
+- Added monthly Sector Seasonality cache persistence. PC itself reuses `private/work/seasonality/sector_seasonality_profile_YYYYMM.csv` within a month, so a mid-month Web migration can import that profile once instead of rebuilding from a different current universe.
+- Added optional PC monthly Seasonality profile seed input and `Web Factor membership` diagnostic CSV export.
+- Existing Screening / Discovery / Watchlist parity logic is unchanged.
+
 # v7e-alpha81 - 2026-09-03
 
 - Added Factor Monitor PC/Web parity from the full Web Screening universe.

@@ -1133,6 +1133,29 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      const count=Number(scalar(pdb,"SELECT COUNT(*) FROM factor_state_web")||0);pdb.close();pdb=null;self.postMessage({ok:true,type:"result",count,date});return;
    }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
  }
+ if(cmd==="factor-seasonality-cache-load"){
+   let pdb=null;try{
+     const monthKey=String(d.payload?.monthKey||"").replace(/[^0-9]/g,"").slice(0,6);
+     if(!/^\d{6}$/.test(monthKey)){self.postMessage({ok:true,type:"result",rows:[],count:0,monthKey});return}
+     if(!poolFileNamesSafe(p).some(f=>f.replace(/^\/+/,"")==="jq_private_v1.sqlite")){self.postMessage({ok:true,type:"result",rows:[],count:0,monthKey});return}
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS factor_seasonality_cache_web(month_key TEXT NOT NULL,row_key TEXT NOT NULL,row_json TEXT NOT NULL,source TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(month_key,row_key)) WITHOUT ROWID`);
+     const rows=execRows(pdb,"SELECT row_json FROM factor_seasonality_cache_web WHERE month_key=? ORDER BY row_key",[monthKey]).map(x=>{try{return JSON.parse(String(x.row_json||"{}"))}catch(_){return{}}});
+     const source=String(scalarBind(pdb,"SELECT source FROM factor_seasonality_cache_web WHERE month_key=? LIMIT 1",[monthKey])||"");
+     pdb.close();pdb=null;self.postMessage({ok:true,type:"result",rows,count:rows.length,monthKey,source});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+ if(cmd==="factor-seasonality-cache-save"){
+   let pdb=null;try{
+     const payload=d.payload||{},monthKey=String(payload.monthKey||"").replace(/[^0-9]/g,"").slice(0,6),rows=Array.isArray(payload.rows)?payload.rows:[],source=String(payload.source||"WebBuilt");
+     if(!/^\d{6}$/.test(monthKey)||!rows.length)throw new Error("seasonality cache input invalid");
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS factor_seasonality_cache_web(month_key TEXT NOT NULL,row_key TEXT NOT NULL,row_json TEXT NOT NULL,source TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(month_key,row_key)) WITHOUT ROWID`);
+     const st=pdb.prepare(`INSERT OR REPLACE INTO factor_seasonality_cache_web(month_key,row_key,row_json,source,updated_at) VALUES(?,?,?,?,?)`),now=new Date().toISOString();
+     try{pdb.exec("BEGIN IMMEDIATE");pdb.exec("DELETE FROM factor_seasonality_cache_web WHERE month_key='"+monthKey.replace(/'/g,"''")+"'");for(const r of rows){const k=`${String(r.FactorKey||"")}|${String(r.SeasonMonth||"")}`;if(!String(r.FactorKey||"")||!String(r.SeasonMonth||""))continue;st.bind([monthKey,k,JSON.stringify(r),source,now]);st.step();st.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{try{st.finalize()}catch(_){}}
+     const count=Number(scalarBind(pdb,"SELECT COUNT(*) FROM factor_seasonality_cache_web WHERE month_key=?",[monthKey])||0);pdb.close();pdb=null;self.postMessage({ok:true,type:"result",count,monthKey,source});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
  if(cmd==="factor-seasonality-profile"){
    const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),pairs=Array.isArray(payload.codeSectors)?payload.codeSectors:[];
    if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
@@ -1915,7 +1938,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    let master=0,financial=0,forecast=0;
    const rows=techRows.map(t=>{const code=norm(t.code),m=mmap.get(code)||{},f=fmap.get(code)||{};if(m.company_name)master++;if(f.discDate)financial++;if(f.forecastEPS!=null||f.forecastSales!=null||f.forecastOP!=null)forecast++;return {
      Date:payload.asOf||t.date||null,NormalizedCode:code,CompanyName:m.company_name||null,Market:m.market||null,Sector17:m.sector17||null,Sector33:m.sector33||null,MarginCategory:m.margin_category||null,ProductCategory:m.product_category||null,
-     Close:t.close??null,PriceHistoryDays:t.historyDays??null,AverageTradingValue20D:t.averageTradingValue20D??null,VolumeRatio5To20:t.volumeRatio5To20??null,
+     Close:t.close??null,PriceHistoryDays:t.historyDays??null,AverageTradingValue20D:t.averageTradingValue20D??null,LatestTradingValueRatioTo20D:t.latestTradingValueRatioTo20D??null,VolumeRatio5To20:t.volumeRatio5To20??null,
      MA5:t.ma5??null,MA25:t.ma25??null,MA75:t.ma75??null,MA200:t.ma200??null,RSI14:t.rsi14??null,Return5D:t.ret5??null,Return20D:t.ret20??null,Return60D:t.ret60??null,Return120D:t.ret120??null,
      RelativeToTOPIX5D:t.rel5??null,RelativeToTOPIX20D:t.rel20??null,RelativeToTOPIX60D:t.rel60??null,RelativeToTOPIX120D:t.rel120??null,ATR14Pct:t.atr14Pct??null,High20D:t.high20??null,Low20D:t.low20??null,High60D:t.high60??null,Low60D:t.low60??null,High52Week:t.high52??null,Low52Week:t.low52??null,
      MA25DeviationPct:t.distMa25??null,MA75DeviationPct:t.distMa75??null,MA25Slope5DPct:t.slope25??null,MA75Slope20DPct:t.slope75??null,
@@ -1927,6 +1950,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      ActualEPS:f.ActualEPS??f.eps??null,FinancialDataFlag:f.FinancialDataFlag??"",
      ActualPER:(t.close!=null&&f.ActualEPS>0)?t.close/f.ActualEPS:null,ForecastPER:(t.close!=null&&f.ForecastEPS>0)?t.close/f.ForecastEPS:null,
      PBR:(t.close!=null&&f.BPS>0)?t.close/f.BPS:null,
+     EstimatedMarketCap:(t.close!=null&&f.EffectiveShares>0)?t.close*f.EffectiveShares:null,
      ForecastDividendYieldPct:(t.close!=null&&f.ForecastAnnualDividend!=null)?f.ForecastAnnualDividend/t.close*100:null,
      FinancialHistoryCount:f.FinancialHistoryCount??0,ComparablePriorFound:!!f.ComparablePriorFound
    }});
@@ -2168,6 +2192,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          ?(recent5v.reduce((p,c)=>p+c,0)/recent5v.length)/(recent20v.reduce((p,c)=>p+c,0)/recent20v.length):null;
        const recentTV=a.slice(-20).map(x=>x.tv).filter(Number.isFinite);
        const averageTradingValue20D=recentTV.length?recentTV.reduce((p,c)=>p+c,0)/recentTV.length:null;
+       const latestTradingValueRatioTo20D=(Number.isFinite(last.tv)&&averageTradingValue20D>0)?last.tv/averageTradingValue20D:null;
        const positionVs60DHighPct=closes.length>=60?last.c/Math.max(...closes.slice(-60))*100:null;
        const macdHist5Ago=(macs.length>=6&&sigs.length>=6)?macs.at(-6)-sigs.at(-6):null;
        const macdHistogramChange5D=(macdHistogram!=null&&macdHist5Ago!=null)?macdHistogram-macdHist5Ago:null;
@@ -2198,7 +2223,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          aboveMA75:ma75!=null?(last.c>ma75?"1":"0"):"",aboveMA200:ma200!=null?(last.c>ma200?"1":"0"):"",
          maAlignment,trendState:trend,ret5,ret20,ret60,ret120,topixRet5:topixReturns.ret5,topixRet20:topixReturns.ret20,
          topixRet60:topixReturns.ret60,topixRet120:topixReturns.ret120,rel5,rel20,rel60,rel120,
-         volume:last.v,vol20,volRatio,volumeRatio5To20,averageTradingValue20D,positionVs60DHighPct,
+         volume:last.v,vol20,volRatio,volumeRatio5To20,averageTradingValue20D,latestTradingValueRatioTo20D,positionVs60DHighPct,
          macdHistogramChange5D,historyDays:a.length,score});
      }
      rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);

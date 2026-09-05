@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha81",
+  "current_release": "v7e-alpha82",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -50,6 +50,11 @@
       "release": "v7e-alpha79",
       "date": "2026-09-03",
       "note": "Fix JST/UTC date-iteration off-by-one in supply date scans and related date helpers; ensures target-day short-sale-report disclosures (e.g. 2026-09-03) are actually queried."
+    },
+    {
+      "release": "v7e-alpha82",
+      "date": "2026-09-03",
+      "note": "Factor core parity fixes (Size/turnover FlowProxy), monthly Seasonality cache migration, Factor membership diagnostics."
     }
   ],
   "releases": [
