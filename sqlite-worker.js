@@ -1208,6 +1208,40 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
  }
 
+ if(cmd==="watchlist-load"){
+   let pdb=null;try{
+     const files=poolFileNamesSafe(p).map(f=>f.replace(/^\/+/,""));
+     if(!files.includes("jq_private_v1.sqlite")){self.postMessage({ok:true,type:"result",master:[],state:[],alerts:[],meta:{},masterCount:0,stateCount:0,alertCount:0});return}
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_master_web(watch_id TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_state_web(watch_id TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_alert_latest_web(alert_key TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_alert_history_web(alert_key TEXT PRIMARY KEY,alert_date TEXT NOT NULL,watch_id TEXT NOT NULL,alert_type TEXT NOT NULL,row_json TEXT NOT NULL,created_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_alert_meta_web(meta_key TEXT PRIMARY KEY,meta_value TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     const read=t=>execRows(pdb,`SELECT row_json FROM ${t} ORDER BY 1`).map(x=>{try{return JSON.parse(String(x.row_json||"{}"))}catch(_){return{}}});
+     const master=read("watchlist_master_web"),state=read("watchlist_state_web"),alerts=read("watchlist_alert_latest_web"),meta={};
+     for(const x of execRows(pdb,"SELECT meta_key,meta_value FROM watchlist_alert_meta_web"))meta[String(x.meta_key||"")]=String(x.meta_value||"");
+     pdb.close();pdb=null;self.postMessage({ok:true,type:"result",master,state,alerts,meta,masterCount:master.length,stateCount:state.length,alertCount:alerts.length});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+ if(cmd==="watchlist-evaluation-save"){
+   let pdb=null;try{
+     const payload=d.payload||{},master=Array.isArray(payload.master)?payload.master:[],state=Array.isArray(payload.state)?payload.state:[],alerts=Array.isArray(payload.alerts)?payload.alerts:[],asOf=String(payload.asOf||"").slice(0,10),engineVersion=String(payload.engineVersion||"").trim(),factorDate=String(payload.factorDate||"").slice(0,10);
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("watchlist save asOf invalid");
+     if(!master.length)throw new Error("watchlist save master missing");
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_master_web(watch_id TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_state_web(watch_id TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_alert_latest_web(alert_key TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_alert_history_web(alert_key TEXT PRIMARY KEY,alert_date TEXT NOT NULL,watch_id TEXT NOT NULL,alert_type TEXT NOT NULL,row_json TEXT NOT NULL,created_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_alert_meta_web(meta_key TEXT PRIMARY KEY,meta_value TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     const now=new Date().toISOString(),ms=pdb.prepare(`INSERT OR REPLACE INTO watchlist_master_web(watch_id,row_json,updated_at) VALUES(?,?,?)`),ss=pdb.prepare(`INSERT OR REPLACE INTO watchlist_state_web(watch_id,row_json,updated_at) VALUES(?,?,?)`),la=pdb.prepare(`INSERT OR REPLACE INTO watchlist_alert_latest_web(alert_key,row_json,updated_at) VALUES(?,?,?)`),ha=pdb.prepare(`INSERT OR IGNORE INTO watchlist_alert_history_web(alert_key,alert_date,watch_id,alert_type,row_json,created_at) VALUES(?,?,?,?,?,?)`),meta=pdb.prepare(`INSERT OR REPLACE INTO watchlist_alert_meta_web(meta_key,meta_value,updated_at) VALUES(?,?,?)`);
+     const alertKey=(r,i)=>String(r.AlertKey||`${asOf}|${r.WatchID||""}|${r.AlertType||""}|${r.TriggerReason||""}|${i}`).trim();
+     try{pdb.exec("BEGIN IMMEDIATE");pdb.exec("DELETE FROM watchlist_master_web");pdb.exec("DELETE FROM watchlist_state_web");pdb.exec("DELETE FROM watchlist_alert_latest_web");for(const r of master){const id=String(r.WatchID||"").trim();if(!id)continue;ms.bind([id,JSON.stringify(r),now]);ms.step();ms.reset()}for(const r of state){const id=String(r.WatchID||"").trim();if(!id)continue;ss.bind([id,JSON.stringify(r),now]);ss.step();ss.reset()}alerts.forEach((r,i)=>{const k=alertKey(r,i),j=JSON.stringify({...r,AlertKey:k});la.bind([k,j,now]);la.step();la.reset();ha.bind([k,asOf,String(r.WatchID||""),String(r.AlertType||""),j,now]);ha.step();ha.reset()});for(const [k,v] of Object.entries({engineVersion,lastCommittedAsOf:asOf,lastFactorDate:factorDate,lastCommittedAt:now})){meta.bind([k,String(v||""),now]);meta.step();meta.reset()}pdb.exec("COMMIT")}catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}finally{for(const st of [ms,ss,la,ha,meta])try{st.finalize()}catch(_){}}
+     const historyCount=Number(scalar(pdb,"SELECT COUNT(*) FROM watchlist_alert_history_web")||0);pdb.close();pdb=null;self.postMessage({ok:true,type:"result",masterCount:master.length,stateCount:state.length,alertCount:alerts.length,historyCount,asOf,engineVersion});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
+ }
+
  if(cmd==="discovery-short-trace"){
    let db=null;try{
      const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),codes=new Set((payload.codes||[]).map(v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean));

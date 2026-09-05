@@ -25,3 +25,7 @@ PC is a reference implementation during migration, not a permanent product ceili
 - `history/alphaXX-alphaYY.md` — consolidated milestone-range development history
 - root `CHANGELOG.md` — chronological human-readable changes
 - root `release_history.json` — machine-readable release history
+
+
+## Watchlist alerts
+Web-first Watchlist Re-Evaluation Alert is available from alpha88. Preview is non-destructive; explicit commit persists trigger state and alert history. Alerts request re-evaluation and are not buy signals.

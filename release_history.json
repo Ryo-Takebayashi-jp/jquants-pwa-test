@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha87",
+  "current_release": "v7e-alpha88",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -98,6 +98,13 @@
       "schema": "web-local-first-v7e",
       "migration": "No destructive schema migration. Factor engine state advances to FactorWebV7-alpha87 and reseeds once.",
       "note": "Factor prior-FY canonicalization: latest disclosure wins among equal FY matches; unsafe non-annual fallback removed; PC exact Factor parity becomes reference-only as Web-first semantics take over."
+    },
+    {
+      "release": "v7e-alpha88",
+      "date": "2026-09-05",
+      "schema": "web-local-first-v7e",
+      "migration": "No destructive migration. Adds Watchlist alert latest/history/meta tables lazily in jq_private_v1.sqlite.",
+      "note": "Web-first Watchlist Re-Evaluation Alert preview/commit engine with Factor/Seasonality baseline suppression, state de-duplication, alert history, and diagnostic CSV."
     }
   ]
 }

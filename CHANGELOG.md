@@ -133,6 +133,17 @@
 
 # CHANGELOG
 
+# v7e-alpha88 - 2026-09-05
+
+- Factor / SeasonalityのWeb-first canonical stateをWatchlistへ接続し、Re-Evaluation Alertエンジンを追加。
+- Price / Valuation / Fundamental / Factor+Seasonality / Technical / Catalyst / ReviewExpiryをPC WatchlistReEvaluationV1の意味論から移植。AlertはBuySignalではなく再評価要求。
+- Alert計算をPreview（非破壊）とCommit（state保存）に分離。Preview段階ではWatchlist master/stateを変更しない。
+- 初回Web-first移行ではFactor/Seasonalの状態変化Alertだけを一度baseline抑制し、PC Factor→Web Factorのエンジン差による誤通知を防止。
+- Commit後はcurrent alertと重複排除されたalert historyをprivate DBへ保存。同一triggerの連続通知はWatchlist stateで抑制。
+- per-watchの価格/Valuation/財務fingerprint/Factor/Seasonality/Technical/Catalyst/Expiry入力と前回stateをWatchlist Alert診断CSVへ出力可能。
+- 日次一括更新の日付同期対象へFactor / Watchlist Alert基準日を追加。
+- READMEを個別増殖させず、`docs/history/alpha80-alpha88.md` へ統合追記。
+
 ## v7e-alpha72 — 2026-09-02
 - Screening 5戦略 PC/Web 87/87完全一致を基準点として固定。
 - Discovery EpisodeのPC→Web移行を追加。`discovery_episode_master.csv` を `/jq_private_v1.sqlite` にupsert保存。

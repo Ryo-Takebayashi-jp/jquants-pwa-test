@@ -1,3 +1,3 @@
-v7e-alpha87
+v7e-alpha88
 
-Factor FY resolver canonicalization + Web-first Factor/Seasonality graduation candidate. PC exact Factor parity is retained as a diagnostic reference, not as the permanent acceptance target. See `history/alpha80-alpha87.md`.
+Web-first Watchlist Re-Evaluation Alert engine. Factor/Seasonality exact desktop parity remains a diagnostic reference; Watchlist alerts now run from Web canonical state with non-destructive preview, explicit commit, de-dup state, and alert history. See `history/alpha80-alpha88.md`.

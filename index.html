@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08111f">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>J-Quants Local-first PWA v7e-alpha87</title>
+<title>J-Quants Local-first PWA v7e-alpha88</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -21,7 +21,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha87</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha88</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 
 
 <section class="card" id="apiKeyCard">
@@ -115,7 +115,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 </section>
 <section class="card" id="watchlistMigrationCard">
   <h2>⑧ Watchlist / Investment Tracking 移行・Parity</h2>
-  <p>WatchlistはDiscoveryとは別ライフサイクルです。まずPCの <code>watchlist_master.csv</code> / <code>watchlist_state.csv</code> をWeb private DBへ一度だけ移行し、行・列を完全照合します。Alert計算エンジンはFactor/Seasonality依存のため次のParity層で接続します。</p>
+  <p>WatchlistはDiscoveryとは別ライフサイクルです。まずPCの <code>watchlist_master.csv</code> / <code>watchlist_state.csv</code> をWeb private DBへ一度だけ移行し、行・列を完全照合します。Alert計算エンジンは⑧-3でWeb-first Factor/Seasonality stateへ接続済みです。</p>
   <label>PC Watchlist master <input id="watchlistMasterFile" type="file" accept=".csv,text/csv"></label>
   <label>PC Watchlist state <input id="watchlistStateFile" type="file" accept=".csv,text/csv"></label>
   <button id="watchlistSeedBtn">PC Watchlist master/stateをWebへ移行・照合</button>
@@ -149,6 +149,18 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <pre id="factorParityResult" class="result">未実行</pre>
   <div id="factorParityTable"></div>
   <p class="desc">Factor core / Strength履歴 / Seasonality / Summaryを分離して表示します。Factor計算エンジン更新時はPCのStrengthChange1Dから前日Strengthを一度だけ再seedし、同一engine以降はWeb前日stateを使います。Seasonality profileは月次cacheとして保持し、移行途中の月はPC cacheを一度seedできます。新しい月にcacheが無ければWeb DataLakeから独立再構築します。</p>
+</section>
+<section class="card" id="watchlistAlertCard">
+  <h2>⑧-3 Watchlist Re-Evaluation Alert（Web-first）</h2>
+  <p>Web Watchlist state、当日Screening統合母集団、Web-first Factor / Seasonality stateを接続して再評価Alertを計算します。AlertはBuySignalではなく、AI/人間へ再評価を要求するキューです。</p>
+  <label>基準日 <input id="watchlistAlertAsOf" type="date" value="2026-09-04"></label>
+  <button id="watchlistAlertPreviewBtn">Watchlist Alertをプレビュー（state未更新）</button>
+  <button id="watchlistAlertCommitBtn" disabled>この判定を確定・state保存</button>
+  <button id="watchlistAlertExportBtn" class="secondary" disabled>Web Re-Evaluation Alert CSVを書き出す</button>
+  <button id="watchlistAlertDiagExportBtn" class="secondary" disabled>Watchlist Alert診断CSVを書き出す</button>
+  <pre id="watchlistAlertResult" class="result">未実行</pre>
+  <div id="watchlistAlertTable"></div>
+  <p class="desc">Previewは非破壊です。Price / Valuation / Fundamental / Factor+Seasonality / Technical / Catalyst / ReviewExpiryをPC WatchlistReEvaluationV1の意味論から移植しています。FactorはWeb-first canonical stateを利用し、初回移行時だけFactor/Seasonalの「状態変化」Alertをbaseline化して誤通知を防ぎます。Commit後は同一triggerをstateで抑制し、Alert履歴をprivate DBへ蓄積します。</p>
 </section>
 <details class="card">
   <summary><strong>旧テスト・詳細ツール</strong></summary>
@@ -196,7 +208,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha87 起動確認</h2>
+<h2>v7e-alpha88 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -998,6 +1010,6 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 </script>
 
-<script src="./app.js?v=v7e-alpha87"></script>
+<script src="./app.js?v=v7e-alpha88"></script>
 </body>
 </html>
