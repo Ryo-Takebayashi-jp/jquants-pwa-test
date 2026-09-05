@@ -17,3 +17,5 @@
 - history/README_alpha81.md
 
 - history/README_alpha83.md
+
+- `history/README_alpha84.md` — Factor FY baseline resolver / Parity graduation candidate.

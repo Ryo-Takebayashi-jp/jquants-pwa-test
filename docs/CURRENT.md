@@ -1,3 +1,3 @@
-v7e-alpha83
+v7e-alpha84
 
-Factor / Seasonality parity hardening and recent financial refresh. See `history/README_alpha83.md`.
+Factor FY baseline resolver and Parity graduation candidate. See `history/README_alpha84.md`.
