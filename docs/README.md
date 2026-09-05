@@ -28,4 +28,4 @@ PC is a reference implementation during migration, not a permanent product ceili
 
 
 ## Watchlist alerts
-Web-first Watchlist Re-Evaluation Alert is available from alpha88. Preview is non-destructive; explicit commit persists trigger state and alert history. Alerts request re-evaluation and are not buy signals.
+Web-first Watchlist Re-Evaluation Alert is available from alpha88; alpha89 canonicalizes the financial fingerprint used for Fundamental change detection. Preview is non-destructive; explicit commit persists trigger state and alert history. Alerts request re-evaluation and are not buy signals.

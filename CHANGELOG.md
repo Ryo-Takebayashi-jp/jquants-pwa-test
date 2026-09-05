@@ -1,5 +1,15 @@
 # v7e-alpha86 - 2026-09-05
 
+## v7e-alpha89 — Watchlist fundamental fingerprint canonicalization (2026-09-05)
+
+- Fix false Fundamental re-evaluation alerts on first Web-first Watchlist preview.
+- Root cause: Web `screening-base-snapshot` exposed operating/ordinary profit fields but omitted the PC-compatible derived `ForecastPrimaryProfit` and `PrimaryProfitProgressPct`, so 9/11 migrated Watchlist fingerprints appeared to lose values despite unchanged disclosure dates/EPS/dividend.
+- Add canonical `CurrentPrimaryProfit`, `ForecastPrimaryProfit`, and `PrimaryProfitProgressPct` to the Web screening base snapshot using the same OperatingProfit→OrdinaryProfit semantics as PC Screening.
+- Make Watchlist fingerprint generation use canonical derived values with compatibility fallback.
+- Extend Watchlist Alert diagnostic CSV with period/profit type and canonical primary-profit/progress fields so future fingerprint mismatches are inspectable without a diagnostic build.
+- No automatic state mutation: preview/commit semantics are unchanged.
+
+
 - Factor `technical-screening-poc` の実装上残っていた75営業日gateを60営業日へ修正。CHANGELOG上だけ60日になっていた不整合を解消。
 - Forecast Earnings Growthの前年FY resolverを、actual FY行だけを対象に `CurFYEn` / `CurPerEn` の両方で年差を評価する方式へhardening。aliasだけで判定できない場合はforecast-only行を除外した最新actual FYを安全fallbackとして利用。
 - Factor財務診断へ target FY / latest FY raw end / previous FY raw end / resolver / candidate count / FY history trace を追加し、`screening-base-snapshot`で診断列が消えていた問題を修正。
