@@ -1,3 +1,3 @@
-v7e-alpha82
+v7e-alpha83
 
-Factor Monitor / Seasonality parity. See `history/README_alpha81.md`.
+Factor / Seasonality parity hardening and recent financial refresh. See `history/README_alpha83.md`.

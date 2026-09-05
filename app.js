@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha82");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha83");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha82").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha83").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -309,6 +309,11 @@ async function jqFetchFinsHistory(from,to,token,onProgress){
    if(i<dates.length-1)await sleep(1100);
  }
  return {rows,calls,empty,endpoint:"/v2/fins/summary",strategy:"date-scan"};
+}
+async function refreshRecentFinancialSummaries(target,token,lookbackDays=7){
+ const from=addIsoDays(target,-Math.max(1,Number(lookbackDays||7))),dates=isoWeekdays(from,target);let calls=0,rows=0;
+ for(let i=0;i<dates.length;i++){const d=dates[i],g=await jqFetchFinsSummary(d,token);await workerCall("fins-summary-write",300000,null,null,{date:d,rows:g.rows,replaceDate:true});calls++;rows+=g.rows.length;if(i<dates.length-1)await sleep(1100)}
+ return {rows,calls,from,to:target};
 }
 
 async function jqFetchRange(path,from,to,token){
@@ -1740,7 +1745,7 @@ Legacy DataLake: 未使用
  finally{$("simpleDailyBtn").disabled=false}
 };
 
-// v7e-alpha82: advance the local DataLake one trading day with one operation, with current-day optional repair.
+// v7e-alpha83: advance the local DataLake one trading day with one operation, with current-day optional repair.
 function addIsoDays(iso,n){return isoAddDaysUtc(String(iso||"").slice(0,10),Number(n||0))}
 function syncDailyDateInputs(date){
  const single=["simpleDailyDate","masterDate","finsDate","earningsDate","screeningAsOf","screeningBaseAsOf","parityAsOf","discoveryAsOf"];
@@ -1783,6 +1788,7 @@ if($("nextTradingDayAllBtn")) $("nextTradingDayAllBtn").onclick=async()=>{
      target=base;
      syncDailyDateInputs(target);
      lines.length=0;lines.push(`新規日足: なし`,`最新取引日 ${target} の任意データを補完・再確認します。`,``);report();
+     await run("財務サマリー(直近7日再確認)",async()=>refreshRecentFinancialSummaries(target,token,7),{optional:false});
      const repairJobs=[
        ["信用取引週末残高",jqFetchMarginInterest,"margin-interest-write",14],
        ["日々公表信用",jqFetchMarginAlert,"margin-alert-write",3],
@@ -1802,7 +1808,7 @@ if($("nextTradingDayAllBtn")) $("nextTradingDayAllBtn").onclick=async()=>{
      lines.push("",`結果: ${failed.length?"最新日維持 / 任意データ一部NG":"最新日維持 / 任意データ補完PASS"}`,`成功: ${results.length-failed.length}/${results.length}`);
      if(failed.length)lines.push("NG: "+failed.map(x=>x.label).join(" / "));
      lines.push("",`日足DataLake最新日: ${base}`,`次の配信済み取引日はまだありません。`,`任意データは取得coverageを使って未取得/直近未配信分だけ再確認しました。`);
-     box("nextTradingDayAllResult",failed.length?"warn":"pass",lines.join("\n"));
+     invalidateDerivedCaches();box("nextTradingDayAllResult",failed.length?"warn":"pass",lines.join("\n"));
      return;
    }
    syncDailyDateInputs(target);
@@ -1810,7 +1816,7 @@ if($("nextTradingDayAllBtn")) $("nextTradingDayAllBtn").onclick=async()=>{
 
    await run("日足",async()=>{const wr=await workerCall("shard-native-daily-write",600000,null,null,{date:target,rows:barsFetch.rows});return {rows:barsFetch.rows.length,wr}});
    await run("銘柄マスター",async()=>{const g=await jqFetchEquitiesMaster(target,token);await workerCall("equities-master-write",300000,null,null,{date:target,rows:g.rows});return {rows:g.rows.length}});
-   await run("財務サマリー",async()=>{const g=await jqFetchFinsSummary(target,token);await workerCall("fins-summary-write",300000,null,null,{date:target,rows:g.rows});return {rows:g.rows.length}});
+   await run("財務サマリー(直近7日再確認)",async()=>refreshRecentFinancialSummaries(target,token,7));
    await run("決算予定",async()=>{const g=await jqFetchEarningsCalendar(target,token);await workerCall("earnings-calendar-write",300000,null,null,{date:target,rows:g.rows});return {rows:g.rows.length}});
    await run("TOPIX",async()=>{const g=await jqFetchTopix(target,target,token);await writeRangeRowsForDay("topix-write",target,g.rows);return {rows:g.rows.length}});
    await run("営業日カレンダー",async()=>{const g=await jqFetchMarketCalendar(target,target,token);await writeRangeRowsForDay("market-calendar-write",target,g.rows);return {rows:g.rows.length}});
@@ -1836,7 +1842,7 @@ if($("nextTradingDayAllBtn")) $("nextTradingDayAllBtn").onclick=async()=>{
    lines.push("",`結果: ${critical.length?"要確認":failed.length?"主要データPASS / 任意データ一部NG":"PASS"}`,`成功: ${results.length-failed.length}/${results.length}`);
    if(failed.length)lines.push("NG: "+failed.map(x=>x.label).join(" / "));
    lines.push("",`各日付入力欄を ${target} に同期済み。`,`次回は同じボタンで、この日の次の配信済み取引日へ進みます。`);
-   box("nextTradingDayAllResult",critical.length?"warn":failed.length?"warn":"pass",lines.join("\n"));
+   invalidateDerivedCaches();box("nextTradingDayAllResult",critical.length?"warn":failed.length?"warn":"pass",lines.join("\n"));
  }catch(e){box("nextTradingDayAllResult","fail",`FAIL\n${e?.message||e}\n\n日足の確定前には他データへ進まない設計です。`)}
  finally{btn.disabled=false}
 };
@@ -2129,12 +2135,17 @@ if($("screeningFinsCatchupBtn")) $("screeningFinsCatchupBtn").onclick=async()=>{
  finally{btn.disabled=false}
 };
 
-let latestFinancialNormalized=null;
+let latestFinancialNormalized=null,latestFinancialNormalizedAsOf="";
+function invalidateDerivedCaches(){
+ latestFinancialNormalized=null; latestFinancialNormalizedAsOf="";
+ latestScreeningBaseRows=[]; latestScreeningBaseAsOf="";
+ latestFactorBaseRows=[]; latestFactorMembershipRows=[]; latestFactorFinancialTraceRows=[];
+}
 if($("financialNormalizeBtn")) $("financialNormalizeBtn").onclick=async()=>{
  const btn=$("financialNormalizeBtn");btn.disabled=true;box("financialNormalizeResult","run","財務raw_jsonを正規化中…");
  try{
-   const r=await workerCall("financial-normalize-latest",180000);
-   latestFinancialNormalized=r.rows;
+   const asOf=$("screeningAsOf")?.value||localTodayIso(),r=await workerCall("financial-normalize-latest",180000,null,null,{asOf});
+   latestFinancialNormalized=r.rows;latestFinancialNormalizedAsOf=asOf;
    const withForecast=r.rows.filter(x=>x.forecastSales!=null||x.forecastOP!=null||x.forecastNP!=null||x.forecastEPS!=null).length;
    box("financialNormalizeResult","pass",`PASS\n正規化銘柄: ${r.count}\n前年同期比較可能: ${r.comparablePrior??"-"}\nYoY算出可能: ${r.yoyReady??"-"}\n会社予想あり: ${withForecast}\n対象列: Sales / Profit / Margin / YoY / ROE / EquityRatio / CFO・FCF / Forecast`);
  }catch(e){box("financialNormalizeResult","fail","FAIL\n"+(e?.message||e))}
@@ -2146,7 +2157,7 @@ if($("financialParityBtn")) $("financialParityBtn").onclick=async()=>{
  if(!file){box("financialParityResult","warn","PC版 screening_candidates.csv を選択してください");return}
  btn.disabled=true;box("financialParityResult","run","財務PC/Web Parityを計算中…");
  try{
-  const pc=parseCsv(await file.text());if(!latestFinancialNormalized){const fr=await workerCall("financial-normalize-latest",180000);latestFinancialNormalized=fr.rows}
+  const pc=parseCsv(await file.text()),asOf=String(pc.rows[0]?.AnalysisDate||pc.rows[0]?.Date||$("screeningAsOf")?.value||todayIsoLocal()).slice(0,10);if(!latestFinancialNormalized||latestFinancialNormalizedAsOf!==asOf){const fr=await workerCall("financial-normalize-latest",180000,null,null,{asOf});latestFinancialNormalized=fr.rows;latestFinancialNormalizedAsOf=asOf}
   const fm=new Map(latestFinancialNormalized.map(x=>[String(x.code),x]));
   const defs=[["Sales",["Sales","LatestSales"],"sales"],["OP",["OP","OperatingProfit","LatestOperatingProfit"],"op"],["NP",["NP","NetProfit","Profit"],"np"],["EPS",["EPS","LatestEPS"],"eps"],["ForecastSales",["ForecastSales","FSales"],"forecastSales"],["ForecastOP",["ForecastOP","FOP","ForecastOperatingProfit"],"forecastOP"],["ForecastNP",["ForecastNP","FNP"],"forecastNP"],["ForecastEPS",["ForecastEPS","FEPS"],"forecastEPS"]];
   const hs=new Set(pc.headers),specs=defs.map(([l,ns,k])=>[l,ns.find(n=>hs.has(n)),k]).filter(x=>x[1]);
@@ -2179,8 +2190,8 @@ if($("portfolioIntegratedBtn")) $("portfolioIntegratedBtn").onclick=async()=>{
    const stocks=parsed.rows.map(r=>({code:r.Code,name:r.Name,account:r.Account,shares:r.Shares,avgCost:r.AvgCost,amount:r.Amount,strategy:r.Strategy}));
    const asOf=$("screeningAsOf")?.value||localTodayIso();
    const tech=await workerCall("technical-screening-poc",300000,null,null,{asOf,lookback:320,topN:200,returnAll:true});
-   if(!latestFinancialNormalized){
-     const fr=await workerCall("financial-normalize-latest",180000); latestFinancialNormalized=fr.rows;
+   if(!latestFinancialNormalized||latestFinancialNormalizedAsOf!==asOf){
+     const fr=await workerCall("financial-normalize-latest",180000,null,null,{asOf}); latestFinancialNormalized=fr.rows;latestFinancialNormalizedAsOf=asOf;
    }
    const sr=await workerCall("supply-demand-portfolio-snapshot",180000);
    const pr=await workerCall("portfolio-integrated-snapshot",180000,null,null,{stocks,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized,supply:sr.result});
@@ -2255,15 +2266,15 @@ if($("portfolioExportBtn")) $("portfolioExportBtn").onclick=()=>{
  el.href=url;el.download=`web_portfolio_integrated_${localTodayIso().replaceAll("-","")}.csv`;el.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 
-let latestScreeningBaseRows=[];
+let latestScreeningBaseRows=[],latestScreeningBaseAsOf="";
 if($("screeningBaseBtn")) $("screeningBaseBtn").onclick=async()=>{
  const btn=$("screeningBaseBtn"),asOf=$("screeningBaseAsOf")?.value||$("screeningAsOf")?.value||todayIsoLocal();
  btn.disabled=true; box("screeningBaseResult","run",`${asOf} Screening統合母集団を構築中…`);
  try{
    const tech=await workerCall("technical-screening-poc",600000,null,null,{asOf,lookback:320,topN:5000,returnAll:true});
-   if(!latestFinancialNormalized){const fr=await workerCall("financial-normalize-latest",180000);latestFinancialNormalized=fr.rows}
+   if(!latestFinancialNormalized||latestFinancialNormalizedAsOf!==asOf){const fr=await workerCall("financial-normalize-latest",180000,null,null,{asOf});latestFinancialNormalized=fr.rows;latestFinancialNormalizedAsOf=asOf}
    const r=await workerCall("screening-base-snapshot",240000,null,null,{asOf,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized});
-   latestScreeningBaseRows=r.rows||[];
+   latestScreeningBaseRows=r.rows||[];latestScreeningBaseAsOf=asOf;
    const sf=await workerCall("screening-supply-features",300000,null,null,{asOf,codes:latestScreeningBaseRows.map(x=>x.NormalizedCode)});
    const sm=new Map((sf.rows||[]).map(x=>[String(x.NormalizedCode),x]));
    latestScreeningBaseRows=latestScreeningBaseRows.map(x=>({...x,...(sm.get(String(x.NormalizedCode))||{})}));
@@ -3127,7 +3138,7 @@ if($("discoveryTechnicalTraceExportBtn"))$("discoveryTechnicalTraceExportBtn").o
 if($("discoveryShortTraceExportBtn"))$("discoveryShortTraceExportBtn").onclick=async()=>{const f=$("discoveryDailyFile")?.files?.[0];if(!f){box("discoveryDailyParityResult","warn","PC版 discovery_episode_daily.csv を選択してください。");return}const btn=$("discoveryShortTraceExportBtn");btn.disabled=true;try{const pc=parseCsv(await f.text()).rows,asOf=$("discoveryAsOf")?.value||todayIsoLocal(),codes=[...new Set(pc.filter(r=>String(r.Date||"").slice(0,10)===asOf).map(r=>String(r.Code||"").trim()).filter(Boolean))];if(!codes.length)throw new Error("基準日のDiscovery Dailyコードがありません");const r=await workerCall("discovery-short-trace",300000,null,null,{asOf,codes});const fields=["Code","DiscDate","CalcDate","SSName","SSAddr","DICName","DICAddr","FundName","ShrtPosToSO","ShrtPosShares","PrevRptDate","PrevRptRatio","StoredDataDate"],esc=v=>'"'+String(v??"").replaceAll('"','""')+'"',csv="\uFEFF"+[fields.map(esc).join(","),...(r.rows||[]).map(x=>fields.map(k=>esc(x[k])).join(","))].join("\n");downloadBlob(new Blob([csv],{type:"text/csv;charset=utf-8"}),`web_large_short_trace_${asOf.replaceAll("-","")}.csv`);box("discoveryDailyParityResult","pass",`大口空売り診断CSVを書き出しました。\n基準日: ${asOf}\n対象コード: ${codes.length}\nraw rows: ${r.count||0}`)}catch(e){box("discoveryDailyParityResult","fail","診断CSV FAIL\n"+(e?.message||e))}finally{btn.disabled=false}};
 
 
-// v7e-alpha82: Watchlist private-state migration + unified Investment Tracking routing audit.
+// v7e-alpha83: Watchlist private-state migration + unified Investment Tracking routing audit.
 const WATCHLIST_MASTER_FIELDS=["WatchID","Status","Code","WatchStartDate","WatchReason","CurrentDecision","ReferencePrice","ThesisSummary","InvalidationSummary","ReviewExpiry","PriceTriggerPct1","PriceTriggerPct2","PriceTriggerPct3","TargetPER","TargetPBR","TargetDividendYieldPct","EarningsLeadDays","Notes","InvestmentStatus","ActionableFlag","InputReferencePrice","ReferencePriceDate","ReferencePriceSource","ReferencePriceAudit","RegisteredAt","ClosedAt","CloseReason","WatchlistVersion"];
 const WATCHLIST_STATE_FIELDS=["WatchID","Code","LastEvaluatedDate","LastPriceAlertLevel","LastPERTriggered","LastPBRTriggered","LastYieldTriggered","LastTechnicalState","LastFactorState","LastSeasonalAlert","LastDisclosureDate","LastFinancialFingerprint","LastCatalystLevel","LastExpiryAlerted","LastAlertDatePrice","LastAlertDateValuation","LastAlertDateFundamental","LastAlertDateFactor","LastAlertDateTechnical","LastAlertDateCatalyst","LastAlertDateExpiry"];
 const INVESTMENT_TRACKING_STATUSES=new Set(["TRACK_ONLY","WATCH","ACTIONABLE","WATCH_ONLY"]),INVESTMENT_TRACKING_ACTIONS=new Set(["ADD","UPSERT","REREGISTER","REMOVE","CLOSE"]);
@@ -3162,11 +3173,12 @@ if($("investmentTrackingAuditBtn"))$("investmentTrackingAuditBtn").onclick=async
 if($("investmentTrackingDiscoveryExportBtn"))$("investmentTrackingDiscoveryExportBtn").onclick=()=>{if(!latestInvestmentRoutes.discovery.length)return;downloadBlob(new Blob([simpleCsv(latestInvestmentRoutes.discovery,DISCOVERY_ROUTE_FIELDS)],{type:"text/csv;charset=utf-8"}),`web_investment_tracking_discovery_route_${todayIsoLocal().replaceAll("-","")}.csv`)};
 if($("investmentTrackingWatchlistExportBtn"))$("investmentTrackingWatchlistExportBtn").onclick=()=>{if(!latestInvestmentRoutes.watchlist.length)return;downloadBlob(new Blob([simpleCsv(latestInvestmentRoutes.watchlist,WATCHLIST_ROUTE_FIELDS)],{type:"text/csv;charset=utf-8"}),`web_investment_tracking_watchlist_route_${todayIsoLocal().replaceAll("-","")}.csv`)};
 
-// v7e-alpha82: Factor Monitor parity + monthly Seasonality cache migration/diagnostics.
+// v7e-alpha83: Factor Monitor parity + monthly Seasonality cache migration/diagnostics.
 const FACTOR_FIELDS=["Date","FactorMonitorVersion","FactorType","FactorName","FactorKey","FactorDefinition","ConstituentCount","MedianReturn5D","MedianReturn20D","MedianRelativeTOPIX5D","MedianRelativeTOPIX20D","Breadth5D","Breadth20D","RelativeBreadth5D","RelativeBreadth20D","MedianTradingValueRatio20D","FlowProxy","AccelerationRaw","BreadthAcceleration","Strength","Acceleration","StrengthChange1D","Phase","Alert","FlowDefinition","SeasonalityScore","SeasonalWinRate","SeasonalMedianExcessReturn","SeasonalMaxDD","SeasonalityConfidence","EffectiveYears","HistoricalMembershipQuality","DaysToSeasonStart","SeasonState","SeasonalAlignmentScore","SeasonalAlert"];
 const FACTOR_SUMMARY_FIELDS=["Date","Bucket","Rank","FactorType","FactorName","FactorKey","ConstituentCount","Strength","Acceleration","StrengthChange1D","FlowProxy","RelativeBreadth5D","MedianRelativeTOPIX5D","MedianRelativeTOPIX20D","Phase","Alert","SeasonalityScore","SeasonalityConfidence","SeasonalMedianExcessReturn","SeasonState","DaysToSeasonStart","SeasonalAlignmentScore","SeasonalAlert"];
 const FACTOR_CORE_FIELDS=new Set(FACTOR_FIELDS.slice(0,25)),FACTOR_SEASON_FIELDS=new Set(FACTOR_FIELDS.slice(25));
-let latestFactorWebRows=[],latestFactorDiffRows=[],latestFactorSeasonalityProfile=[],latestFactorSummaryRows=[],latestFactorBaseRows=[],latestFactorMembershipRows=[];
+const FACTOR_ENGINE_VERSION="FactorWebV3-alpha83";
+let latestFactorWebRows=[],latestFactorDiffRows=[],latestFactorSeasonalityProfile=[],latestFactorSummaryRows=[],latestFactorBaseRows=[],latestFactorMembershipRows=[],latestFactorFinancialTraceRows=[];
 function factorNum(v){if(v==null||String(v).trim()==="")return null;const n=Number(v);return Number.isFinite(n)?n:null}
 function factorMedian(vs){const a=vs.filter(Number.isFinite).sort((a,b)=>a-b),n=a.length;if(!n)return null;const m=Math.floor(n/2);return n%2?a[m]:(a[m-1]+a[m])/2}
 function factorQuantile(vs,q){const a=vs.filter(Number.isFinite).sort((a,b)=>a-b);if(!a.length)return null;if(a.length===1)return a[0];const pos=(a.length-1)*q,lo=Math.floor(pos),hi=Math.ceil(pos);return lo===hi?a[lo]:a[lo]+(a[hi]-a[lo])*(pos-lo)}
@@ -3195,15 +3207,16 @@ function factorMembershipDiagnostics(base){
 function factorCompare(pc,web,fields,key="FactorKey"){const wm=new Map(web.map(r=>[String(r[key]||""),r])),diffs=[];let perfect=0,missing=0;const numFields=new Set(fields.filter(f=>!['Date','FactorMonitorVersion','FactorType','FactorName','FactorKey','FactorDefinition','Phase','Alert','FlowDefinition','HistoricalMembershipQuality','SeasonState','SeasonalAlert','Bucket'].includes(f)));for(const p of pc){const k=String(p[key]||"");const w=wm.get(k);if(!w){missing++;diffs.push({FactorKey:k,Field:"__ROW__",Group:"Missing",PC:"present",Web:"missing"});continue}let bad=0;for(const f of fields){const a=p[f]??"",b=w[f]??"";if(numFields.has(f)){const x=factorNum(a),y=factorNum(b);if(x==null&&y==null)continue;const tol=x==null?1e-6:Math.max(1e-6,Math.abs(x)*1e-8);if(x==null||y==null||Math.abs(x-y)>tol){diffs.push({FactorKey:k,Field:f,Group:FACTOR_SEASON_FIELDS.has(f)?"Seasonality":f==="StrengthChange1D"?"History":"Core",PC:a,Web:b,AbsDiff:x!=null&&y!=null?Math.abs(x-y):""});bad++}}else if(String(a).trim()!==String(b).trim()){diffs.push({FactorKey:k,Field:f,Group:FACTOR_SEASON_FIELDS.has(f)?"Seasonality":"Core",PC:a,Web:b});bad++}}if(!bad)perfect++}const pk=new Set(pc.map(r=>String(r[key]||""))),webOnly=web.filter(r=>!pk.has(String(r[key]||""))).map(r=>String(r[key]||""));return{perfect,missing,diffs,webOnly}}
 function factorSummaryCompare(pc,web){const key=r=>`${String(r.Bucket||"")}|${String(r.Rank||"")}|${String(r.FactorKey||"")}`,wm=new Map(web.map(r=>[key(r),r])),diffs=[];let perfect=0,missing=0;const strFields=new Set(["Date","Bucket","FactorType","FactorName","FactorKey","Phase","Alert","SeasonState","SeasonalAlert"]);for(const p of pc){const k=key(p),w=wm.get(k);if(!w){missing++;diffs.push({FactorKey:k,Field:"__ROW__",Group:"Summary",PC:"present",Web:"missing"});continue}let bad=0;for(const f of FACTOR_SUMMARY_FIELDS){const a=p[f]??"",b=w[f]??"";if(strFields.has(f)){if(String(a).trim()!==String(b).trim()){diffs.push({FactorKey:k,Field:f,Group:"Summary",PC:a,Web:b});bad++}}else{const x=factorNum(a),y=factorNum(b);if(x==null&&y==null)continue;const tol=x==null?1e-6:Math.max(1e-6,Math.abs(x)*1e-8);if(x==null||y==null||Math.abs(x-y)>tol){diffs.push({FactorKey:k,Field:f,Group:"Summary",PC:a,Web:b,AbsDiff:x!=null&&y!=null?Math.abs(x-y):""});bad++}}}if(!bad)perfect++}const pk=new Set(pc.map(key)),webOnly=web.filter(r=>!pk.has(key(r))).map(key);return{perfect,missing,diffs,webOnly}}
 function factorDiffCsv(rows){return simpleCsv(rows,["FactorKey","Field","Group","PC","Web","AbsDiff"])}
-async function ensureFactorBase(asOf){if(latestScreeningBaseRows.length&&String($('screeningBaseAsOf')?.value||"")===asOf)return latestScreeningBaseRows;const tech=await workerCall("technical-screening-poc",600000,null,null,{asOf,lookback:320,topN:5000,returnAll:true});if(!latestFinancialNormalized){const fr=await workerCall("financial-normalize-latest",180000);latestFinancialNormalized=fr.rows}const r=await workerCall("screening-base-snapshot",240000,null,null,{asOf,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized});latestScreeningBaseRows=r.rows||[];const sf=await workerCall("screening-supply-features",300000,null,null,{asOf,codes:latestScreeningBaseRows.map(x=>x.NormalizedCode)}),sm=new Map((sf.rows||[]).map(x=>[String(x.NormalizedCode),x]));latestScreeningBaseRows=latestScreeningBaseRows.map(x=>({...x,...(sm.get(String(x.NormalizedCode))||{})}));if($('screeningBaseAsOf'))$('screeningBaseAsOf').value=asOf;return latestScreeningBaseRows}
-if($("factorParityBtn"))$("factorParityBtn").onclick=async()=>{const lf=$("factorLatestFile")?.files?.[0],sf=$("factorSummaryFile")?.files?.[0];if(!lf){box("factorParityResult","warn","PC版 factor_monitor_latest.csv を選択してください。screening.zip内にあります。");return}const btn=$("factorParityBtn");btn.disabled=true;try{const pc=parseCsv(await lf.text()).rows,asOf=String(pc[0]?.Date||$("factorAsOf")?.value||todayIsoLocal()).slice(0,10);if($("factorAsOf"))$("factorAsOf").value=asOf;box("factorParityResult","run",`Factor / Seasonalityを再計算中…\n基準日 ${asOf}\nScreening母集団を準備中`);const base=await ensureFactorBase(asOf);latestFactorBaseRows=base;latestFactorMembershipRows=factorMembershipDiagnostics(base);let web=buildFactorCore(base,asOf),state=await workerCall("factor-state-load",120000),prev=new Map((state.rows||[]).filter(x=>String(x.date||"")<asOf).map(x=>[String(x.factorKey),factorNum(x.strength)])),historyMode=prev.size?"Web前日state":"PC currentから前日Strengthを初回seed";const pcm=new Map(pc.map(r=>[String(r.FactorKey||""),r]));for(const r of web){let pv=prev.get(r.FactorKey);if(pv==null){const pr=pcm.get(r.FactorKey),s=factorNum(pr?.Strength),chg=factorNum(pr?.StrengthChange1D);if(s!=null&&chg!=null)pv=s-chg}r.StrengthChange1D=pv!=null&&r.Strength!=null?r.Strength-pv:null}
+async function ensureFactorBase(asOf){if(latestScreeningBaseRows.length&&latestScreeningBaseAsOf===asOf)return latestScreeningBaseRows;const tech=await workerCall("technical-screening-poc",600000,null,null,{asOf,lookback:320,topN:5000,returnAll:true});if(!latestFinancialNormalized||latestFinancialNormalizedAsOf!==asOf){const fr=await workerCall("financial-normalize-latest",180000,null,null,{asOf});latestFinancialNormalized=fr.rows;latestFinancialNormalizedAsOf=asOf}const r=await workerCall("screening-base-snapshot",240000,null,null,{asOf,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized});latestScreeningBaseRows=r.rows||[];latestScreeningBaseAsOf=asOf;const sf=await workerCall("screening-supply-features",300000,null,null,{asOf,codes:latestScreeningBaseRows.map(x=>x.NormalizedCode)}),sm=new Map((sf.rows||[]).map(x=>[String(x.NormalizedCode),x]));latestScreeningBaseRows=latestScreeningBaseRows.map(x=>({...x,...(sm.get(String(x.NormalizedCode))||{})}));if($('screeningBaseAsOf'))$('screeningBaseAsOf').value=asOf;return latestScreeningBaseRows}
+if($("factorParityBtn"))$("factorParityBtn").onclick=async()=>{const lf=$("factorLatestFile")?.files?.[0],sf=$("factorSummaryFile")?.files?.[0];if(!lf){box("factorParityResult","warn","PC版 factor_monitor_latest.csv を選択してください。screening.zip内にあります。");return}const btn=$("factorParityBtn");btn.disabled=true;try{const pc=parseCsv(await lf.text()).rows,asOf=String(pc[0]?.Date||$("factorAsOf")?.value||todayIsoLocal()).slice(0,10);if($("factorAsOf"))$("factorAsOf").value=asOf;box("factorParityResult","run",`Factor / Seasonalityを再計算中…\n基準日 ${asOf}\nScreening母集団を準備中`);const base=await ensureFactorBase(asOf);latestFactorBaseRows=base;latestFactorMembershipRows=factorMembershipDiagnostics(base);let web=buildFactorCore(base,asOf),state=await workerCall("factor-state-load",120000),compatibleState=(state.rows||[]).filter(x=>String(x.date||"")<asOf&&String(x.row?.FactorEngineVersion||"")===FACTOR_ENGINE_VERSION),prev=new Map(compatibleState.map(x=>[String(x.factorKey),factorNum(x.strength)])),historyMode=prev.size?"Web前日state(同一engine)":"PC currentから前日Strengthを再seed(engine更新)";const pcm=new Map(pc.map(r=>[String(r.FactorKey||""),r]));for(const r of web){let pv=prev.get(r.FactorKey);if(pv==null){const pr=pcm.get(r.FactorKey),s=factorNum(pr?.Strength),chg=factorNum(pr?.StrengthChange1D);if(s!=null&&chg!=null)pv=s-chg}r.StrengthChange1D=pv!=null&&r.Strength!=null?r.Strength-pv:null}
  const monthKey=asOf.slice(0,7).replace("-",""),seedFile=$("factorSeasonalitySeedFile")?.files?.[0];let sp={profile:[],stockMonths:"-",topixMonths:"-"},seasonalitySource="";
  if(seedFile){const seed=parseCsv(await seedFile.text()).rows.filter(r=>String(r.FactorKey||"").trim()&&String(r.SeasonMonth||"").trim());if(!seed.length)throw new Error("PC Seasonality profileが空です");await workerCall("factor-seasonality-cache-save",120000,null,null,{monthKey,rows:seed,source:"PCMonthlyCacheSeed"});latestFactorSeasonalityProfile=seed;seasonalitySource="PC月次cacheを移行"}
  else{const cached=await workerCall("factor-seasonality-cache-load",120000,null,null,{monthKey});if((cached.rows||[]).length){latestFactorSeasonalityProfile=cached.rows;seasonalitySource=`Web月次cache(${cached.source||"stored"})`}else{box("factorParityResult","run",`Factor core: ${web.length} factors\nSeasonality月次cache未作成。10年profileをWeb DataLakeから再構築中…`);sp=await workerCall("factor-seasonality-profile",900000,null,null,{asOf,codeSectors:base.map(r=>({code:r.NormalizedCode,sector:r.Sector33}))});latestFactorSeasonalityProfile=sp.profile||[];if(latestFactorSeasonalityProfile.length)await workerCall("factor-seasonality-cache-save",120000,null,null,{monthKey,rows:latestFactorSeasonalityProfile,source:"WebBuilt"});seasonalitySource="Web新規構築→月次cache保存"}}
- web=enrichFactorSeasonality(web,latestFactorSeasonalityProfile,asOf);latestFactorWebRows=web;latestFactorSummaryRows=buildFactorSummaryWeb(web);const cmp=factorCompare(pc,web,FACTOR_FIELDS),coreDiff=cmp.diffs.filter(x=>x.Group==="Core").length,histDiff=cmp.diffs.filter(x=>x.Group==="History").length,seaDiff=cmp.diffs.filter(x=>x.Group==="Seasonality").length;let sumText="未指定",sumPass=null;if(sf){const ps=parseCsv(await sf.text()).rows,sm=factorSummaryCompare(ps,latestFactorSummaryRows),sumExact=!sm.diffs.length&&!sm.missing&&!sm.webOnly.length&&ps.length===latestFactorSummaryRows.length;sumPass=sumExact;sumText=`PC ${ps.length} / Web ${latestFactorSummaryRows.length} / 差分 ${sm.diffs.length} / Web欠損 ${sm.missing} / Webのみ ${sm.webOnly.length}`;for(const d of sm.diffs)cmp.diffs.push({...d,Group:"Summary"})}
- latestFactorDiffRows=cmp.diffs;$("factorWebExportBtn").disabled=!web.length;$("factorDiffExportBtn").disabled=!latestFactorDiffRows.length;$("factorMembershipExportBtn").disabled=!latestFactorMembershipRows.length;$("seasonalityProfileExportBtn").disabled=!latestFactorSeasonalityProfile.length;await workerCall("factor-state-save",120000,null,null,{date:asOf,rows:web});const exact=!coreDiff&&!histDiff&&!seaDiff&&!cmp.missing&&!cmp.webOnly.length&&(sumPass!==false);box("factorParityResult",exact?"pass":"warn",[exact?"完全一致 PASS":"要確認",`基準日: ${asOf}`,`Screening母集団: ${base.length}`,`Factor: PC ${pc.length} / Web ${web.length} / 完全一致 ${cmp.perfect}`,`Core差: ${coreDiff} / History差: ${histDiff} / Seasonality差: ${seaDiff}`,`Web欠損: ${cmp.missing} / Webのみ: ${cmp.webOnly.length}`,`Strength履歴: ${historyMode}`,`Seasonality profile: ${latestFactorSeasonalityProfile.length} rows / ${seasonalitySource} / 株月 ${sp.stockMonths??"-"} / TOPIX月 ${sp.topixMonths??"-"}`,`Factor Summary: ${sumText}`,"",latestFactorDiffRows.length?`差分先頭:\n${latestFactorDiffRows.slice(0,12).map(x=>`${x.FactorKey} ${x.Field}: PC=${x.PC||"(blank)"} / Web=${x.Web||"(blank)"}`).join("\n")}`:"差分なし"].join("\n"));if($("factorParityTable")){const top=web.filter(r=>["Emerging","Strong","Fading"].includes(r.Phase)).slice(0,30),esc=x=>String(x??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));$("factorParityTable").innerHTML=top.length?`<div style="overflow:auto"><table style="width:100%;font-size:12px"><tr><th>Factor</th><th>Strength</th><th>Accel</th><th>Phase</th><th>Season</th></tr>${top.map(r=>`<tr><td>${esc(r.FactorKey)}</td><td>${Number(r.Strength).toFixed(1)}</td><td>${Number(r.Acceleration).toFixed(1)}</td><td>${esc(r.Phase)}</td><td>${esc(r.SeasonState)} ${esc(r.SeasonalAlert)}</td></tr>`).join("")}</table></div>`:""}}catch(e){box("factorParityResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}};
+ web=enrichFactorSeasonality(web,latestFactorSeasonalityProfile,asOf);for(const r of web)r.FactorEngineVersion=FACTOR_ENGINE_VERSION;latestFactorWebRows=web;latestFactorSummaryRows=buildFactorSummaryWeb(web);latestFactorFinancialTraceRows=base.map(r=>({Date:r.Date||asOf,Code:r.NormalizedCode||"",CompanyName:r.CompanyName||"",Sector33:r.Sector33||"",LatestFinancialDisclosureDate:r.LatestFinancialDisclosureDate||"",FactorCurrentDisclosureDate:r.FactorCurrentDisclosureDate||"",FactorLatestFYDisclosureDate:r.FactorLatestFYDisclosureDate||"",FactorForecastDisclosureDate:r.FactorForecastDisclosureDate||"",FactorForecastFYEnd:r.FactorForecastFYEnd||"",EffectiveShares:r.EffectiveShares??"",EstimatedMarketCap:r.EstimatedMarketCap??"",ROE:r.ROE??"",ROESource:r.ROESource||"",ForecastEPS:r.ForecastEPS??"",ForecastOperatingProfit:r.ForecastOperatingProfit??"",ForecastOrdinaryProfit:r.ForecastOrdinaryProfit??"",ForecastNetProfit:r.ForecastNetProfit??"",ForecastPrimaryProfitGrowthPct:r.ForecastPrimaryProfitGrowthPct??"",ForecastAnnualDividend:r.ForecastAnnualDividend??"",ForecastDividendYieldPct:r.ForecastDividendYieldPct??"",ForecastPER:r.ForecastPER??"",PBR:r.PBR??""}));const cmp=factorCompare(pc,web,FACTOR_FIELDS),coreDiff=cmp.diffs.filter(x=>x.Group==="Core").length,histDiff=cmp.diffs.filter(x=>x.Group==="History").length,seaDiff=cmp.diffs.filter(x=>x.Group==="Seasonality").length;let sumText="未指定",sumPass=null;if(sf){const ps=parseCsv(await sf.text()).rows,sm=factorSummaryCompare(ps,latestFactorSummaryRows),sumExact=!sm.diffs.length&&!sm.missing&&!sm.webOnly.length&&ps.length===latestFactorSummaryRows.length;sumPass=sumExact;sumText=`PC ${ps.length} / Web ${latestFactorSummaryRows.length} / 差分 ${sm.diffs.length} / Web欠損 ${sm.missing} / Webのみ ${sm.webOnly.length}`;for(const d of sm.diffs)cmp.diffs.push({...d,Group:"Summary"})}
+ latestFactorDiffRows=cmp.diffs;$("factorWebExportBtn").disabled=!web.length;$("factorDiffExportBtn").disabled=!latestFactorDiffRows.length;$("factorMembershipExportBtn").disabled=!latestFactorMembershipRows.length;if($("factorFinancialTraceExportBtn"))$("factorFinancialTraceExportBtn").disabled=!latestFactorFinancialTraceRows.length;$("seasonalityProfileExportBtn").disabled=!latestFactorSeasonalityProfile.length;await workerCall("factor-state-save",120000,null,null,{date:asOf,rows:web});const exact=!coreDiff&&!histDiff&&!seaDiff&&!cmp.missing&&!cmp.webOnly.length&&(sumPass!==false);box("factorParityResult",exact?"pass":"warn",[exact?"完全一致 PASS":"要確認",`基準日: ${asOf}`,`Screening母集団: ${base.length}`,`Factor: PC ${pc.length} / Web ${web.length} / 完全一致 ${cmp.perfect}`,`Core差: ${coreDiff} / History差: ${histDiff} / Seasonality差: ${seaDiff}`,`Web欠損: ${cmp.missing} / Webのみ: ${cmp.webOnly.length}`,`Strength履歴: ${historyMode}`,`Seasonality profile: ${latestFactorSeasonalityProfile.length} rows / ${seasonalitySource} / 株月 ${sp.stockMonths??"-"} / TOPIX月 ${sp.topixMonths??"-"}`,`Factor Summary: ${sumText}`,"",latestFactorDiffRows.length?`差分先頭:\n${latestFactorDiffRows.slice(0,12).map(x=>`${x.FactorKey} ${x.Field}: PC=${x.PC||"(blank)"} / Web=${x.Web||"(blank)"}`).join("\n")}`:"差分なし"].join("\n"));if($("factorParityTable")){const top=web.filter(r=>["Emerging","Strong","Fading"].includes(r.Phase)).slice(0,30),esc=x=>String(x??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));$("factorParityTable").innerHTML=top.length?`<div style="overflow:auto"><table style="width:100%;font-size:12px"><tr><th>Factor</th><th>Strength</th><th>Accel</th><th>Phase</th><th>Season</th></tr>${top.map(r=>`<tr><td>${esc(r.FactorKey)}</td><td>${Number(r.Strength).toFixed(1)}</td><td>${Number(r.Acceleration).toFixed(1)}</td><td>${esc(r.Phase)}</td><td>${esc(r.SeasonState)} ${esc(r.SeasonalAlert)}</td></tr>`).join("")}</table></div>`:""}}catch(e){box("factorParityResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}};
 if($("factorWebExportBtn"))$("factorWebExportBtn").onclick=()=>{if(!latestFactorWebRows.length)return;downloadBlob(new Blob([simpleCsv(latestFactorWebRows,FACTOR_FIELDS)],{type:"text/csv;charset=utf-8"}),`web_factor_monitor_latest_${($("factorAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};
 if($("factorDiffExportBtn"))$("factorDiffExportBtn").onclick=()=>{if(!latestFactorDiffRows.length)return;downloadBlob(new Blob([factorDiffCsv(latestFactorDiffRows)],{type:"text/csv;charset=utf-8"}),`factor_parity_diff_${($("factorAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};
 if($("factorMembershipExportBtn"))$("factorMembershipExportBtn").onclick=()=>{if(!latestFactorMembershipRows.length)return;const fields=["Date","Code","CompanyName","Sector33","EstimatedMarketCap","SizeQ33","SizeQ67","SizeGroup","LatestTradingValueRatioTo20D","PBR","ForecastPER","ForecastDividendYieldPct","ROE","ForecastPrimaryProfitGrowthPct","LowPBRThreshold","LowPBRMember","LowPERThreshold","LowPERMember","HighDividendThreshold","HighDividendMember","HighROEThreshold","HighROEMember","EarningsGrowthThreshold","EarningsGrowthMember"];downloadBlob(new Blob([simpleCsv(latestFactorMembershipRows,fields)],{type:"text/csv;charset=utf-8"}),`web_factor_membership_trace_${($("factorAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};
+if($("factorFinancialTraceExportBtn"))$("factorFinancialTraceExportBtn").onclick=()=>{if(!latestFactorFinancialTraceRows.length)return;const fields=["Date","Code","CompanyName","Sector33","LatestFinancialDisclosureDate","FactorCurrentDisclosureDate","FactorLatestFYDisclosureDate","FactorForecastDisclosureDate","FactorForecastFYEnd","EffectiveShares","EstimatedMarketCap","ROE","ROESource","ForecastEPS","ForecastOperatingProfit","ForecastOrdinaryProfit","ForecastNetProfit","ForecastPrimaryProfitGrowthPct","ForecastAnnualDividend","ForecastDividendYieldPct","ForecastPER","PBR"];downloadBlob(new Blob([simpleCsv(latestFactorFinancialTraceRows,fields)],{type:"text/csv;charset=utf-8"}),`web_factor_financial_trace_${($("factorAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};
 if($("seasonalityProfileExportBtn"))$("seasonalityProfileExportBtn").onclick=()=>{if(!latestFactorSeasonalityProfile.length)return;const fields=["SeasonalityVersion","AsOfYear","FactorType","FactorName","FactorKey","SeasonMonth","HistoricalMembershipQuality","LookAheadPolicy","EffectiveYears","SeasonalMeanReturnPct","SeasonalMedianReturnPct","SeasonalWinRate","SeasonalMeanExcessReturnPct","SeasonalMedianExcessReturn","SeasonalExcessWinRate","SeasonalMaxDD","SeasonalMedianBreadthPct","SeasonalityScore","SeasonalityConfidence"];downloadBlob(new Blob([simpleCsv(latestFactorSeasonalityProfile,fields)],{type:"text/csv;charset=utf-8"}),`web_sector_seasonality_profile_${($("factorAsOf")?.value||todayIsoLocal()).slice(0,7).replace("-","")}.csv`)};
 

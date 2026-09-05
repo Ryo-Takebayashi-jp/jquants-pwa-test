@@ -1,3 +1,14 @@
+# v7e-alpha83 - 2026-09-05
+
+## Factor / Seasonality parity hardening
+- Factor base eligibility now follows the PC common universe minimum of 60 price-history days (previous Web PoC silently required 75).
+- Financial normalization is explicitly as-of dated and no longer reuses a future/stale normalized snapshot across trading dates.
+- One-click update re-checks the most recent 7 calendar days of Financial Summary so late earnings/dividend revisions are captured; each refreshed disclosure-date snapshot replaces the old same-date snapshot.
+- Derived in-memory caches are invalidated after DataLake updates.
+- Factor Strength history is versioned; after a factor-engine change, prior Web state is ignored once and previous Strength is re-seeded from the supplied PC current/StrengthChange1D pair.
+- EffectiveShares exposed to Screening/Factor now follows the PC Factor definition (latest FY ShOutFY - TrShFY); BPS internal fallback remains unchanged.
+- Added Factor financial-input diagnostic CSV with financial source dates and forecast inputs.
+
 # v7e-alpha82 - 2026-09-03
 
 - Factor Monitor parity follow-up from alpha81 diagnostics.

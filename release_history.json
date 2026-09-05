@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha82",
+  "current_release": "v7e-alpha83",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -55,6 +55,11 @@
       "release": "v7e-alpha82",
       "date": "2026-09-03",
       "note": "Factor core parity fixes (Size/turnover FlowProxy), monthly Seasonality cache migration, Factor membership diagnostics."
+    },
+    {
+      "release": "v7e-alpha83",
+      "date": "2026-09-05",
+      "note": "Factor parity hardening: 60-day factor-base eligibility, as-of financial normalization, recent 7-day financial refresh/replace for late revisions, derived-cache invalidation, engine-versioned Strength reseed, Factor financial diagnostics."
     }
   ],
   "releases": [
