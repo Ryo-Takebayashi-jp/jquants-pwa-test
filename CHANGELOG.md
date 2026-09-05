@@ -1,3 +1,12 @@
+# v7e-alpha84 - 2026-09-05
+
+- 最新PC `screening_all.csv` とWeb membership 1,968銘柄を全件照合し、Valuation/Sectorは一致、残差を Size / HighROE / EarningsGrowth の3系統へ圧縮。
+- J-Quants V2のFY実績行で、予想成長率の前年FYアンカーを `CurFYEn` 優先で解釈すると前年FYを見失うケースを修正。Factor用の前年FY比較ではactual period endである `CurPerEn` を優先する。
+- PCに存在しWebで欠けていた `ForecastPrimaryProfitGrowthPct` 11銘柄の復元を狙う。
+- Factor財務診断CSVへ前年FYの開示日・期間末・基準利益を追加し、残差を更新版なしで追えるよう強化。
+- Factor engine stateをV4へ更新し、修正後のmembershipでStrength履歴を一度だけ安全に再seed。
+- Webだけが持つ有効な時価総額/ROE観測をPC完全一致のために意図的に捨てない。残差がそこだけになればFactor/Seasonality全面Parityを卒業し、Web-firstへ移行する方針。
+
 # v7e-alpha83 - 2026-09-05
 
 ## Factor / Seasonality parity hardening

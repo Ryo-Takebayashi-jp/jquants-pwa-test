@@ -1709,7 +1709,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const fc=fcands.at(-1)||null,fp=fprimary(fc||{}),fs=n(fc||{},"FSales","FNCSales");
        let prevFY=null,pfbest=1e99;
        const targetFY=expectedFY||forecastFY(fc||{});
-       if(targetFY){const td=Date.parse(targetFY);for(const x of hist){if(s(x,"CurPerType").toUpperCase()!=="FY")continue;const fe=fyEnd(x);if(!fe)continue;const dd=(td-Date.parse(fe))/86400000;if(dd>=300&&dd<=430&&Math.abs(dd-365)<pfbest){pfbest=Math.abs(dd-365);prevFY=x}}}
+       if(targetFY){const td=Date.parse(targetFY);for(const x of hist){if(s(x,"CurPerType").toUpperCase()!=="FY")continue;/* V2 FY rows can expose the reported period end in CurPerEn while CurFYEn points at the post-close fiscal year.  Previous-FY comparison must anchor to the actual reported FY period. */const fe=s(x,"CurPerEn","CurFYEn");if(!fe)continue;const dd=(td-Date.parse(fe))/86400000;if(dd>=300&&dd<=430&&Math.abs(dd-365)<pfbest){pfbest=Math.abs(dd-365);prevFY=x}}}
        const [prevFYp]=primary(prevFY||{}),prevFYs=n(prevFY||{},"Sales","NCSales");
        const fyRows=hist.filter(x=>s(x,"CurPerType").toUpperCase()==="FY"&&disc(x));
        fyRows.sort((a,b)=>(fyEnd(a)+"|"+disc(a)).localeCompare(fyEnd(b)+"|"+disc(b)));
@@ -1765,7 +1765,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          CurrentPrimaryProfit:cp,ForecastPrimaryProfit:fp,ActualEPS:actualEPS,ForecastEPS:forecastEPS,BPS:bps,BPSSource:bpsSource,BPSReferenceDate:bpsDate,BPSSourcePeriod:bpsPeriod,ROE:roe,ROESource:roeSource,ROEReferenceDate:latestFY?disc(latestFY):"",ROESourcePeriod:latestFY?s(latestFY,"CurPerType"):"",EquityRatioPct:eqRatio,EquityRatioSource:eqRatioSource,EquityRatioReferenceDate:eqRatioDate,EquityRatioSourcePeriod:eqRatioPeriod,
          CFO:cfo,CFI:cfi,CFF:cff,LatestAvailableCFO:lacfo,LatestAvailableCFI:lacfi,LatestAvailableCFF:lacff,
          LatestAvailableFCF:(lacfo!=null&&lacfi!=null)?lacfo+lacfi:null,CashFlowReferenceDate:cfDate,
-         EffectiveShares:effectiveShares,FactorCurrentDisclosureDate:disc(cur),FactorLatestFYDisclosureDate:latestFY?disc(latestFY):"",FactorForecastDisclosureDate:fc?disc(fc):"",FactorForecastFYEnd:fc?forecastFY(fc):"",ActualAnnualDividend:adiv,ForecastAnnualDividend:fdiv,
+         EffectiveShares:effectiveShares,FactorCurrentDisclosureDate:disc(cur),FactorLatestFYDisclosureDate:latestFY?disc(latestFY):"",FactorForecastDisclosureDate:fc?disc(fc):"",FactorForecastFYEnd:fc?forecastFY(fc):"",FactorPreviousFYDisclosureDate:prevFY?disc(prevFY):"",FactorPreviousFYEnd:prevFY?s(prevFY,"CurPerEn","CurFYEn"):"",FactorPreviousFYPrimaryProfit:prevFYp,ActualAnnualDividend:adiv,ForecastAnnualDividend:fdiv,
          FinancialDataFlag:(["OperatingProfit","OrdinaryProfit"].includes(ptype)&&prev)?"":(ptype==="NetProfitOnly"?"WebRequired":"HistoryInsufficient"),
          FinancialHistoryCount:hist.length,ComparablePriorFound:!!prev
        });

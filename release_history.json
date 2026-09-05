@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha83",
+  "current_release": "v7e-alpha84",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -60,6 +60,11 @@
       "release": "v7e-alpha83",
       "date": "2026-09-05",
       "note": "Factor parity hardening: 60-day factor-base eligibility, as-of financial normalization, recent 7-day financial refresh/replace for late revisions, derived-cache invalidation, engine-versioned Strength reseed, Factor financial diagnostics."
+    },
+    {
+      "release": "v7e-alpha84",
+      "date": "2026-09-05",
+      "note": "Factor FY baseline resolver: use actual FY period end for forecast-growth prior-year matching; add prior-FY diagnostics; Factor engine V4 reseed; graduation candidate for Web-first."
     }
   ],
   "releases": [
@@ -74,6 +79,11 @@
       "release": "v7e-alpha80",
       "date": "2026-09-03",
       "summary": "Watchlist master/state migration parity and Investment Tracking routing audit"
+    },
+    {
+      "release": "v7e-alpha84",
+      "date": "2026-09-05",
+      "note": "Factor FY baseline resolver: use actual FY period end for forecast-growth prior-year matching; add prior-FY diagnostics; Factor engine V4 reseed; graduation candidate for Web-first."
     }
   ]
 }
