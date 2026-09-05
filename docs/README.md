@@ -29,3 +29,6 @@ PC is a reference implementation during migration, not a permanent product ceili
 
 ## Watchlist alerts
 Web-first Watchlist Re-Evaluation Alert is available from alpha88; alpha89 canonicalizes the financial fingerprint used for Fundamental change detection. Preview is non-destructive; explicit commit persists trigger state and alert history. Alerts request re-evaluation and are not buy signals.
+
+
+From alpha90, `investment_tracking_input.csv` is no longer audit-only: it uses Preview → Commit, resolves objective reference prices from the Web DataLake, and atomically updates the separate Discovery and Watchlist lifecycles. REMOVE/CLOSE never delete Discovery history.

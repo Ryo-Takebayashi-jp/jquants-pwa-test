@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha89",
+  "current_release": "v7e-alpha90",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -110,6 +110,13 @@
       "release": "v7e-alpha89",
       "date": "2026-09-05",
       "note": "Canonicalize Watchlist fundamental fingerprint from Web screening fields; expose Current/Forecast primary profit and progress in screening base + alert diagnostics; prevents false first-preview Fundamental alerts caused by missing derived fields."
+    },
+    {
+      "release": "v7e-alpha90",
+      "date": "2026-09-05",
+      "schema": "web-local-first-v7e",
+      "migration": "No destructive migration. Adds investment_tracking_import_history lazily in jq_private_v1.sqlite.",
+      "note": "Formal Web Investment Tracking Preview/Commit: DataLake reference-price resolution, atomic Discovery/Watchlist lifecycle apply, audit history, and apply-trace CSV."
     }
   ]
 }

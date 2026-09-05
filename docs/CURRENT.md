@@ -1,3 +1,3 @@
-v7e-alpha89
+v7e-alpha90
 
-Web-first Watchlist Alert fundamental fingerprint canonicalization. Migrated PC Watchlist financial fingerprints now compare against the same canonical primary-profit/progress semantics used by PC Screening; preview remains non-destructive. See `history/alpha80-alpha89.md`.
+Unified Investment Tracking is formally connected to Web private state with non-destructive Preview → explicit Commit. ReferencePrice/Discovery InitialPrice are resolved from Web DataLake; Discovery and Watchlist lifecycles remain separate. Existing Watchlist Alert baseline remains valid. See `history/alpha80-alpha90.md`.

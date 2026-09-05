@@ -1,3 +1,14 @@
+## v7e-alpha90 — Investment Tracking formal Web connection (2026-09-05)
+
+- Promote `investment_tracking_input.csv` from audit-only to Preview → Commit workflow.
+- Resolve Watchlist ReferencePrice and Discovery InitialPrice from Web DataLake unadjusted close on StartDate; if StartDate is a non-trading day, use the next available trading-day close and record the actual date/source.
+- Apply TRACK_ONLY / WATCH / ACTIONABLE / WATCH_ONLY lifecycle semantics to Discovery and Watchlist in one private-DB transaction.
+- Preserve Discovery history on REMOVE/CLOSE; support Watchlist ADD/UPSERT/REREGISTER/CLOSE without destructive cross-lifecycle deletion.
+- New Watchlist registrations receive fresh state; UPSERT preserves existing state; REREGISTER closes the previous active registration and opens a new WatchID.
+- Persist an Investment Tracking import audit history with before/after private-state snapshots and expose an apply-trace CSV before commit.
+- After a committed Discovery change, automatically recalculate Discovery Episode performance for the same as-of date.
+- Existing Web-first Watchlist Alert baseline is not reset by this release.
+
 # v7e-alpha86 - 2026-09-05
 
 ## v7e-alpha89 — Watchlist fundamental fingerprint canonicalization (2026-09-05)
