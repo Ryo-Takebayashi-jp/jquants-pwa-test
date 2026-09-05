@@ -1,6 +1,6 @@
 # J-Quants Local-first Web/PWA
 
-Local-first PWA for maintaining a user-owned J-Quants DataLake and running investment-analysis layers on iPhone/desktop browsers. Market data remains local to the user; Web daily operation is designed around the top-level **「次の取引日を全データ更新」** action.
+Local-first PWA for maintaining a user-owned J-Quants DataLake and running investment-analysis layers on iPhone/desktop browsers. Market data remains local to the user; Web daily operation is designed around the top-level **「日次運用を実行（Web-first）」** action, which coordinates the existing verified engines through Watchlist Alert Preview.
 
 ## Current architecture
 - SQLite WASM / OPFS SAH Pool
@@ -32,3 +32,7 @@ Web-first Watchlist Re-Evaluation Alert is available from alpha88; alpha89 canon
 
 
 From alpha90, `investment_tracking_input.csv` is no longer audit-only: it uses Preview → Commit, resolves objective reference prices from the Web DataLake, and atomically updates the separate Discovery and Watchlist lifecycles. REMOVE/CLOSE never delete Discovery history.
+
+
+## Web-first daily pipeline
+From alpha91, the normal daily path is DataLake update/repair → Screening → Discovery Episode/Daily → Factor/Seasonality → Watchlist Alert Preview. Stage checkpoints are stored in private state so an interrupted run can resume without repeating completed stages. Alert Commit is intentionally not automatic.

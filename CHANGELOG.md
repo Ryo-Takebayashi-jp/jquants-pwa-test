@@ -1,3 +1,14 @@
+## v7e-alpha91 — Web-first daily pipeline orchestration (2026-09-05)
+
+- Add top-level `日次運用を実行（Web-first）` button above the existing DataLake-only update action.
+- Chain DataLake update/repair → Screening → Discovery Episode → Discovery Daily → Factor/Seasonality → Watchlist Alert Preview.
+- Persist per-run/per-stage checkpoints in `/jq_private_v1.sqlite` and resume incomplete runs from unfinished stages.
+- Emit START/PASS/SKIP/REPAIR/FAIL in one screen and export the same run trace as diagnostic CSV.
+- Keep Standard supply-demand Plan Adaptive: optional failures are recorded while critical datasets stop the pipeline.
+- Run Factor/Seasonality from Web state and Web monthly seasonality cache without requiring PC parity files.
+- Keep Watchlist Alert non-destructive: daily pipeline stops at Preview and never auto-commits alert state.
+- Do not change alpha90 Investment Tracking routing/commit semantics or previously verified Screening/Discovery/Watchlist engines.
+
 ## v7e-alpha90 — Investment Tracking formal Web connection (2026-09-05)
 
 - Promote `investment_tracking_input.csv` from audit-only to Preview → Commit workflow.

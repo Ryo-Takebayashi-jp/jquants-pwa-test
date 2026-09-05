@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha90");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha91");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha90").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-alpha91").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -3138,7 +3138,7 @@ if($("discoveryTechnicalTraceExportBtn"))$("discoveryTechnicalTraceExportBtn").o
 if($("discoveryShortTraceExportBtn"))$("discoveryShortTraceExportBtn").onclick=async()=>{const f=$("discoveryDailyFile")?.files?.[0];if(!f){box("discoveryDailyParityResult","warn","PC版 discovery_episode_daily.csv を選択してください。");return}const btn=$("discoveryShortTraceExportBtn");btn.disabled=true;try{const pc=parseCsv(await f.text()).rows,asOf=$("discoveryAsOf")?.value||todayIsoLocal(),codes=[...new Set(pc.filter(r=>String(r.Date||"").slice(0,10)===asOf).map(r=>String(r.Code||"").trim()).filter(Boolean))];if(!codes.length)throw new Error("基準日のDiscovery Dailyコードがありません");const r=await workerCall("discovery-short-trace",300000,null,null,{asOf,codes});const fields=["Code","DiscDate","CalcDate","SSName","SSAddr","DICName","DICAddr","FundName","ShrtPosToSO","ShrtPosShares","PrevRptDate","PrevRptRatio","StoredDataDate"],esc=v=>'"'+String(v??"").replaceAll('"','""')+'"',csv="\uFEFF"+[fields.map(esc).join(","),...(r.rows||[]).map(x=>fields.map(k=>esc(x[k])).join(","))].join("\n");downloadBlob(new Blob([csv],{type:"text/csv;charset=utf-8"}),`web_large_short_trace_${asOf.replaceAll("-","")}.csv`);box("discoveryDailyParityResult","pass",`大口空売り診断CSVを書き出しました。\n基準日: ${asOf}\n対象コード: ${codes.length}\nraw rows: ${r.count||0}`)}catch(e){box("discoveryDailyParityResult","fail","診断CSV FAIL\n"+(e?.message||e))}finally{btn.disabled=false}};
 
 
-// v7e-alpha90: Watchlist private-state migration + unified Investment Tracking routing audit + Web-first alert layer.
+// v7e-alpha91: Watchlist private-state migration + unified Investment Tracking routing audit + Web-first alert layer.
 const WATCHLIST_MASTER_FIELDS=["WatchID","Status","Code","WatchStartDate","WatchReason","CurrentDecision","ReferencePrice","ThesisSummary","InvalidationSummary","ReviewExpiry","PriceTriggerPct1","PriceTriggerPct2","PriceTriggerPct3","TargetPER","TargetPBR","TargetDividendYieldPct","EarningsLeadDays","Notes","InvestmentStatus","ActionableFlag","InputReferencePrice","ReferencePriceDate","ReferencePriceSource","ReferencePriceAudit","RegisteredAt","ClosedAt","CloseReason","WatchlistVersion"];
 const WATCHLIST_STATE_FIELDS=["WatchID","Code","LastEvaluatedDate","LastPriceAlertLevel","LastPERTriggered","LastPBRTriggered","LastYieldTriggered","LastTechnicalState","LastFactorState","LastSeasonalAlert","LastDisclosureDate","LastFinancialFingerprint","LastCatalystLevel","LastExpiryAlerted","LastAlertDatePrice","LastAlertDateValuation","LastAlertDateFundamental","LastAlertDateFactor","LastAlertDateTechnical","LastAlertDateCatalyst","LastAlertDateExpiry"];
 const INVESTMENT_TRACKING_STATUSES=new Set(["TRACK_ONLY","WATCH","ACTIONABLE","WATCH_ONLY"]),INVESTMENT_TRACKING_ACTIONS=new Set(["ADD","UPSERT","REREGISTER","REMOVE","CLOSE"]);
@@ -3163,7 +3163,7 @@ if($("watchlistSeedBtn"))$("watchlistSeedBtn").onclick=async()=>{const mf=$("wat
 if($("watchlistExportBtn"))$("watchlistExportBtn").onclick=()=>{if(!latestWatchlistWeb.master.length)return;const asOf=todayIsoLocal().replaceAll("-","");downloadBlob(new Blob([simpleCsv(latestWatchlistWeb.master,WATCHLIST_MASTER_FIELDS)],{type:"text/csv;charset=utf-8"}),`web_watchlist_master_${asOf}.csv`);setTimeout(()=>downloadBlob(new Blob([simpleCsv(latestWatchlistWeb.state,WATCHLIST_STATE_FIELDS)],{type:"text/csv;charset=utf-8"}),`web_watchlist_state_${asOf}.csv`),250)};
 
 
-// v7e-alpha90: Web-first Watchlist Re-Evaluation Alert engine.
+// v7e-alpha91: Web-first Watchlist Re-Evaluation Alert engine.
 // Preview is deliberately non-destructive. Commit persists state + current alerts + de-duplicated alert history.
 const WATCHLIST_ALERT_ENGINE_VERSION="WatchlistWebV2-alpha89";
 const WATCHLIST_ALERT_FIELDS=["WatchID","Code","AlertDate","AlertType","TriggerReason","AlertSeverity","InvestmentStatus","ActionableFlag","CurrentPrice","ReferencePrice","PriceChangePct","CurrentPER","CurrentPBR","DividendYield","FactorState","SeasonState","SeasonalAlert","TechnicalState","DaysToEarnings","WatchReason","CurrentDecision","ThesisSummary","InvalidationSummary","ReviewExpiry","AlertKey"];
@@ -3259,4 +3259,98 @@ if($("factorDiffExportBtn"))$("factorDiffExportBtn").onclick=()=>{if(!latestFact
 if($("factorMembershipExportBtn"))$("factorMembershipExportBtn").onclick=()=>{if(!latestFactorMembershipRows.length)return;const fields=["Date","Code","CompanyName","Sector33","EstimatedMarketCap","SizeQ33","SizeQ67","SizeGroup","LatestTradingValueRatioTo20D","PBR","ForecastPER","ForecastDividendYieldPct","ROE","ForecastPrimaryProfitGrowthPct","LowPBRThreshold","LowPBRMember","LowPERThreshold","LowPERMember","HighDividendThreshold","HighDividendMember","HighROEThreshold","HighROEMember","EarningsGrowthThreshold","EarningsGrowthMember"];downloadBlob(new Blob([simpleCsv(latestFactorMembershipRows,fields)],{type:"text/csv;charset=utf-8"}),`web_factor_membership_trace_${($("factorAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};
 if($("factorFinancialTraceExportBtn"))$("factorFinancialTraceExportBtn").onclick=()=>{if(!latestFactorFinancialTraceRows.length)return;const fields=["Date","Code","CompanyName","Sector33","LatestFinancialDisclosureDate","FactorCurrentDisclosureDate","FactorLatestFYDisclosureDate","FactorLatestFYCurFYEnd","FactorLatestFYCurPerEnd","FactorForecastDisclosureDate","FactorForecastFYEnd","FactorTargetFYEnd","FactorPreviousFYDisclosureDate","FactorPreviousFYEnd","FactorPreviousFYCurFYEnd","FactorPreviousFYCurPerEnd","FactorPreviousFYPrimaryProfit","FactorPreviousFYResolver","FactorPreviousFYCandidateCount","FactorFYHistoryTrace","EffectiveShares","EstimatedMarketCap","ROE","ROESource","ForecastEPS","ForecastOperatingProfit","ForecastOrdinaryProfit","ForecastNetProfit","ForecastPrimaryProfitGrowthPct","ForecastAnnualDividend","ForecastDividendYieldPct","ForecastPER","PBR"];downloadBlob(new Blob([simpleCsv(latestFactorFinancialTraceRows,fields)],{type:"text/csv;charset=utf-8"}),`web_factor_financial_trace_${($("factorAsOf")?.value||todayIsoLocal()).replaceAll("-","")}.csv`)};
 if($("seasonalityProfileExportBtn"))$("seasonalityProfileExportBtn").onclick=()=>{if(!latestFactorSeasonalityProfile.length)return;const fields=["SeasonalityVersion","AsOfYear","FactorType","FactorName","FactorKey","SeasonMonth","HistoricalMembershipQuality","LookAheadPolicy","EffectiveYears","SeasonalMeanReturnPct","SeasonalMedianReturnPct","SeasonalWinRate","SeasonalMeanExcessReturnPct","SeasonalMedianExcessReturn","SeasonalExcessWinRate","SeasonalMaxDD","SeasonalMedianBreadthPct","SeasonalityScore","SeasonalityConfidence"];downloadBlob(new Blob([simpleCsv(latestFactorSeasonalityProfile,fields)],{type:"text/csv;charset=utf-8"}),`web_sector_seasonality_profile_${($("factorAsOf")?.value||todayIsoLocal()).slice(0,7).replace("-","")}.csv`)};
+
+
+// v7e-alpha91: Web-first daily pipeline orchestrator. Existing PASS engines remain canonical;
+// this layer only coordinates them, persists checkpoints, and exposes one-screen diagnostics.
+const DAILY_PIPELINE_STAGES=[
+ {key:"DATA_UPDATE",label:"DataLake更新",ordinal:10},
+ {key:"SCREENING",label:"Screening",ordinal:20},
+ {key:"DISCOVERY_EPISODE",label:"Discovery Episode",ordinal:30},
+ {key:"DISCOVERY_DAILY",label:"Discovery Daily",ordinal:40},
+ {key:"FACTOR_SEASONALITY",label:"Factor / Seasonality",ordinal:50},
+ {key:"WATCHLIST_ALERT_PREVIEW",label:"Watchlist Alert Preview",ordinal:60}
+];
+let latestDailyPipelineDiagRows=[],latestDailyPipelineRun=null;
+function pipelineIsoNow(){return new Date().toISOString()}
+function pipelineRunId(target){return `daily-${String(target).replaceAll("-","")}-${Date.now()}`}
+function pipelineStepMap(rows){return new Map((rows||[]).map(x=>[String(x.stage||""),x]))}
+function pipelineDiagFromStored(run,steps){return (steps||[]).map(x=>({RunID:run?.run_id||"",TargetDate:run?.target_date||"",Mode:run?.mode||"",Ordinal:x.ordinal??"",Stage:x.stage||"",Status:x.status||"",Reason:x.detail?.reason||"",StartedAt:x.started_at||"",FinishedAt:x.finished_at||"",UpdatedAt:x.updated_at||"",Detail:JSON.stringify(x.detail||{})}))}
+function renderDailyPipeline(run,diag,extra=""){
+ const labels=new Map(DAILY_PIPELINE_STAGES.map(x=>[x.key,x.label])), lines=[`Web-first 日次パイプライン`,`基準日: ${run?.target_date||"-"} / Mode: ${run?.mode||"-"}`,`Run: ${run?.run_id||"-"}`,""];
+ for(const st of DAILY_PIPELINE_STAGES){const r=(diag||[]).find(x=>x.Stage===st.key),status=r?.Status||"WAIT",reason=r?.Reason?` - ${r.Reason}`:"";lines.push(`${st.label}: ${status}${reason}`)}
+ if(extra)lines.push("",extra);
+ const fail=(diag||[]).some(x=>x.Status==="FAIL"),done=DAILY_PIPELINE_STAGES.every(st=>(diag||[]).some(x=>x.Stage===st.key&&["PASS","SKIP","REPAIR"].includes(x.Status)));
+ box("dailyPipelineResult",fail?"fail":done?"pass":"run",lines.join("\n"));
+ if($("dailyPipelineDiagExportBtn"))$("dailyPipelineDiagExportBtn").disabled=!(diag||[]).length;
+}
+async function pipelineProbeTarget(token){
+ const cov=await workerCall("catalog-coverage-audit",300000),base=String(cov.coverageEnd||"");
+ if(!base)throw new Error("日足DataLakeの最新日を取得できません。先に日足DataLakeを構築してください。");
+ const today=localTodayIso();
+ for(let i=1;i<=14;i++){const d=addIsoDays(base,i);if(d>today)break;const w=isoDayOfWeek(d);if(w===0||w===6)continue;const got=await jqFetchDaily(d,token);if(got.rows.length)return{base,target:d,mode:"ADVANCE",probeRows:got.rows.length};await sleep(120)}
+ return{base,target:base,mode:"REPAIR",probeRows:0};
+}
+async function pipelineDataLakeStage(target,mode,token,progress){
+ const results=[];const run=async(label,fn,optional=false)=>{progress?.(`${label}: 実行中`);try{const x=await fn();results.push({label,ok:true,optional,rows:x?.rows??null});return x}catch(e){results.push({label,ok:false,optional,error:String(e?.message||e)});if(!optional)throw e;return null}};
+ if(mode==="ADVANCE"){
+   const bars=await jqFetchDaily(target,token);if(!bars.rows.length)throw new Error(`${target} の日足が取得できません。配信状態が変化した可能性があります。`);
+   await run("日足",async()=>{await workerCall("shard-native-daily-write",600000,null,null,{date:target,rows:bars.rows});return{rows:bars.rows.length}});
+   await run("銘柄マスター",async()=>{const g=await jqFetchEquitiesMaster(target,token);await workerCall("equities-master-write",300000,null,null,{date:target,rows:g.rows});return{rows:g.rows.length}});
+   await run("財務サマリー(直近7日再確認)",async()=>refreshRecentFinancialSummaries(target,token,7));
+   await run("決算予定",async()=>{const g=await jqFetchEarningsCalendar(target,token);await workerCall("earnings-calendar-write",300000,null,null,{date:target,rows:g.rows});return{rows:g.rows.length}});
+   await run("TOPIX",async()=>{const g=await jqFetchTopix(target,target,token);await writeRangeRowsForDay("topix-write",target,g.rows);return{rows:g.rows.length}});
+   await run("営業日カレンダー",async()=>{const g=await jqFetchMarketCalendar(target,target,token);await writeRangeRowsForDay("market-calendar-write",target,g.rows);return{rows:g.rows.length}});
+ }else{
+   await run("財務サマリー(直近7日再確認)",async()=>refreshRecentFinancialSummaries(target,token,7));
+ }
+ const jobs=[["信用取引週末残高",jqFetchMarginInterest,"margin-interest-write",14],["日々公表信用",jqFetchMarginAlert,"margin-alert-write",3],["空売り比率",jqFetchShortRatio,"short-ratio-write",3],["空売り報告",jqFetchShortSaleReport,"short-sale-report-write",3],["投資部門別",jqFetchInvestorTypes,"investor-types-write",14]];
+ for(const [label,fetcher,cmd,lookback] of jobs){await run(label,async()=>{const from=addIsoDays(target,-lookback),r=await fetchAndPersistSupplyRange(fetcher,cmd,from,target,token,null,{forceDates:cmd==="short-sale-report-write"?isoWeekdays(from,target):[]});return{rows:r.got.rows.length}},true);await sleep(150)}
+ await run("需給正規化",async()=>{await workerCall("supply-demand-normalize",180000);return{}},true);
+ syncDailyDateInputs(target);invalidateDerivedCaches();
+ const optionalFailures=results.filter(x=>!x.ok&&x.optional);return{results,optionalFailures,reason:mode==="REPAIR"?"新規日足なし。最新取引日のmutable/未配信データをrepair":"次の配信済み取引日へDataLakeを更新"};
+}
+async function runScreeningWebDaily(asOf,progress){
+ progress?.("統合母集団を構築中");const base=await ensureFactorBase(asOf);latestFactorBaseRows=base;
+ progress?.("5戦略を選抜中");const ev=await workerCall("screening-event-features",300000,null,null,{asOf,events:base.map(r=>({code:r.NormalizedCode,disclosureDate:r.LatestEarningsEventDate||r.LatestDisclosureDate}))}),em=new Map((ev.rows||[]).map(x=>[String(x.NormalizedCode),x])),enriched=base.map(r=>({...r,...(em.get(String(r.NormalizedCode))||{EarningsElapsedTradingDays:null,EarningsReactionPending:false})})),built=buildScreeningStrategies(enriched);latestScreeningCandidates=built.rows;latestScreeningScoredRows=built.scored||[];
+ if($("screeningCandidatesExportBtn"))$("screeningCandidatesExportBtn").disabled=!latestScreeningCandidates.length;
+ box("screeningStrategyResult","pass",`Web-first日次Screening PASS\n基準日: ${asOf}\n母集団: ${base.length}\n候補ユニーク: ${latestScreeningCandidates.length}`);
+ return{baseCount:base.length,candidateCount:latestScreeningCandidates.length,reactionPending:latestScreeningCandidates.filter(x=>x.CandidateStatus==="ReactionPending").length};
+}
+async function runDiscoveryDailyWeb(asOf,progress){
+ progress?.("Discovery Episodeを最新DataLakeで再計算中");if($("discoveryAsOf"))$("discoveryAsOf").value=asOf;const ep=await runDiscoveryRecalc();renderDiscoveryParity(null,ep);
+ progress?.("Discovery Dailyをappend/freeze規則で更新中");const daily=await workerCall("discovery-daily-recalc",600000,null,null,{asOf});latestDiscoveryDailyWebRows=daily.storedRows||[];latestDiscoveryDailyEngineRows=daily.rows||[];latestDiscoveryDailyHistoryStart=String(daily.coverage?.historyStart||daily.historyStart||"");if($("discoveryDailyExportBtn"))$("discoveryDailyExportBtn").disabled=!latestDiscoveryDailyWebRows.length;if($("discoveryDailyEngineExportBtn"))$("discoveryDailyEngineExportBtn").disabled=!latestDiscoveryDailyEngineRows.length;
+ box("discoveryDailyParityResult","pass",`Web-first Discovery Daily PASS\n基準日: ${asOf}\n計算行: ${daily.count??latestDiscoveryDailyEngineRows.length}\n保存済み固定Daily: ${daily.storedCount??latestDiscoveryDailyWebRows.length}\n過去行はfreeze、当日行のみ再計算。`);
+ return{episodeCount:ep.count??(ep.rows||[]).length,dailyCount:daily.count??latestDiscoveryDailyEngineRows.length,storedCount:daily.storedCount??latestDiscoveryDailyWebRows.length,coverage:daily.coverage||{}};
+}
+async function runFactorSeasonalityWebDaily(asOf,progress){
+ progress?.("Factor baseを準備中");const base=await ensureFactorBase(asOf);latestFactorBaseRows=base;latestFactorMembershipRows=factorMembershipDiagnostics(base);let web=buildFactorCore(base,asOf),state=await workerCall("factor-state-load",120000),compatible=(state.rows||[]).filter(x=>String(x.date||"")<asOf&&String(x.row?.FactorEngineVersion||"")===FACTOR_ENGINE_VERSION),prev=new Map(compatible.map(x=>[String(x.factorKey),factorNum(x.strength)]));for(const r of web){const pv=prev.get(r.FactorKey);r.StrengthChange1D=pv!=null&&r.Strength!=null?r.Strength-pv:null}
+ const monthKey=asOf.slice(0,7).replace("-","");let sp={profile:[],stockMonths:"-",topixMonths:"-"},source="";progress?.("Seasonality月次cacheを確認中");const cached=await workerCall("factor-seasonality-cache-load",120000,null,null,{monthKey});if((cached.rows||[]).length){latestFactorSeasonalityProfile=cached.rows;source=`Web月次cache(${cached.source||"stored"})`}else{progress?.("Seasonality profileをWeb DataLakeから構築中");sp=await workerCall("factor-seasonality-profile",900000,null,null,{asOf,codeSectors:base.map(r=>({code:r.NormalizedCode,sector:r.Sector33}))});latestFactorSeasonalityProfile=sp.profile||[];if(latestFactorSeasonalityProfile.length)await workerCall("factor-seasonality-cache-save",120000,null,null,{monthKey,rows:latestFactorSeasonalityProfile,source:"WebBuilt"});source="Web新規構築→月次cache保存"}
+ web=enrichFactorSeasonality(web,latestFactorSeasonalityProfile,asOf);for(const r of web)r.FactorEngineVersion=FACTOR_ENGINE_VERSION;latestFactorWebRows=web;latestFactorSummaryRows=buildFactorSummaryWeb(web);await workerCall("factor-state-save",120000,null,null,{date:asOf,rows:web});const unsafeFY=base.filter(r=>String(r.FactorPreviousFYResolver||"")==="LatestActualFYFallback").length;if(unsafeFY)throw new Error(`Factor unsafe FY fallback=${unsafeFY}`);if(!latestFactorSeasonalityProfile.length)throw new Error("Seasonality profileが空です");box("factorParityResult","pass",[`Web-first Factor / Seasonality PASS`,`基準日: ${asOf}`,`Factor: ${web.length}`,`Strength履歴: ${prev.size?"Web前日state":"初回Web baseline（前日stateなし）"}`,`Seasonality: ${latestFactorSeasonalityProfile.length} rows / ${source}`,`unsafe FY fallback: ${unsafeFY}`].join("\n"));return{factorCount:web.length,seasonalityRows:latestFactorSeasonalityProfile.length,historyMode:prev.size?"WebPreviousState":"WebBaselineNoPrevious",seasonalitySource:source,unsafeFY};
+}
+async function runWatchlistAlertPreviewWebDaily(asOf,progress){
+ progress?.("Watchlist / Factor stateを読込中");const wl=await workerCall("watchlist-load",120000),master=wl.master||[],state=wl.state||[];if(!master.length)throw new Error("Web Watchlistが未移行です。先にWatchlist master/stateを移行してください。");const fs=await workerCall("factor-state-load",120000),dated=(fs.rows||[]).filter(x=>String(x.date||"")===asOf),factorDate=[...new Set((fs.rows||[]).map(x=>String(x.date||"")).filter(Boolean))].sort().at(-1)||"";if(!dated.length||factorDate!==asOf)throw new Error(`Factor stateが基準日と一致しません。現在=${factorDate||"なし"}`);const factorRows=dated.map(x=>x.row||{}),base=await ensureFactorBase(asOf),migrationBaseline=String(wl.meta?.engineVersion||"")!==WATCHLIST_ALERT_ENGINE_VERSION,p=wEvaluateWatchlist(master,state,base,factorRows,asOf,{migrationBaseline,factorDate});latestWatchlistAlertPreview={...p,asOf,factorDate};latestWatchlistWeb={master,state};if($("watchlistAlertCommitBtn"))$("watchlistAlertCommitBtn").disabled=false;if($("watchlistAlertExportBtn"))$("watchlistAlertExportBtn").disabled=false;if($("watchlistAlertDiagExportBtn"))$("watchlistAlertDiagExportBtn").disabled=false;renderWatchlistAlertPreview(p,asOf,factorDate);return{watchCount:p.diag.length,alertCount:p.alerts.length,missingScreening:p.diag.filter(x=>!Number(x.ScreeningRowFound)).length,suppressedBaseline:p.diag.filter(x=>x.SuppressedReason).length,factorDate};
+}
+async function runDailyPipeline(){
+ const btn=$("dailyPipelineBtn"),token=copyTokenToAdvanced();if(!token){box("dailyPipelineResult","warn","APIキーを入力してください。");return}btn.disabled=true;let run=null,steps=[],stepMap=new Map();
+ try{
+   const latest=await workerCall("daily-pipeline-latest",120000);if(latest.run){run=latest.run;steps=latest.steps||[];stepMap=pipelineStepMap(steps)}else{box("dailyPipelineResult","run","次の配信済み取引日を確認中…");const probe=await pipelineProbeTarget(token),runId=pipelineRunId(probe.target);await workerCall("daily-pipeline-start",120000,null,null,{runId,targetDate:probe.target,mode:probe.mode,note:`coverageBase=${probe.base}`});run={run_id:runId,target_date:probe.target,mode:probe.mode,status:"RUNNING"};steps=[];stepMap=new Map()}
+   latestDailyPipelineRun=run;syncDailyDateInputs(run.target_date);latestDailyPipelineDiagRows=pipelineDiagFromStored(run,steps);renderDailyPipeline(run,latestDailyPipelineDiagRows,steps.length?"未完了checkpointから再開します。":"新規runを開始します。");
+   const execute=async(stage,fn)=>{const old=stepMap.get(stage.key);if(old&&["PASS","SKIP","REPAIR"].includes(String(old.status||""))){const row={RunID:run.run_id,TargetDate:run.target_date,Mode:run.mode,Ordinal:stage.ordinal,Stage:stage.key,Status:"SKIP",Reason:`checkpoint ${old.status} を再利用`,StartedAt:old.started_at||"",FinishedAt:old.finished_at||"",UpdatedAt:pipelineIsoNow(),Detail:JSON.stringify(old.detail||{})};latestDailyPipelineDiagRows=latestDailyPipelineDiagRows.filter(x=>x.Stage!==stage.key);latestDailyPipelineDiagRows.push(row);renderDailyPipeline(run,latestDailyPipelineDiagRows);return old.detail||{}}
+     const started=pipelineIsoNow(),progress=msg=>{const row={RunID:run.run_id,TargetDate:run.target_date,Mode:run.mode,Ordinal:stage.ordinal,Stage:stage.key,Status:"RUNNING",Reason:String(msg||""),StartedAt:started,FinishedAt:"",UpdatedAt:pipelineIsoNow(),Detail:""};latestDailyPipelineDiagRows=latestDailyPipelineDiagRows.filter(x=>x.Stage!==stage.key);latestDailyPipelineDiagRows.push(row);renderDailyPipeline(run,latestDailyPipelineDiagRows)};await workerCall("daily-pipeline-step-save",120000,null,null,{runId:run.run_id,stage:stage.key,ordinal:stage.ordinal,status:"RUNNING",detail:{reason:"stage started"},startedAt:started});progress("実行中");
+     try{const detail=await fn(progress),status=stage.key==="DATA_UPDATE"&&run.mode==="REPAIR"?"REPAIR":"PASS",reason=detail?.reason||"完了";await workerCall("daily-pipeline-step-save",120000,null,null,{runId:run.run_id,stage:stage.key,ordinal:stage.ordinal,status,detail:{...detail,reason}});const row={RunID:run.run_id,TargetDate:run.target_date,Mode:run.mode,Ordinal:stage.ordinal,Stage:stage.key,Status:status,Reason:reason,StartedAt:started,FinishedAt:pipelineIsoNow(),UpdatedAt:pipelineIsoNow(),Detail:JSON.stringify(detail||{})};latestDailyPipelineDiagRows=latestDailyPipelineDiagRows.filter(x=>x.Stage!==stage.key);latestDailyPipelineDiagRows.push(row);renderDailyPipeline(run,latestDailyPipelineDiagRows);return detail}catch(e){const message=String(e?.message||e);await workerCall("daily-pipeline-step-save",120000,null,null,{runId:run.run_id,stage:stage.key,ordinal:stage.ordinal,status:"FAIL",detail:{reason:message},runStatus:"FAIL",runNote:`${stage.key}: ${message}`});const row={RunID:run.run_id,TargetDate:run.target_date,Mode:run.mode,Ordinal:stage.ordinal,Stage:stage.key,Status:"FAIL",Reason:message,StartedAt:started,FinishedAt:pipelineIsoNow(),UpdatedAt:pipelineIsoNow(),Detail:JSON.stringify({reason:message})};latestDailyPipelineDiagRows=latestDailyPipelineDiagRows.filter(x=>x.Stage!==stage.key);latestDailyPipelineDiagRows.push(row);renderDailyPipeline(run,latestDailyPipelineDiagRows,"途中停止。次回はこの工程から再開します。");throw e}}
+   await execute(DAILY_PIPELINE_STAGES[0],p=>pipelineDataLakeStage(run.target_date,run.mode,token,p));
+   await execute(DAILY_PIPELINE_STAGES[1],p=>runScreeningWebDaily(run.target_date,p));
+   const dep=await execute(DAILY_PIPELINE_STAGES[2],async p=>{p("Discovery Episode再計算中");if($("discoveryAsOf"))$("discoveryAsOf").value=run.target_date;const ep=await runDiscoveryRecalc();renderDiscoveryParity(null,ep);return{episodeCount:ep.count??(ep.rows||[]).length,reason:"既存Episodeを最新DataLakeで再計算"}});
+   await execute(DAILY_PIPELINE_STAGES[3],async p=>{p("Discovery Daily更新中");const d=await workerCall("discovery-daily-recalc",600000,null,null,{asOf:run.target_date});latestDiscoveryDailyWebRows=d.storedRows||[];latestDiscoveryDailyEngineRows=d.rows||[];box("discoveryDailyParityResult","pass",`Web-first Discovery Daily PASS\n基準日: ${run.target_date}\n計算行: ${d.count??latestDiscoveryDailyEngineRows.length}\n保存済み: ${d.storedCount??latestDiscoveryDailyWebRows.length}`);return{dailyCount:d.count??latestDiscoveryDailyEngineRows.length,storedCount:d.storedCount??latestDiscoveryDailyWebRows.length,coverage:d.coverage||{},reason:"append/freeze。過去行維持・当日行更新"}});
+   await execute(DAILY_PIPELINE_STAGES[4],p=>runFactorSeasonalityWebDaily(run.target_date,p));
+   await execute(DAILY_PIPELINE_STAGES[5],p=>runWatchlistAlertPreviewWebDaily(run.target_date,p));
+   await workerCall("daily-pipeline-step-save",120000,null,null,{runId:run.run_id,stage:"WATCHLIST_ALERT_PREVIEW",ordinal:60,status:"PASS",detail:{reason:"Preview ready; Commit is explicit/manual",alertCount:latestWatchlistAlertPreview?.alerts?.length||0},runStatus:"PASS",runNote:"Web-first daily pipeline completed through Watchlist Alert Preview"});
+   const last=latestDailyPipelineDiagRows.find(x=>x.Stage==="WATCHLIST_ALERT_PREVIEW");if(last){last.Reason="Preview ready; Commitは明示操作";last.Detail=JSON.stringify({alertCount:latestWatchlistAlertPreview?.alerts?.length||0,reason:last.Reason})}
+   renderDailyPipeline(run,latestDailyPipelineDiagRows,`全工程完了。Watchlist AlertはPreviewまでです。Alert ${latestWatchlistAlertPreview?.alerts?.length||0}件。内容確認後、必要なら既存のCommitボタンで確定してください。`);
+ }catch(e){console.error("daily pipeline",e)}finally{btn.disabled=false}
+}
+if($("dailyPipelineBtn"))$("dailyPipelineBtn").onclick=runDailyPipeline;
+if($("dailyPipelineDiagExportBtn"))$("dailyPipelineDiagExportBtn").onclick=()=>{if(!latestDailyPipelineDiagRows.length)return;const fields=["RunID","TargetDate","Mode","Ordinal","Stage","Status","Reason","StartedAt","FinishedAt","UpdatedAt","Detail"];downloadBlob(new Blob([simpleCsv(latestDailyPipelineDiagRows.sort((a,b)=>Number(a.Ordinal)-Number(b.Ordinal)),fields)],{type:"text/csv;charset=utf-8"}),`web_daily_pipeline_diag_${String(latestDailyPipelineRun?.target_date||todayIsoLocal()).replaceAll("-","")}.csv`)};
+if($("dailyPipelineResetBtn"))$("dailyPipelineResetBtn").onclick=async()=>{const btn=$("dailyPipelineResetBtn");btn.disabled=true;try{const latest=await workerCall("daily-pipeline-latest",120000);if(latest.run)await workerCall("daily-pipeline-abandon",120000,null,null,{runId:latest.run.run_id,note:"manual reset from UI"});latestDailyPipelineRun=null;latestDailyPipelineDiagRows=[];$("dailyPipelineDiagExportBtn").disabled=true;box("dailyPipelineResult","pass","未完了checkpointを破棄しました。次回は新規runとして開始します。") }catch(e){box("dailyPipelineResult","fail","checkpoint reset FAIL\n"+(e?.message||e))}finally{btn.disabled=false}};
 

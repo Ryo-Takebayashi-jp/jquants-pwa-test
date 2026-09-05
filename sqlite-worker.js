@@ -1291,6 +1291,65 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}
  }
 
+
+ if(cmd==="daily-pipeline-latest" || cmd==="daily-pipeline-start" || cmd==="daily-pipeline-step-save" || cmd==="daily-pipeline-abandon"){
+   let pdb=null;try{
+     const payload=d.payload||{},now=new Date().toISOString();
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS daily_pipeline_runs_web(
+       run_id TEXT PRIMARY KEY,
+       target_date TEXT NOT NULL,
+       mode TEXT NOT NULL,
+       status TEXT NOT NULL,
+       started_at TEXT NOT NULL,
+       updated_at TEXT NOT NULL,
+       finished_at TEXT,
+       note TEXT
+     ) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS daily_pipeline_steps_web(
+       run_id TEXT NOT NULL,
+       stage TEXT NOT NULL,
+       ordinal INTEGER NOT NULL,
+       status TEXT NOT NULL,
+       started_at TEXT,
+       finished_at TEXT,
+       detail_json TEXT NOT NULL DEFAULT '{}',
+       updated_at TEXT NOT NULL,
+       PRIMARY KEY(run_id,stage)
+     ) WITHOUT ROWID`);
+     if(cmd==="daily-pipeline-start"){
+       const runId=String(payload.runId||"").trim(),target=String(payload.targetDate||"").slice(0,10),mode=String(payload.mode||"NEW");
+       if(!runId||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(target))throw new Error("pipeline start invalid");
+       pdb.exec({sql:`INSERT INTO daily_pipeline_runs_web(run_id,target_date,mode,status,started_at,updated_at,note)
+         VALUES(?,?,?,?,?,?,?)`,bind:[runId,target,mode,"RUNNING",now,now,String(payload.note||"")]});
+       self.postMessage({ok:true,type:"result",runId,targetDate:target,status:"RUNNING"});return;
+     }
+     if(cmd==="daily-pipeline-step-save"){
+       const runId=String(payload.runId||"").trim(),stage=String(payload.stage||"").trim(),status=String(payload.status||"").trim(),ordinal=Number(payload.ordinal||0),detail=payload.detail||{};
+       if(!runId||!stage||!["RUNNING","PASS","SKIP","REPAIR","FAIL"].includes(status))throw new Error("pipeline step invalid");
+       const old=execRows(pdb,"SELECT started_at FROM daily_pipeline_steps_web WHERE run_id=? AND stage=?",[runId,stage])[0]||{};
+       const started=String(old.started_at||payload.startedAt||now),finished=["PASS","SKIP","REPAIR","FAIL"].includes(status)?now:null;
+       pdb.exec({sql:`INSERT INTO daily_pipeline_steps_web(run_id,stage,ordinal,status,started_at,finished_at,detail_json,updated_at)
+         VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(run_id,stage) DO UPDATE SET ordinal=excluded.ordinal,status=excluded.status,
+         started_at=COALESCE(daily_pipeline_steps_web.started_at,excluded.started_at),finished_at=excluded.finished_at,
+         detail_json=excluded.detail_json,updated_at=excluded.updated_at`,bind:[runId,stage,ordinal,status,started,finished,JSON.stringify(detail),now]});
+       const terminal=String(payload.runStatus||"");
+       if(["PASS","FAIL","ABANDONED"].includes(terminal)){
+         pdb.exec({sql:`UPDATE daily_pipeline_runs_web SET status=?,updated_at=?,finished_at=?,note=? WHERE run_id=?`,bind:[terminal,now,terminal==="PASS"?now:null,String(payload.runNote||""),runId]});
+       }else pdb.exec({sql:"UPDATE daily_pipeline_runs_web SET updated_at=? WHERE run_id=?",bind:[now,runId]});
+       self.postMessage({ok:true,type:"result",runId,stage,status});return;
+     }
+     if(cmd==="daily-pipeline-abandon"){
+       const runId=String(payload.runId||"").trim();
+       if(runId)pdb.exec({sql:`UPDATE daily_pipeline_runs_web SET status='ABANDONED',updated_at=?,finished_at=?,note=? WHERE run_id=? AND status!='PASS'`,bind:[now,now,String(payload.note||"manual reset"),runId]});
+       self.postMessage({ok:true,type:"result",runId,status:"ABANDONED"});return;
+     }
+     const run=execRows(pdb,`SELECT * FROM daily_pipeline_runs_web WHERE status IN ('RUNNING','FAIL') ORDER BY updated_at DESC LIMIT 1`)[0]||null;
+     const steps=run?execRows(pdb,"SELECT * FROM daily_pipeline_steps_web WHERE run_id=? ORDER BY ordinal,stage",[run.run_id]).map(x=>{let detail={};try{detail=JSON.parse(String(x.detail_json||"{}"))}catch(_){}return{...x,detail}}):[];
+     self.postMessage({ok:true,type:"result",run,steps});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}finally{try{if(pdb)pdb.close()}catch(_){}}
+ }
+
  if(cmd==="discovery-short-trace"){
    let db=null;try{
      const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),codes=new Set((payload.codes||[]).map(v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean));

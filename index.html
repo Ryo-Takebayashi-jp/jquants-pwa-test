@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08111f">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>J-Quants Local-first PWA v7e-alpha90</title>
+<title>J-Quants Local-first PWA v7e-alpha91</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -21,7 +21,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha90</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha91</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 
 
 <section class="card" id="apiKeyCard">
@@ -29,6 +29,15 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <p>このページ内のJ-Quants取得処理すべてで共通利用します。セッション中だけ保持し、SQLite/localStorageには保存しません。</p>
   <input id="globalToken" type="password" autocomplete="off" placeholder="J-Quants V2 APIキーをここに貼り付け">
   <pre id="globalTokenStatus" class="result">未入力</pre>
+</section>
+<section class="card" id="dailyPipelineCard">
+  <h2>日次運用を実行（Web-first）</h2>
+  <p><b>通常運用の主ボタンです。</b> DataLake更新 → Screening → Discovery Episode/Daily → Factor/Seasonality → Watchlist Alert Preview を順番に実行します。</p>
+  <p class="desc">各工程はprivate DBへcheckpointを保存します。途中で失敗した場合は次回このボタンから未完了工程を再開します。Watchlist AlertはPreviewまでで、Commitは自動実行しません。</p>
+  <button id="dailyPipelineBtn">日次運用を実行</button>
+  <button id="dailyPipelineDiagExportBtn" class="secondary" disabled>日次パイプライン診断CSVを書き出す</button>
+  <button id="dailyPipelineResetBtn" class="secondary">未完了checkpointを破棄して新規開始</button>
+  <pre id="dailyPipelineResult" class="result">未実行</pre>
 </section>
 <section class="card" id="dailyTopCard">
   <h2>次の取引日を全データ更新</h2>
@@ -213,7 +222,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha90 起動確認</h2>
+<h2>v7e-alpha91 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -1015,6 +1024,6 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 </script>
 
-<script src="./app.js?v=v7e-alpha90"></script>
+<script src="./app.js?v=v7e-alpha91"></script>
 </body>
 </html>
