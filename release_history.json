@@ -1,0 +1,96 @@
+{
+  "current_release": "v7e-alpha86",
+  "history": [
+    {
+      "release": "v7e-alpha70",
+      "date": "2026-09-02",
+      "note": "Financial source-period resolver + strict disclosure date + PC-equivalent QVR crowding penalty."
+    },
+    {
+      "release": "v7e-alpha71",
+      "date": "2026-09-02",
+      "note": "Separate latest financial disclosure date from original earnings event date."
+    },
+    {
+      "release": "v7e-alpha72",
+      "date": "2026-09-02",
+      "note": "Screening exact parity baseline + Discovery Episode migration/performance parity."
+    },
+    {
+      "release": "v7e-alpha73",
+      "date": "2026-09-02",
+      "note": "Discovery Daily 42-column Web recomputation/parity: price/TOPIX/sector/historical technical/supply/market regime."
+    },
+    {
+      "release": "v7e-alpha74",
+      "date": "2026-09-02",
+      "note": "One-click next delivered trading day DataLake update for bars/master/fins/earnings/TOPIX/calendar/supply-demand + normalization; Discovery parity logic unchanged."
+    },
+    {
+      "release": "v7e-alpha75",
+      "date": "2026-09-02",
+      "note": "Discovery Daily append/freeze parity; sector/technical parity fixes; resumable supply-demand coverage; one-click daily update pinned to top."
+    },
+    {
+      "release": "v7e-alpha76",
+      "date": "2026-09-02",
+      "note": "Discovery Daily engine/diff/technical diagnostics; per-as-of 470-day large-short window parity fix."
+    },
+    {
+      "release": "v7e-alpha77",
+      "date": "2026-09-03",
+      "note": "Fix supply resume coverage writerCmd binding in one-click update; when no new bars are available, re-check/repair optional supply datasets for the current latest trading day."
+    },
+    {
+      "release": "v7e-alpha78",
+      "date": "2026-09-03",
+      "note": "Discovery Daily raw-close technical parity; current-asOf refresh; mutable short-sale snapshot re-query/replace to avoid partial-vintage freezes."
+    },
+    {
+      "release": "v7e-alpha79",
+      "date": "2026-09-03",
+      "note": "Fix JST/UTC date-iteration off-by-one in supply date scans and related date helpers; ensures target-day short-sale-report disclosures (e.g. 2026-09-03) are actually queried."
+    },
+    {
+      "release": "v7e-alpha80",
+      "date": "2026-09-03",
+      "note": "Watchlist master/state migration parity and Investment Tracking routing audit"
+    },
+    {
+      "release": "v7e-alpha81",
+      "date": "2026-09-03",
+      "schema": "web-local-first-v7e",
+      "migration": "No destructive migration. Adds factor_state_web table lazily in private DB.",
+      "note": "Factor Monitor / Sector Seasonality independent parity with diagnostics"
+    },
+    {
+      "release": "v7e-alpha82",
+      "date": "2026-09-03",
+      "note": "Factor core parity fixes (Size/turnover FlowProxy), monthly Seasonality cache migration, Factor membership diagnostics."
+    },
+    {
+      "release": "v7e-alpha83",
+      "date": "2026-09-05",
+      "note": "Factor parity hardening: 60-day factor-base eligibility, as-of financial normalization, recent 7-day financial refresh/replace for late revisions, derived-cache invalidation, engine-versioned Strength reseed, Factor financial diagnostics."
+    },
+    {
+      "release": "v7e-alpha84",
+      "date": "2026-09-05",
+      "note": "Factor FY baseline resolver: use actual FY period end for forecast-growth prior-year matching; add prior-FY diagnostics; Factor engine V4 reseed; graduation candidate for Web-first."
+    },
+    {
+      "release": "v7e-alpha85",
+      "date": "2026-09-05",
+      "note": "Fix Factor previous-FY baseline matching to PC CurFYEn-first semantics; retain explainable Web data enrichment; consolidate version READMEs under docs/history and normalize release history.",
+      "schema": "web-local-first-v7e",
+      "migration": "No destructive schema migration. Factor engine state advances to FactorWebV5-alpha85 and reseeds once."
+    },
+    {
+      "release": "v7e-alpha86",
+      "date": "2026-09-05",
+      "schema": "web-local-first-v7e",
+      "migration": "No destructive schema migration. Factor engine state advances to FactorWebV6-alpha86 and reseeds once.",
+      "note": "Factor actual-FY dual-field baseline resolver, real 60-day factor eligibility, end-to-end FY diagnostics, consolidated milestone history docs."
+    }
+  ]
+}
