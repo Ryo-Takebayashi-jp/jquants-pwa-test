@@ -1,3 +1,17 @@
+## v7e-alpha93 — Web-only Screening share ZIP + top-level daily output
+- Added a top-level `Screening共有ZIPを作成（Web-only）` button beside the daily operational outputs.
+- Generates `screening_YYYYMMDD.zip` without a PC refresh from canonical Web-first Screening / Factor / Discovery state.
+- Includes screening candidates/AI view, Factor latest/summary, Discovery Episode master/analysis, Discovery Daily, manifest and README.
+- Does not fabricate auxiliary files whose Web-native semantics are not yet implemented; `candidate_earnings_history.csv` and `management_guidance_summary.csv` are explicitly listed as omitted in the manifest and do not block ZIP generation.
+- alpha91 ADVANCE/REPAIR daily pipeline and alpha92 Portfolio/AI Share semantics are unchanged.
+
+## v7e-alpha92 — Web-only Portfolio / AI Share stage 1
+- Added a top-level Web-only ChatGPT share ZIP export using private `user_stocks` + current Web DataLake.
+- Export contains `web_jqp.json`, `web_portfolio_integrated.csv`, `manifest.json`, and `README.txt`.
+- No PC-side portfolio/JQP refresh is required for this current-snapshot share path after the one-time portfolio migration into Web private state.
+- Explicitly does not claim full parity with the PC JQP historical CSV bundle yet.
+- alpha91 daily pipeline and verified Investment Tracking / Screening / Discovery / Watchlist semantics are unchanged.
+
 ## v7e-alpha91 — Web-first daily pipeline orchestration (2026-09-05)
 
 - Add top-level `日次運用を実行（Web-first）` button above the existing DataLake-only update action.

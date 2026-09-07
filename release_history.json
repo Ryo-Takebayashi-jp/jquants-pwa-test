@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha91",
+  "current_release": "v7e-alpha93",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -124,6 +124,18 @@
       "schema": "web-local-first-v7e",
       "migration": "No destructive migration. Adds daily_pipeline_runs_web and daily_pipeline_steps_web lazily in jq_private_v1.sqlite.",
       "note": "Web-first one-button daily pipeline with resumable per-stage checkpoints, diagnostic CSV, Web-only Factor/Seasonality execution, and Watchlist Alert Preview-only stop."
+    },
+    {
+      "release": "v7e-alpha93",
+      "date": "2026-09-07",
+      "schema": "web-local-first-v7e",
+      "migration": "No schema migration. Adds top-level Web-only Screening share ZIP export.",
+      "note": "Daily-use screening_YYYYMMDD.zip from canonical Web Screening / Factor / Discovery state; legacy auxiliary files not yet Web-native are declared omitted instead of blocking export."
     }
-  ]
+  ],
+  "latest": {
+    "version": "v7e-alpha93",
+    "date": "2026-09-07",
+    "summary": "Web-only Screening share ZIP + top-level daily output"
+  }
 }

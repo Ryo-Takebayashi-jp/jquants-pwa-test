@@ -11,3 +11,12 @@
 - Watchlist Re-Evaluation Alert is intentionally Preview-only in the pipeline. Commit remains an explicit user action.
 - Added one-screen START/PASS/SKIP/REPAIR/FAIL status and a daily-pipeline diagnostic CSV.
 - Existing alpha90 Investment Tracking Preview/Commit, Screening baseline, Discovery semantics, Factor engine semantics, and Watchlist Alert engine semantics are not changed.
+
+## alpha92
+Web-only Portfolio/AI Share stage 1. Added top-level current-snapshot ZIP export from private user_stocks + DataLake. Keeps legacy PC JQP historical bundle parity out of scope for this stage.
+
+## v7e-alpha93 — 2026-09-07
+
+- Added top-level Web-only Screening share ZIP for daily discovery use.
+- Reuses the verified Web-first Screening, Factor/Seasonality, Discovery Episode and Discovery Daily engines/state.
+- ZIP generation is independent from PC refresh. Missing legacy auxiliary CSVs do not block export and are declared in manifest.json rather than emitted as misleading empty files.

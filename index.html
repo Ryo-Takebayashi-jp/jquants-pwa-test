@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08111f">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>J-Quants Local-first PWA v7e-alpha91</title>
+<title>J-Quants Local-first PWA v7e-alpha93</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -21,7 +21,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha91</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha93</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 
 
 <section class="card" id="apiKeyCard">
@@ -38,6 +38,20 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <button id="dailyPipelineDiagExportBtn" class="secondary" disabled>日次パイプライン診断CSVを書き出す</button>
   <button id="dailyPipelineResetBtn" class="secondary">未完了checkpointを破棄して新規開始</button>
   <pre id="dailyPipelineResult" class="result">未実行</pre>
+</section>
+<section class="card" id="screeningShareCard">
+  <h2>Screening共有ZIPを作成（Web-only）</h2>
+  <p><b>日常の新規銘柄発掘用です。</b> 直前の日次運用結果を優先し、必要なWeb-first stateを補完して共有ZIPを生成します。</p>
+  <p class="desc">候補 / Factor / Discovery Episode・Daily を1つにまとめます。PC版を起動する必要はありません。Webで未再現の補助CSVはmanifestへ明示し、空ファイルで偽装しません。</p>
+  <button id="screeningShareZipBtn">Screening共有ZIPを作成</button>
+  <pre id="screeningShareZipResult" class="result">未実行</pre>
+</section>
+<section class="card" id="aiShareCard">
+  <h2>ChatGPT共有ZIPを作成（Web-only）</h2>
+  <p><b>PC版を起動せず、Web private DBの登録銘柄と最新DataLakeから共有用ZIPを生成します。</b></p>
+  <p class="desc">Portfolio / Master / Price / Technical / TOPIX相対 / Financial / Supply-demand を統合します。これはWeb-first共有の第1段階で、PC版JQPの履歴系CSVすべてを完全再現するものではありません。</p>
+  <button id="aiShareZipBtn">ChatGPT共有ZIPを作成</button>
+  <pre id="aiShareZipResult" class="result">未実行</pre>
 </section>
 <section class="card" id="dailyTopCard">
   <h2>次の取引日を全データ更新</h2>
@@ -222,7 +236,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha91 起動確認</h2>
+<h2>v7e-alpha93 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -1024,6 +1038,6 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 </script>
 
-<script src="./app.js?v=v7e-alpha91"></script>
+<script src="./app.js?v=v7e-alpha93"></script>
 </body>
 </html>

@@ -1,3 +1,3 @@
-v7e-alpha91
+v7e-alpha93
 
-Web-first daily pipeline is integrated above the existing verified engines. One top-level action coordinates DataLake update/repair → Screening → Discovery Episode/Daily → Factor/Seasonality → Watchlist Alert Preview. Each stage stores a private-DB checkpoint and an interrupted run resumes from the failed stage. Watchlist Alert remains Preview-only until the user explicitly commits. Existing alpha90 Investment Tracking semantics and baseline remain unchanged. See `history/alpha91-alpha99.md`.
+alpha91 Web-first daily pipeline remains the operational baseline (REPAIR and ADVANCE E2E PASS on device). alpha92 added Web-only Portfolio/AI Share stage 1. alpha93 adds the daily top-level Web-only Screening share ZIP (`screening_YYYYMMDD.zip`) built from canonical Screening / Factor / Discovery state. Two legacy auxiliary CSVs are intentionally omitted until Web-native semantics exist and are disclosed in manifest.json.

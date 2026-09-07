@@ -2247,6 +2247,79 @@ if($("portfolioJqpParityBtn")) $("portfolioJqpParityBtn").onclick=async()=>{
  finally{btn.disabled=false}
 };
 
+
+function crc32Bytes(bytes){
+ let c=0xffffffff;for(const b of bytes){c^=b;for(let k=0;k<8;k++)c=(c>>>1)^((c&1)?0xedb88320:0)}return (c^0xffffffff)>>>0;
+}
+function zipStoreBlob(files){
+ const enc=new TextEncoder(),locals=[],centrals=[];let offset=0;
+ const u16=(a,v)=>{a.push(v&255,(v>>>8)&255)},u32=(a,v)=>{a.push(v&255,(v>>>8)&255,(v>>>16)&255,(v>>>24)&255)};
+ for(const f of files){const name=enc.encode(f.name),data=typeof f.data==="string"?enc.encode(f.data):f.data,crc=crc32Bytes(data),h=[];u32(h,0x04034b50);u16(h,20);u16(h,0);u16(h,0);u16(h,0);u16(h,0);u32(h,crc);u32(h,data.length);u32(h,data.length);u16(h,name.length);u16(h,0);const local=new Uint8Array(h.length+name.length+data.length);local.set(h);local.set(name,h.length);local.set(data,h.length+name.length);locals.push(local);
+   const c=[];u32(c,0x02014b50);u16(c,20);u16(c,20);u16(c,0);u16(c,0);u16(c,0);u16(c,0);u32(c,crc);u32(c,data.length);u32(c,data.length);u16(c,name.length);u16(c,0);u16(c,0);u16(c,0);u16(c,0);u32(c,0);u32(c,offset);const ce=new Uint8Array(c.length+name.length);ce.set(c);ce.set(name,c.length);centrals.push(ce);offset+=local.length;
+ }
+ const centralSize=centrals.reduce((n,x)=>n+x.length,0),end=[];u32(end,0x06054b50);u16(end,0);u16(end,0);u16(end,files.length);u16(end,files.length);u32(end,centralSize);u32(end,offset);u16(end,0);return new Blob([...locals,...centrals,new Uint8Array(end)],{type:"application/zip"});
+}
+async function buildWebPortfolioIntegrated(asOf){
+ const ls=await workerCall("my-stocks-list",300000),stocks=(ls.rows||[]).map(x=>({code:x.code,name:x.name,account:x.account,shares:x.shares,avgCost:x.avg_cost,strategy:x.strategy,memo:x.memo}));
+ if(!stocks.length)throw new Error("Web private DBに登録銘柄がありません。先にマイ銘柄へportfolio.csvを一度移行してください。");
+ const tech=await workerCall("technical-screening-poc",300000,null,null,{asOf,lookback:320,topN:200,returnAll:true});
+ if(!latestFinancialNormalized||latestFinancialNormalizedAsOf!==asOf){const fr=await workerCall("financial-normalize-latest",180000,null,null,{asOf});latestFinancialNormalized=fr.rows;latestFinancialNormalizedAsOf=asOf}
+ const sr=await workerCall("supply-demand-portfolio-snapshot",180000);
+ const pr=await workerCall("portfolio-integrated-snapshot",180000,null,null,{stocks,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized,supply:sr.result});
+ return {rows:pr.rows||[],count:pr.count||0,stockCount:stocks.length,techUniverse:(tech.all||tech.top||[]).length};
+}
+
+// v7e-alpha93: top-level Web-only Screening share ZIP for daily discovery workflow.
+function csvAllColumns(rows){
+ if(!rows?.length)return "\uFEFF";
+ const keys=[];const seen=new Set();for(const r of rows)for(const k of Object.keys(r||{}))if(!seen.has(k)){seen.add(k);keys.push(k)}
+ const esc=v=>'"'+String(v??"").replaceAll('"','""')+'"';return "\uFEFF"+[keys.map(esc).join(","),...rows.map(r=>keys.map(k=>esc(r?.[k]??"")).join(","))].join("\n");
+}
+async function ensureScreeningShareState(asOf,progress){
+ if(!latestScreeningCandidates.length){progress?.("Screening候補をWeb DataLakeから再構築中…");await runScreeningWebDaily(asOf,progress)}
+ if(!latestDiscoveryWebRows.length){progress?.("Discovery Episodeをprivate DBから再計算中…");if($("discoveryAsOf"))$("discoveryAsOf").value=asOf;const ep=await runDiscoveryRecalc();latestDiscoveryWebRows=ep.rows||[]}
+ if(!latestDiscoveryDailyWebRows.length){progress?.("Discovery Dailyの保存済み履歴を読込中…");const d=await workerCall("discovery-daily-recalc",600000,null,null,{asOf});latestDiscoveryDailyWebRows=d.storedRows||[];latestDiscoveryDailyEngineRows=d.rows||[]}
+ let factorDate="";try{const fs=await workerCall("factor-state-load",120000),dates=[...new Set((fs.rows||[]).map(x=>String(x.date||"")).filter(Boolean))].sort();factorDate=dates.at(-1)||"";if(factorDate===asOf){latestFactorWebRows=(fs.rows||[]).filter(x=>String(x.date||"")===asOf).map(x=>x.row||{});latestFactorSummaryRows=buildFactorSummaryWeb(latestFactorWebRows)}}catch(_){}
+ if(!latestFactorWebRows.length||factorDate!==asOf){progress?.("Factor / SeasonalityをWeb-firstで補完中…");await runFactorSeasonalityWebDaily(asOf,progress)}
+ return{factorDate};
+}
+if($("screeningShareZipBtn")) $("screeningShareZipBtn").onclick=async()=>{
+ const btn=$("screeningShareZipBtn");btn.disabled=true;const progress=msg=>box("screeningShareZipResult","run",String(msg||"共有ZIPを構築中…"));progress("Web-first Screening共有データを準備中…");
+ try{
+  const asOf=String(latestDailyPipelineRun?.target_date||$("screeningBaseAsOf")?.value||$("screeningAsOf")?.value||todayIsoLocal()).slice(0,10);syncDailyDateInputs(asOf);await ensureScreeningShareState(asOf,progress);
+  const candidates=latestScreeningCandidates||[],episodes=latestDiscoveryWebRows||[],daily=latestDiscoveryDailyWebRows||[],factors=latestFactorWebRows||[],summary=latestFactorSummaryRows?.length?latestFactorSummaryRows:buildFactorSummaryWeb(factors);
+  if(!candidates.length)throw new Error("Screening候補が空です。日次運用のScreening工程を確認してください。");
+  const files=[
+   {name:"screening_candidates.csv",data:csvAllColumns(candidates)},
+   {name:"screening_ai.csv",data:csvAllColumns(candidates)},
+   {name:"factor_monitor_latest.csv",data:simpleCsv(factors,FACTOR_FIELDS)},
+   {name:"factor_summary.csv",data:simpleCsv(summary,FACTOR_SUMMARY_FIELDS)},
+   {name:"discovery_episode_master.csv",data:discoveryCsv(episodes)},
+   {name:"discovery_episode_analysis.csv",data:discoveryCsv(episodes)},
+   {name:"discovery_episode_daily.csv",data:discoveryDailyCsv(daily)}
+  ];
+  const omitted=["candidate_earnings_history.csv","management_guidance_summary.csv"];
+  const manifest={bundle:"Web Screening Share",version:"v7e-alpha93",asOf,generatedAt:new Date().toISOString(),canonical:"Web-first",counts:{screeningCandidates:candidates.length,factors:factors.length,factorSummary:summary.length,discoveryEpisodes:episodes.length,discoveryDaily:daily.length},files:files.map(x=>x.name),omitted,notes:["PC refresh is not required.","screening_ai.csv currently carries the canonical Web candidate rows; no separate AI-compression semantics are claimed yet.","candidate_earnings_history.csv and management_guidance_summary.csv are not emitted until their Web-native semantics are implemented; missing auxiliary files never block ZIP generation."]};
+  files.push({name:"manifest.json",data:JSON.stringify(manifest,null,2)});files.push({name:"README.txt",data:`J-Quants Web-first Screening Share v7e-alpha93\nAsOf: ${asOf}\nCandidates: ${candidates.length}\nFactors: ${factors.length}\nDiscovery Episodes: ${episodes.length}\nDiscovery Daily rows: ${daily.length}\n\nOmitted auxiliary files: ${omitted.join(", ")}\nSee manifest.json for semantics.\n`});
+  const blob=zipStoreBlob(files);const name=`screening_${asOf.replaceAll("-","")}.zip`;downloadBlob(blob,name);box("screeningShareZipResult","pass",`Screening共有ZIP PASS\n基準日: ${asOf}\n候補: ${candidates.length}\nFactor: ${factors.length}\nDiscovery Episode: ${episodes.length}\nDiscovery Daily: ${daily.length}\n\n${name} を書き出しました。\n補助CSV未実装: ${omitted.length}（manifestに明示）`);
+ }catch(e){box("screeningShareZipResult","fail","Screening共有ZIP FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
+};
+
+if($("aiShareZipBtn")) $("aiShareZipBtn").onclick=async()=>{
+ const btn=$("aiShareZipBtn");btn.disabled=true;box("aiShareZipResult","run","Web private DB + DataLakeから共有データを構築中…");
+ try{
+  const asOf=String(latestDailyPipelineRun?.target_date||$("screeningAsOf")?.value||localTodayIso()).slice(0,10),r=await buildWebPortfolioIntegrated(asOf),rows=r.rows;
+  const tech=rows.filter(x=>x.close!=null).length,fin=rows.filter(x=>x.discDate).length,margin=rows.filter(x=>x.marginInterestDate).length,shorts=rows.filter(x=>x.shortReportDate||x.shortRatioDate).length;
+  if(!rows.length)throw new Error("共有対象銘柄が0件です");
+  const payload={schema:"web-jqp-v2-ai-share",generatedAt:new Date().toISOString(),asOf,portfolioCount:rows.length,layers:["portfolio","master","price","technical","topix-relative","financial","supply-demand"],rows};
+  const headers=Object.keys(rows[0]),csv=simpleCsv(rows,headers),manifest={schema:"web-ai-share-manifest-v1",version:"v7e-alpha93",generatedAt:new Date().toISOString(),asOf,portfolioCount:rows.length,coverage:{technical:`${tech}/${rows.length}`,financial:`${fin}/${rows.length}`,marginInterest:`${margin}/${rows.length}`,shortSelling:`${shorts}/${rows.length}`},files:["web_jqp.json","web_portfolio_integrated.csv","manifest.json","README.txt"],note:"Web-first AI share stage 1. PC JQP historical CSV set is not yet fully reproduced."};
+  const readme=`J-Quants Web-first ChatGPT Share\\nVersion: v7e-alpha93\\nAsOf: ${asOf}\\nPortfolio: ${rows.length}\\nTechnical: ${tech}/${rows.length}\\nFinancial: ${fin}/${rows.length}\\nMargin interest: ${margin}/${rows.length}\\nShort selling: ${shorts}/${rows.length}\\n\\nThis is Web-first AI share stage 1. It contains the integrated current snapshot; PC JQP historical CSV files are not yet fully reproduced.\\n`;
+  const blob=zipStoreBlob([{name:"web_jqp.json",data:JSON.stringify(payload,null,2)},{name:"web_portfolio_integrated.csv",data:csv},{name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:readme}]);
+  downloadBlob(blob,`web_ai_share_${asOf.replaceAll("-","")}.zip`);window.__latestPortfolioIntegrated=rows;
+  box("aiShareZipResult",tech===rows.length&&fin===rows.length?"pass":"warn",`共有ZIP生成 PASS\\n基準日: ${asOf}\\n銘柄: ${rows.length}\\nテクニカル: ${tech}/${rows.length}\\n財務: ${fin}/${rows.length}\\n信用残: ${margin}/${rows.length}\\n空売り系: ${shorts}/${rows.length}\\n\\nweb_ai_share_${asOf.replaceAll("-","")}.zip を書き出しました。`);
+ }catch(e){box("aiShareZipResult","fail","共有ZIP FAIL\\n"+(e?.message||e))}finally{btn.disabled=false}
+};
+
 if($("portfolioJqpExportBtn")) $("portfolioJqpExportBtn").onclick=()=>{
  const rows=window.__latestPortfolioIntegrated||[];if(!rows.length)return;
  const payload={
