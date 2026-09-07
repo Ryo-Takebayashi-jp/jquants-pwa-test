@@ -237,3 +237,10 @@
 - Trade history now displays why an older row cannot be voided (`後続取引あり` / `取消済`) instead of silently hiding the control.
 - Web Screening share adds `screening_parity_trace.csv`, a compact full-scored-universe audit trace for temporary PC/Web migration diagnostics. It is diagnostic, not a new investment input contract.
 - Existing alpha98 PED / EarningsReactionPending invariants and Web-first semantics are preserved.
+
+## v7e-alpha100 — AI Share Stage 2 (2026-09-08)
+- ChatGPT保有株共有ZIPをStage 2へ拡張。
+- 現在snapshotに加え、保有銘柄の5年価格履歴、財務開示履歴、信用残履歴、空売り比率履歴、大口空売り履歴、市場フロー履歴、Web売買履歴を同梱。
+- 価格履歴はモバイル生成負荷を抑えるため5年に制限。財務・需給・市場フローはWeb DataLakeで利用可能な履歴を出力。
+- Web売買履歴はPortfolio Manager導入後の監査ledger。VOID行を保持し、将来の成績集計では除外可能。
+- PC JQP 16ファイルの盲目的複製ではなく、AI投資分析に必要な履歴レイヤーをWeb-firstで追加。

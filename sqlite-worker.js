@@ -2274,6 +2274,32 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    return;
  }
 
+
+ if(cmd==="ai-share-stage2"){
+   const payload=d.payload||{},asOf=String(payload.asOf||""),codes=(payload.codes||[]).map(v=>String(v||"").trim()).filter(Boolean);
+   const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const wanted=new Set(codes.map(norm));
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+   const cutoff=new Date(asOf+"T00:00:00Z");cutoff.setUTCFullYear(cutoff.getUTCFullYear()-5);const from=cutoff.toISOString().slice(0,10);
+   const out={priceHistory:[],financialHistory:[],marginHistory:[],shortRatioHistory:[],largeShortHistory:[],marketFlow:[],tradeHistory:[],meta:{asOf,from,codes:[...wanted]}};
+   // Price history: 5 years, adjusted OHLCV on latest basis as stored by the canonical bars layer.
+   let cdb=null;try{
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+     const cats=execRows(cdb,`SELECT logical_name,range_start,range_end FROM shard_catalog WHERE dataset='bars_daily' AND state='ready' AND (range_end IS NULL OR range_end>=?) AND (range_start IS NULL OR range_start<=?) ORDER BY range_start`,[from,asOf]);cdb.close();cdb=null;
+     for(const sh of cats){let db=null;try{db=new p.OpfsSAHPoolDb(String(sh.logical_name),"r");for(const code of wanted){const rs=execRows(db,`SELECT code,date,adj_o,adj_h,adj_l,adj_c,adj_volume,turnover_value FROM bars_daily WHERE code=? AND date>=? AND date<=? ORDER BY date`,[code,from,asOf]);for(const r of rs)out.priceHistory.push({Code:norm(r.code),Date:r.date,Open:r.adj_o,High:r.adj_h,Low:r.adj_l,Close:r.adj_c,Volume:r.adj_volume,TradingValue:r.turnover_value})}db.close()}catch(_){try{if(db)db.close()}catch(__){}}}
+   }catch(_){try{if(cdb)cdb.close()}catch(__){}}
+   // Financial disclosure history. Keep source fields needed for earnings trend / forecast revisions.
+   let fdb=null;try{fdb=new p.OpfsSAHPoolDb("/jq_fins_summary_v1.sqlite","r");for(const r of execRows(fdb,"SELECT data_date,code,disclosed_date,raw_json FROM fins_summary WHERE disclosed_date<=? ORDER BY disclosed_date,data_date",[asOf])){const code=norm(r.code);if(!wanted.has(code))continue;let x={};try{x=JSON.parse(String(r.raw_json||"{}"))}catch(_){};const g=(...ks)=>{for(const k of ks)if(x[k]!=null&&x[k]!=="")return x[k];return null};out.financialHistory.push({Code:code,DataDate:r.data_date,DisclosureDate:String(r.disclosed_date||g("DiscDate","DisclosedDate")||"").slice(0,10),PeriodType:g("CurPerType","PeriodType"),FYEnd:g("CurFYEn","CurFYEnd","FYEnd"),PeriodEnd:g("CurPerEn","CurPerEnd"),Sales:g("Sales"),OperatingProfit:g("OP","OperatingProfit"),OrdinaryProfit:g("OdP","OrdinaryProfit"),NetProfit:g("NP","Profit","NetProfit"),EPS:g("EPS"),BPS:g("BPS"),ForecastSales:g("FSales","ForecastSales"),ForecastOperatingProfit:g("FOP","ForecastOP","ForecastOperatingProfit"),ForecastOrdinaryProfit:g("FOdP","ForecastOrdinaryProfit"),ForecastNetProfit:g("FNP","ForecastNP","ForecastNetProfit"),ForecastEPS:g("FEPS","ForecastEPS"),CFO:g("CFO"),CFI:g("CFI"),CFF:g("CFF"),Equity:g("Eq","Equity"),TotalAssets:g("TA","TotalAssets"),DocumentType:g("DocType","Type")})}fdb.close();fdb=null}catch(_){try{if(fdb)fdb.close()}catch(__){}}
+   const readRaw=(dbName,table,mapper)=>{let db=null;try{db=new p.OpfsSAHPoolDb(dbName,"r");for(const r of execRows(db,`SELECT data_date,code,raw_json FROM ${table} WHERE data_date<=? ORDER BY data_date`,[asOf])){const code=norm(r.code);if(code&&!wanted.has(code))continue;let x={};try{x=JSON.parse(String(r.raw_json||"{}"))}catch(_){};mapper(r,x,code)}db.close()}catch(_){try{if(db)db.close()}catch(__){}}};
+   readRaw("/jq_margin_interest_v1.sqlite","margin_interest",(r,x,code)=>{const n=(...ks)=>{for(const k of ks){const v=Number(x[k]);if(Number.isFinite(v))return v}return null},L=n("LongVol","LongMargin","BuyBalance","LongBalance"),S=n("ShrtVol","ShortVol","ShortMargin","SellBalance","ShortBalance");out.marginHistory.push({Code:code,Date:String(r.data_date||"").slice(0,10),Long:L,Short:S,Ratio:(L!=null&&S!=null&&S!==0)?L/S:null})});
+   readRaw("/jq_short_ratio_v1.sqlite","short_ratio",(r,x,code)=>{const n=(...ks)=>{for(const k of ks){const v=Number(x[k]);if(Number.isFinite(v))return v}return null};out.shortRatioHistory.push({Code:code,Date:String(r.data_date||"").slice(0,10),ShortRatio:n("ShortRatio","ShrtRatio","Ratio")})});
+   readRaw("/jq_short_sale_report_v1.sqlite","short_sale_report",(r,x,code)=>{const n=(...ks)=>{for(const k of ks){const v=Number(x[k]);if(Number.isFinite(v))return v}return null};out.largeShortHistory.push({Code:code,StoredDate:String(r.data_date||"").slice(0,10),DisclosureDate:String(x.DiscDate??"").slice(0,10),CalculationDate:String(x.CalcDate??"").slice(0,10),ShortSeller:x.SSName??x.ShortSellerName??"",FundName:x.FundName??"",Ratio:n("ShrtPosToSO","ShortPositionRatio"),Shares:n("ShrtPosShares","ShortPositionShares")})});
+   // Market-wide investor type flow is intentionally not filtered by portfolio code.
+   readRaw("/jq_investor_types_v1.sqlite","investor_types",(r,x)=>{out.marketFlow.push({Date:String(r.data_date||"").slice(0,10),Section:x.Section??x.Market??"",InvestorType:x.InvestorType??x.InvestorTypeName??x.InvestorTypeCode??"",Sales:x.Sales??x.Sell??null,Purchases:x.Purchases??x.Buy??null,Balance:x.Balance??x.Net??null,RawJSON:JSON.stringify(x)})});
+   let pdb=null;try{pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","r");if(Number(scalarBind(pdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='portfolio_trade_log'",[])||0)>0)out.tradeHistory=execRows(pdb,"SELECT trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at,status,voided_at,void_reason FROM portfolio_trade_log ORDER BY trade_date,created_at");pdb.close();pdb=null}catch(_){try{if(pdb)pdb.close()}catch(__){}}
+   self.postMessage({ok:true,type:"result",...out,counts:{priceHistory:out.priceHistory.length,financialHistory:out.financialHistory.length,marginHistory:out.marginHistory.length,shortRatioHistory:out.shortRatioHistory.length,largeShortHistory:out.largeShortHistory.length,marketFlow:out.marketFlow.length,tradeHistory:out.tradeHistory.length}});return;
+ }
+
  if(cmd==="technical-screening-poc"){
    const payload=e.data.payload||{};
    const asOf=String(payload.asOf||"");

@@ -159,6 +159,11 @@
       "schema": "web-local-first-v7e",
       "migration": "none",
       "note": "Top-level direct Investment Tracking registration/update/Watchlist close UI using verified Preview→Commit semantics; current registry view; Discovery history remains non-destructive."
+    },
+    {
+      "version": "v7e-alpha100",
+      "date": "2026-09-08",
+      "summary": "AI Share Stage 2: compact portfolio price/financial/supply/market-flow/trade histories for Web-first AI analysis."
     }
   ],
   "latest": "v7e-alpha99"
