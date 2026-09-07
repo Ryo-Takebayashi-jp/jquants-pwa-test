@@ -1,3 +1,9 @@
+## v7e-alpha96 — 2026-09-07
+- Header/current version display synchronized to alpha96.
+- Analyze registration list now resolves Equities Master company names and uses mobile-friendly cards.
+- Added Web-only Portfolio/Trade Manager for NISA/spot/margin-long/margin-short with Preview→Commit, position update, and persistent trade ledger.
+- Existing alpha91 daily pipeline and alpha94 share artifact semantics unchanged.
+
 ## v7e-alpha95 - 2026-09-07
 - Add top-level Web-only `銘柄を登録・管理` daily-use UI backed by the existing alpha90 Investment Tracking Preview → Commit engine.
 - Support direct single-code ADD / UPSERT / REREGISTER / CLOSE without creating `investment_tracking_input.csv`.

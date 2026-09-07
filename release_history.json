@@ -2,6 +2,12 @@
   "current_release": "v7e-alpha95",
   "history": [
     {
+      "version": "v7e-alpha96",
+      "date": "2026-09-07",
+      "summary": "Analyze UI names/mobile cards + Web-only Portfolio/Trade Manager",
+      "status": "candidate"
+    },
+    {
       "release": "v7e-alpha70",
       "date": "2026-09-02",
       "note": "Financial source-period resolver + strict disclosure date + PC-equivalent QVR crowding penalty."
@@ -145,5 +151,5 @@
       "note": "Top-level direct Investment Tracking registration/update/Watchlist close UI using verified Preview→Commit semantics; current registry view; Discovery history remains non-destructive."
     }
   ],
-  "latest": "v7e-alpha95"
+  "latest": "v7e-alpha96"
 }

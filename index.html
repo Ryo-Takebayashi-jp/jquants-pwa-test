@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08111f">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>J-Quants Local-first PWA v7e-alpha93</title>
+<title>J-Quants Local-first PWA v7e-alpha96</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -18,10 +18,11 @@ button:disabled{opacity:.5}input[type=file]{width:100%;box-sizing:border-box;pad
 .pass{background:#ecfdf5;color:#065f46}.warn{background:#fffbeb;color:#92400e}.fail{background:#fef2f2;color:#991b1b}.run{background:#eff6ff;color:#1e40af}
 .meter{height:11px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin-top:10px}.meter>div{height:100%;width:0;background:#08111f;transition:width .15s}
 footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} details.card>summary{cursor:pointer;font-size:16px;padding:2px 0 8px}
+.inv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:9px;margin-top:10px}.inv-item{border:1px solid #e5e7eb;border-radius:12px;padding:11px;background:#fafafa}.inv-title{font-weight:800;font-size:14px;margin-bottom:6px}.inv-meta{font-size:12px;line-height:1.55;color:#374151}.inv-actions{margin-top:8px;display:flex;gap:6px}.inv-actions button{width:auto;padding:7px 12px;font-size:12px}.portfolio-row{border:1px solid #e5e7eb;border-radius:12px;padding:11px;margin-top:8px;background:#fafafa}.portfolio-title{font-weight:800}.portfolio-meta{font-size:12px;color:#374151;line-height:1.55;margin-top:4px}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha93</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha96</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
 
 
 <section class="card" id="apiKeyCard">
@@ -93,6 +94,26 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <pre id="quickInvResult" class="result">未実行</pre>
   <div id="quickInvTable"></div>
   <p class="desc">CLOSEはActive/ReviewDueのWatchlistを終了します。Discovery Episode履歴は削除しません。TRACK_ONLYにはWatchlistがないためCLOSE対象外です。誤操作防止のため必ずPreview → Commitの2段階です。</p>
+</section>
+<section class="card" id="quickPortfolioManageCard">
+  <h2>保有銘柄・売買を管理（Web-only）</h2>
+  <p><b>現物 / NISA / 信用買 / 信用売の新規・追加・縮小・全決済をWebで記録します。</b> 現在ポジションをprivate DBへ反映し、売買履歴も同時に保存します。</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px">
+    <label>銘柄コード <input id="pfTradeCode" type="text" placeholder="例: 1963"></label>
+    <label>口座/区分 <select id="pfTradeAccount"><option>NISA</option><option>現物</option><option>信用買</option><option>信用売</option></select></label>
+    <label>操作 <select id="pfTradeAction"><option value="ADD">新規 / 追加</option><option value="REDUCE">縮小 / 決済</option></select></label>
+    <label>株数 <input id="pfTradeShares" type="number" min="0" step="1" placeholder="例: 100"></label>
+    <label>約定単価 <input id="pfTradePrice" type="number" min="0" step="0.01" placeholder="例: 1261"></label>
+    <label>売買日 <input id="pfTradeDate" type="date"></label>
+  </div>
+  <label>メモ <input id="pfTradeMemo" type="text" placeholder="任意"></label>
+  <button id="pfTradePreviewBtn">売買をプレビュー</button>
+  <button id="pfTradeCommitBtn" disabled>この売買を確定・保存</button>
+  <button id="pfTradeRefreshBtn" class="secondary">現在の保有一覧を更新</button>
+  <pre id="pfTradeResult" class="result">未実行</pre>
+  <div id="pfTradePositions"></div>
+  <details style="margin-top:10px"><summary>最近の売買履歴</summary><div id="pfTradeHistory"></div></details>
+  <p class="desc">既存保有は現在の平均取得単価を起点に継続管理します。縮小時の実現損益はWeb上の平均取得単価を基準に計算します。税・手数料は含みません。</p>
 </section>
 <section class="card" id="dailyTopCard">
   <h2>次の取引日を全データ更新</h2>
@@ -277,7 +298,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha93 起動確認</h2>
+<h2>v7e-alpha96 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -1079,6 +1100,6 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 </script>
 
-<script src="./app.js?v=v7e-alpha93"></script>
+<script src="./app.js?v=v7e-alpha96"></script>
 </body>
 </html>

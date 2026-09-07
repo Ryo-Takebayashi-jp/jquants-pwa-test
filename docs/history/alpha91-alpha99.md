@@ -30,3 +30,9 @@ Web-only Portfolio/AI Share stage 1. Added top-level current-snapshot ZIP export
 - Single-code ADD/UPSERT/REREGISTER/CLOSE routes through the existing alpha90 Preview→Commit transaction semantics.
 - Added combined current registry view (latest Discovery episode + active Watchlist) and close-action form helper.
 - Watchlist CLOSE preserves Discovery history; TRACK_ONLY hard delete is intentionally unsupported.
+
+
+### v7e-alpha96
+- Header/version sync.
+- Analyze manager company names + mobile cards.
+- Portfolio/Trade Manager: Preview→Commit, current position update, persistent trade ledger.

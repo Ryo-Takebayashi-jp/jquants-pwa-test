@@ -815,6 +815,42 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
 
 
 
+ if(cmd==="equities-master-names"){
+   let db=null;try{
+     db=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");
+     const x=e.data.payload||{},codes=(x.codes||[]).map(v=>String(v||"").trim().toUpperCase());
+     if(!codes.length){self.postMessage({ok:true,type:"result",stage:"PASS",rows:[],elapsedMs:Math.round(performance.now()-t0)});return}
+     const latest=String(scalar(db,"SELECT max(effective_date) FROM equities_master")||"");
+     const rows=execRows(db,`SELECT code,company_name FROM equities_master WHERE effective_date=?`,[latest]).filter(r=>codes.includes(String(r.code||"").replace(/0$/,""))||codes.includes(String(r.code||"")));
+     self.postMessage({ok:true,type:"result",stage:"PASS",rows,masterDate:latest,elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage:"equities-master-names",message:String(err?.message||err),elapsedMs:Math.round(performance.now()-t0)});return}finally{try{if(db)db.close()}catch(_){}}
+ }
+ if(cmd==="portfolio-trade-list"||cmd==="portfolio-trade-commit"){
+   let db=null,stage="01-open";try{
+     db=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     db.exec(`CREATE TABLE IF NOT EXISTS user_stocks(code TEXT NOT NULL,name TEXT,account TEXT NOT NULL DEFAULT '',shares REAL,avg_cost REAL,strategy TEXT,memo TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(code,account)) WITHOUT ROWID`);
+     db.exec(`CREATE TABLE IF NOT EXISTS portfolio_trade_log(trade_id TEXT PRIMARY KEY,trade_date TEXT NOT NULL,code TEXT NOT NULL,name TEXT,account TEXT NOT NULL,action TEXT NOT NULL,shares REAL NOT NULL,price REAL NOT NULL,before_shares REAL,before_avg_cost REAL,after_shares REAL,after_avg_cost REAL,realized_pnl REAL,memo TEXT,created_at TEXT NOT NULL)`);
+     const now=new Date().toISOString();
+     if(cmd==="portfolio-trade-commit"){
+       stage="02-commit";const x=e.data.payload||{},code=String(x.code||"").trim().toUpperCase(),account=String(x.account||"").trim(),action=String(x.action||"").toUpperCase(),tradeDate=String(x.tradeDate||"").slice(0,10),qty=Number(x.shares),price=Number(x.price),name=String(x.name||""),memo=String(x.memo||"");
+       if(!/^[0-9A-Z]{4,5}$/.test(code))throw new Error("銘柄コードが不正です");if(!["NISA","現物","信用買","信用売"].includes(account))throw new Error("口座/区分が不正です");if(!["ADD","REDUCE"].includes(action))throw new Error("操作が不正です");if(!(qty>0)||!(price>=0)||!tradeDate)throw new Error("株数・約定単価・売買日を確認してください");
+       const cur=execRows(db,"SELECT * FROM user_stocks WHERE code=? AND account=?",[code,account])[0]||{},beforeShares=Number(cur.shares||0),beforeAvg=cur.avg_cost==null?null:Number(cur.avg_cost),isShort=account==="信用売";let afterShares=beforeShares,afterAvg=beforeAvg,realized=0;
+       if(action==="ADD"){afterShares=beforeShares+qty;afterAvg=afterShares>0?(((beforeAvg||0)*beforeShares)+(price*qty))/afterShares:price}
+       else{if(qty>beforeShares+1e-9)throw new Error(`縮小株数 ${qty} が現在株数 ${beforeShares} を超えています`);afterShares=Math.max(0,beforeShares-qty);realized=(beforeAvg==null?0:(isShort?(beforeAvg-price):(price-beforeAvg))*qty);afterAvg=afterShares>0?beforeAvg:null}
+       const tradeId=`T${tradeDate.replaceAll("-","")}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+       db.exec("BEGIN");try{
+         if(afterShares>0){db.exec({sql:`INSERT INTO user_stocks(code,name,account,shares,avg_cost,strategy,memo,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(code,account) DO UPDATE SET name=excluded.name,shares=excluded.shares,avg_cost=excluded.avg_cost,memo=excluded.memo,updated_at=excluded.updated_at`,bind:[code,name||String(cur.name||""),account,afterShares,afterAvg,String(cur.strategy||""),String(cur.memo||""),String(cur.created_at||now),now]})}
+         else db.exec({sql:"DELETE FROM user_stocks WHERE code=? AND account=?",bind:[code,account]});
+         db.exec({sql:`INSERT INTO portfolio_trade_log(trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,bind:[tradeId,tradeDate,code,name||String(cur.name||""),account,action,qty,price,beforeShares,beforeAvg,afterShares,afterAvg,realized,memo,now]});
+         db.exec("COMMIT");
+       }catch(err){try{db.exec("ROLLBACK")}catch(_){}throw err}
+       self.postMessage({ok:true,type:"result",stage:"PASS",tradeId,beforeShares,beforeAvg,afterShares,afterAvg,realizedPnl:realized,elapsedMs:Math.round(performance.now()-t0)});return;
+     }
+     const positions=execRows(db,`SELECT code,name,account,shares,avg_cost,strategy,memo,updated_at FROM user_stocks WHERE account IN ('NISA','現物','信用買','信用売') ORDER BY CASE account WHEN 'NISA' THEN 1 WHEN '現物' THEN 2 WHEN '信用買' THEN 3 WHEN '信用売' THEN 4 ELSE 9 END,code`);
+     const history=execRows(db,`SELECT trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at FROM portfolio_trade_log ORDER BY trade_date DESC,created_at DESC LIMIT 100`);
+     self.postMessage({ok:true,type:"result",stage:"PASS",positions,history,count:positions.length,elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}finally{try{if(db)db.close()}catch(_){}}
+ }
  if(cmd==="my-stocks-list"||cmd==="my-stocks-upsert"||cmd==="my-stocks-delete"||cmd==="my-stocks-import"){
    let db=null,stage="01-open";
    try{
