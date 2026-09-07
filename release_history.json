@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha93",
+  "current_release": "v7e-alpha94",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -131,6 +131,11 @@
       "schema": "web-local-first-v7e",
       "migration": "No schema migration. Adds top-level Web-only Screening share ZIP export.",
       "note": "Daily-use screening_YYYYMMDD.zip from canonical Web Screening / Factor / Discovery state; legacy auxiliary files not yet Web-native are declared omitted instead of blocking export."
+    },
+    {
+      "release": "v7e-alpha94",
+      "date": "2026-09-07",
+      "note": "Canonical share as-of resolver from latest PASS daily pipeline + DataLake; separate Generate/Download controls with reusable in-memory ZIP artifacts and fail-closed date consistency checks."
     }
   ],
   "latest": {

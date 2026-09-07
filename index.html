@@ -43,14 +43,16 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <h2>Screening共有ZIPを作成（Web-only）</h2>
   <p><b>日常の新規銘柄発掘用です。</b> 直前の日次運用結果を優先し、必要なWeb-first stateを補完して共有ZIPを生成します。</p>
   <p class="desc">候補 / Factor / Discovery Episode・Daily を1つにまとめます。PC版を起動する必要はありません。Webで未再現の補助CSVはmanifestへ明示し、空ファイルで偽装しません。</p>
-  <button id="screeningShareZipBtn">Screening共有ZIPを作成</button>
+  <button id="screeningShareZipBtn">Screening共有ZIPを生成</button>
+  <button id="screeningShareDownloadBtn" class="secondary" disabled>生成済みZIPをダウンロード</button>
   <pre id="screeningShareZipResult" class="result">未実行</pre>
 </section>
 <section class="card" id="aiShareCard">
   <h2>ChatGPT共有ZIPを作成（Web-only）</h2>
   <p><b>PC版を起動せず、Web private DBの登録銘柄と最新DataLakeから共有用ZIPを生成します。</b></p>
   <p class="desc">Portfolio / Master / Price / Technical / TOPIX相対 / Financial / Supply-demand を統合します。これはWeb-first共有の第1段階で、PC版JQPの履歴系CSVすべてを完全再現するものではありません。</p>
-  <button id="aiShareZipBtn">ChatGPT共有ZIPを作成</button>
+  <button id="aiShareZipBtn">ChatGPT共有ZIPを生成</button>
+  <button id="aiShareDownloadBtn" class="secondary" disabled>生成済みZIPをダウンロード</button>
   <pre id="aiShareZipResult" class="result">未実行</pre>
 </section>
 <section class="card" id="dailyTopCard">

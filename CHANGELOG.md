@@ -1,3 +1,8 @@
+## v7e-alpha94 - 2026-09-07
+- Share ZIP canonical as-of resolver now uses latest PASS daily-pipeline checkpoint plus DataLake latest trading day; stale UI date fields are no longer authoritative.
+- Screening/ChatGPT share ZIP generation and download are separated. Generated artifacts can be downloaded repeatedly without rerunning analysis.
+- Added explicit as-of consistency guards and manifest provenance.
+
 ## v7e-alpha93 — Web-only Screening share ZIP + top-level daily output
 - Added a top-level `Screening共有ZIPを作成（Web-only）` button beside the daily operational outputs.
 - Generates `screening_YYYYMMDD.zip` without a PC refresh from canonical Web-first Screening / Factor / Discovery state.

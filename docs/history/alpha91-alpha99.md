@@ -20,3 +20,7 @@ Web-only Portfolio/AI Share stage 1. Added top-level current-snapshot ZIP export
 - Added top-level Web-only Screening share ZIP for daily discovery use.
 - Reuses the verified Web-first Screening, Factor/Seasonality, Discovery Episode and Discovery Daily engines/state.
 - ZIP generation is independent from PC refresh. Missing legacy auxiliary CSVs do not block export and are declared in manifest.json rather than emitted as misleading empty files.
+
+## alpha94
+- Canonical share as-of resolver and separate Generate/Download controls for both daily share ZIPs.
+- Prevents stale UI dates from silently producing old bundles.

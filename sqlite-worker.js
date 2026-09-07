@@ -1292,7 +1292,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
 
- if(cmd==="daily-pipeline-latest" || cmd==="daily-pipeline-start" || cmd==="daily-pipeline-step-save" || cmd==="daily-pipeline-abandon"){
+ if(cmd==="daily-pipeline-latest" || cmd==="daily-pipeline-last-pass" || cmd==="daily-pipeline-start" || cmd==="daily-pipeline-step-save" || cmd==="daily-pipeline-abandon"){
    let pdb=null;try{
      const payload=d.payload||{},now=new Date().toISOString();
      pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
@@ -1344,7 +1344,8 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        if(runId)pdb.exec({sql:`UPDATE daily_pipeline_runs_web SET status='ABANDONED',updated_at=?,finished_at=?,note=? WHERE run_id=? AND status!='PASS'`,bind:[now,now,String(payload.note||"manual reset"),runId]});
        self.postMessage({ok:true,type:"result",runId,status:"ABANDONED"});return;
      }
-     const run=execRows(pdb,`SELECT * FROM daily_pipeline_runs_web WHERE status IN ('RUNNING','FAIL') ORDER BY updated_at DESC LIMIT 1`)[0]||null;
+     const statusWhere=cmd==="daily-pipeline-last-pass"?"status='PASS'":"status IN ('RUNNING','FAIL')";
+     const run=execRows(pdb,`SELECT * FROM daily_pipeline_runs_web WHERE ${statusWhere} ORDER BY updated_at DESC LIMIT 1`)[0]||null;
      const steps=run?execRows(pdb,"SELECT * FROM daily_pipeline_steps_web WHERE run_id=? ORDER BY ordinal,stage",[run.run_id]).map(x=>{let detail={};try{detail=JSON.parse(String(x.detail_json||"{}"))}catch(_){}return{...x,detail}}):[];
      self.postMessage({ok:true,type:"result",run,steps});return;
    }catch(err){try{if(pdb)pdb.close()}catch(_){}throw err}finally{try{if(pdb)pdb.close()}catch(_){}}

@@ -1,3 +1,3 @@
-v7e-alpha93
+v7e-alpha94
 
-alpha91 Web-first daily pipeline remains the operational baseline (REPAIR and ADVANCE E2E PASS on device). alpha92 added Web-only Portfolio/AI Share stage 1. alpha93 adds the daily top-level Web-only Screening share ZIP (`screening_YYYYMMDD.zip`) built from canonical Screening / Factor / Discovery state. Two legacy auxiliary CSVs are intentionally omitted until Web-native semantics exist and are disclosed in manifest.json.
+alpha91 Web-first daily pipeline remains the operational baseline (REPAIR and ADVANCE E2E PASS on device). alpha94 fixes daily share-bundle canonical as-of selection: latest PASS daily-pipeline checkpoint is checked against the DataLake latest trading day, and stale UI dates are not authoritative. Screening and ChatGPT share ZIPs now separate generation from download, so a generated ZIP can be downloaded repeatedly without rerunning analysis. Screening auxiliary CSVs candidate_earnings_history.csv and management_guidance_summary.csv remain intentionally omitted until Web-native semantics exist.
