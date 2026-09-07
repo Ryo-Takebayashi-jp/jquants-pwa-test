@@ -1,3 +1,11 @@
+## v7e-alpha97 — 2026-09-07
+- Fixed Web-first daily Screening event-feature JOIN: worker rows are keyed by `code`; daily pipeline no longer drops EarningsElapsedTradingDays / PostEarningsDrift silently.
+- Added a daily Screening event JOIN invariant: if event rows exist but zero rows join, the pipeline fails instead of reporting a false PASS.
+- Portfolio AI-share margin snapshot now recognizes canonical J-Quants `LongVol` / `ShrtVol` fields (with legacy aliases retained).
+- AI-share coverage now counts margin/short-selling only when actual analytic values are present, not merely a snapshot date.
+- Header/title/script/current version synchronized to v7e-alpha97.
+- Existing alpha91 pipeline semantics, alpha94 artifact generate/download split, and alpha96 Portfolio/Trade Manager are otherwise unchanged.
+
 ## v7e-alpha96 — 2026-09-07
 - Header/current version display synchronized to alpha96.
 - Analyze registration list now resolves Equities Master company names and uses mobile-friendly cards.

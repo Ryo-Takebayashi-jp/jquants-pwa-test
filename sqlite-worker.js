@@ -2032,8 +2032,8 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          const code=normCode(o.Code??o.code??o.IssueCode??"");
          const date=String(rr.data_date??o.Date??o.date??o.DiscDate??o.CalculationDate??"").slice(0,10);
          const rec={date,
-           longMargin:pickNum(o,["LongMarginTradeVolume","LongMarginOutstanding","BuyBalance","LongMarginTradeBalance","LongMargin"]),
-           shortMargin:pickNum(o,["ShortMarginTradeVolume","ShortMarginOutstanding","SellBalance","ShortMarginTradeBalance","ShortMargin"]),
+           longMargin:pickNum(o,["LongVol","LongMarginTradeVolume","LongMarginOutstanding","BuyBalance","LongMarginTradeBalance","LongMargin"]),
+           shortMargin:pickNum(o,["ShrtVol","ShortVol","ShortMarginTradeVolume","ShortMarginOutstanding","SellBalance","ShortMarginTradeBalance","ShortMargin"]),
            longNeg:pickNum(o,["LongNegotiableMarginTradeVolume","LongNegotiableBalance"]),
            shortNeg:pickNum(o,["ShortNegotiableMarginTradeVolume","ShortNegotiableBalance"]),
            shortRatio:pickNum(o,["ShortRatio","ShortSellingRatio","Ratio"]),

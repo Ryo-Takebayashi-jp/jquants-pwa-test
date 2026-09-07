@@ -36,3 +36,9 @@ Web-only Portfolio/AI Share stage 1. Added top-level current-snapshot ZIP export
 - Header/version sync.
 - Analyze manager company names + mobile cards.
 - Portfolio/Trade Manager: Preview→Commit, current position update, persistent trade ledger.
+
+
+### v7e-alpha97
+- Corrected daily-pipeline PED event JOIN regression (`code` vs `NormalizedCode`) and added fail-closed JOIN invariant.
+- Corrected Portfolio AI-share margin resolver for J-Quants `LongVol` / `ShrtVol`; coverage now requires actual values.
+- Synchronized visible version/header.

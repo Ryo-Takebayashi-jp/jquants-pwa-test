@@ -1,6 +1,11 @@
 {
-  "current_release": "v7e-alpha95",
+  "current_release": "v7e-alpha97",
   "history": [
+    {
+      "version": "v7e-alpha97",
+      "date": "2026-09-07",
+      "summary": "Daily Screening PED JOIN regression fix and Portfolio AI-share margin resolver/coverage correction."
+    },
     {
       "version": "v7e-alpha96",
       "date": "2026-09-07",
@@ -151,5 +156,5 @@
       "note": "Top-level direct Investment Tracking registration/update/Watchlist close UI using verified Preview→Commit semantics; current registry view; Discovery history remains non-destructive."
     }
   ],
-  "latest": "v7e-alpha96"
+  "latest": "v7e-alpha97"
 }
