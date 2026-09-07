@@ -825,12 +825,28 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      self.postMessage({ok:true,type:"result",stage:"PASS",rows,masterDate:latest,elapsedMs:Math.round(performance.now()-t0)});return;
    }catch(err){self.postMessage({ok:false,type:"error",stage:"equities-master-names",message:String(err?.message||err),elapsedMs:Math.round(performance.now()-t0)});return}finally{try{if(db)db.close()}catch(_){}}
  }
- if(cmd==="portfolio-trade-list"||cmd==="portfolio-trade-commit"){
+ if(cmd==="portfolio-trade-list"||cmd==="portfolio-trade-commit"||cmd==="portfolio-trade-void-preview"||cmd==="portfolio-trade-void-commit"){
    let db=null,stage="01-open";try{
      db=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
      db.exec(`CREATE TABLE IF NOT EXISTS user_stocks(code TEXT NOT NULL,name TEXT,account TEXT NOT NULL DEFAULT '',shares REAL,avg_cost REAL,strategy TEXT,memo TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(code,account)) WITHOUT ROWID`);
      db.exec(`CREATE TABLE IF NOT EXISTS portfolio_trade_log(trade_id TEXT PRIMARY KEY,trade_date TEXT NOT NULL,code TEXT NOT NULL,name TEXT,account TEXT NOT NULL,action TEXT NOT NULL,shares REAL NOT NULL,price REAL NOT NULL,before_shares REAL,before_avg_cost REAL,after_shares REAL,after_avg_cost REAL,realized_pnl REAL,memo TEXT,created_at TEXT NOT NULL)`);
+     const tradeCols=new Set(execRows(db,"PRAGMA table_info(portfolio_trade_log)").map(x=>String(x.name)));
+     if(!tradeCols.has("status"))db.exec("ALTER TABLE portfolio_trade_log ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'");
+     if(!tradeCols.has("voided_at"))db.exec("ALTER TABLE portfolio_trade_log ADD COLUMN voided_at TEXT");
+     if(!tradeCols.has("void_reason"))db.exec("ALTER TABLE portfolio_trade_log ADD COLUMN void_reason TEXT");
      const now=new Date().toISOString();
+     if(cmd==="portfolio-trade-void-preview"||cmd==="portfolio-trade-void-commit"){
+       stage="02-void";const x=e.data.payload||{},tradeId=String(x.tradeId||"");
+       const tr=execRows(db,"SELECT * FROM portfolio_trade_log WHERE trade_id=?",[tradeId])[0];if(!tr)throw new Error("対象売買が見つかりません");if(String(tr.status||"ACTIVE")==="VOID")throw new Error("この入力はすでに取消済みです");
+       const later=execRows(db,"SELECT trade_id FROM portfolio_trade_log WHERE code=? AND account=? AND status!='VOID' AND (trade_date>? OR (trade_date=? AND created_at>?)) ORDER BY trade_date,created_at LIMIT 1",[tr.code,tr.account,tr.trade_date,tr.trade_date,tr.created_at]);if(later.length)throw new Error("この後に同じ銘柄・口座の有効な売買があります。新しい入力から順に取消してください");
+       const cur=execRows(db,"SELECT * FROM user_stocks WHERE code=? AND account=?",[tr.code,tr.account])[0]||{},currentShares=Number(cur.shares||0),currentAvg=cur.avg_cost==null?null:Number(cur.avg_cost),expectedShares=Number(tr.after_shares||0),expectedAvg=tr.after_avg_cost==null?null:Number(tr.after_avg_cost);
+       const near=(a,b)=>a==null&&b==null||Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Math.abs(Number(a)-Number(b))<1e-6;
+       if(!near(currentShares,expectedShares)||!near(currentAvg,expectedAvg))throw new Error(`現在ポジションが取消対象の直後状態と一致しません。安全のため自動取消を停止しました`);
+       const restoreShares=Number(tr.before_shares||0),restoreAvg=tr.before_avg_cost==null?null:Number(tr.before_avg_cost);
+       if(cmd==="portfolio-trade-void-preview"){self.postMessage({ok:true,type:"result",stage:"PASS",tradeId,code:tr.code,account:tr.account,action:tr.action,shares:tr.shares,price:tr.price,currentShares,currentAvg,restoreShares,restoreAvg,elapsedMs:Math.round(performance.now()-t0)});return}
+       db.exec("BEGIN");try{if(restoreShares>0){db.exec({sql:`INSERT INTO user_stocks(code,name,account,shares,avg_cost,strategy,memo,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(code,account) DO UPDATE SET name=excluded.name,shares=excluded.shares,avg_cost=excluded.avg_cost,updated_at=excluded.updated_at`,bind:[tr.code,tr.name||String(cur.name||""),tr.account,restoreShares,restoreAvg,String(cur.strategy||""),String(cur.memo||""),String(cur.created_at||now),now]})}else db.exec({sql:"DELETE FROM user_stocks WHERE code=? AND account=?",bind:[tr.code,tr.account]});db.exec({sql:"UPDATE portfolio_trade_log SET status='VOID',voided_at=?,void_reason=? WHERE trade_id=?",bind:[now,String(x.reason||"誤入力取消"),tradeId]});db.exec("COMMIT")}catch(err){try{db.exec("ROLLBACK")}catch(_){}throw err}
+       self.postMessage({ok:true,type:"result",stage:"PASS",tradeId,beforeCurrentShares:currentShares,restoredShares:restoreShares,restoredAvg:restoreAvg,elapsedMs:Math.round(performance.now()-t0)});return;
+     }
      if(cmd==="portfolio-trade-commit"){
        stage="02-commit";const x=e.data.payload||{},code=String(x.code||"").trim().toUpperCase(),account=String(x.account||"").trim(),action=String(x.action||"").toUpperCase(),tradeDate=String(x.tradeDate||"").slice(0,10),qty=Number(x.shares),price=Number(x.price),name=String(x.name||""),memo=String(x.memo||"");
        if(!/^[0-9A-Z]{4,5}$/.test(code))throw new Error("銘柄コードが不正です");if(!["NISA","現物","信用買","信用売"].includes(account))throw new Error("口座/区分が不正です");if(!["ADD","REDUCE"].includes(action))throw new Error("操作が不正です");if(!(qty>0)||!(price>=0)||!tradeDate)throw new Error("株数・約定単価・売買日を確認してください");
@@ -847,7 +863,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        self.postMessage({ok:true,type:"result",stage:"PASS",tradeId,beforeShares,beforeAvg,afterShares,afterAvg,realizedPnl:realized,elapsedMs:Math.round(performance.now()-t0)});return;
      }
      const positions=execRows(db,`SELECT code,name,account,shares,avg_cost,strategy,memo,updated_at FROM user_stocks WHERE account IN ('NISA','現物','信用買','信用売') ORDER BY CASE account WHEN 'NISA' THEN 1 WHEN '現物' THEN 2 WHEN '信用買' THEN 3 WHEN '信用売' THEN 4 ELSE 9 END,code`);
-     const history=execRows(db,`SELECT trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at FROM portfolio_trade_log ORDER BY trade_date DESC,created_at DESC LIMIT 100`);
+     const history=execRows(db,`SELECT trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at,status,voided_at,void_reason FROM portfolio_trade_log ORDER BY trade_date DESC,created_at DESC LIMIT 100`); const latestActive=new Map();for(const h of history){const k=String(h.code)+"|"+String(h.account);if(String(h.status||"ACTIVE")!=="VOID"&&!latestActive.has(k))latestActive.set(k,h.trade_id)}for(const h of history)h.can_void=String(h.status||"ACTIVE")!=="VOID"&&latestActive.get(String(h.code)+"|"+String(h.account))===h.trade_id;
      self.postMessage({ok:true,type:"result",stage:"PASS",positions,history,count:positions.length,elapsedMs:Math.round(performance.now()-t0)});return;
    }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}finally{try{if(db)db.close()}catch(_){}}
  }

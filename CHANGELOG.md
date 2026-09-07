@@ -1,3 +1,10 @@
+# v7e-alpha98 - 2026-09-07
+
+- Web日次Screeningで決算当日銘柄をFinancialDataFlagに関係なくEarningsReactionPendingとして保持。worker pending件数と候補pending件数のinvariantを追加。
+- Web Screening共有ZIP名を `web_screening_YYYYMMDD.zip` に変更し、PC版と識別可能にした。
+- Portfolio Trade Logに安全な誤入力取消（VOID）を追加。取消は監査履歴を残し、現在ポジションを取引前状態へ復元。同一銘柄・口座は最新の有効入力からのみ取消可能。
+- service-worker cache/versionをalpha98へ同期。
+
 ## v7e-alpha97 — 2026-09-07
 - Fixed Web-first daily Screening event-feature JOIN: worker rows are keyed by `code`; daily pipeline no longer drops EarningsElapsedTradingDays / PostEarningsDrift silently.
 - Added a daily Screening event JOIN invariant: if event rows exist but zero rows join, the pipeline fails instead of reporting a false PASS.
