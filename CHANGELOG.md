@@ -1,9 +1,9 @@
-# v7e-alpha98 - 2026-09-07
+# v7e-alpha99 - 2026-09-07
 
 - Web日次Screeningで決算当日銘柄をFinancialDataFlagに関係なくEarningsReactionPendingとして保持。worker pending件数と候補pending件数のinvariantを追加。
 - Web Screening共有ZIP名を `web_screening_YYYYMMDD.zip` に変更し、PC版と識別可能にした。
 - Portfolio Trade Logに安全な誤入力取消（VOID）を追加。取消は監査履歴を残し、現在ポジションを取引前状態へ復元。同一銘柄・口座は最新の有効入力からのみ取消可能。
-- service-worker cache/versionをalpha98へ同期。
+- service-worker cache/versionをalpha99へ同期。
 
 ## v7e-alpha97 — 2026-09-07
 - Fixed Web-first daily Screening event-feature JOIN: worker rows are keyed by `code`; daily pipeline no longer drops EarningsElapsedTradingDays / PostEarningsDrift silently.
@@ -231,3 +231,9 @@
 - `discovery_episode_analysis.csv` とのPerformance ParityとWeb CSV exportを追加。
 - alpha71のEarningsEventDate分離、alpha70のQVR/Crowding修正を維持。
 - app/worker/service-workerのcache bustをalpha72へ更新。
+
+## v7e-alpha99 — Parity trace + Trade VOID UI hardening
+- Trade VOID preview uses delegated click handling on the history container, with explicit RUN/PASS/FAIL feedback and `type=button`.
+- Trade history now displays why an older row cannot be voided (`後続取引あり` / `取消済`) instead of silently hiding the control.
+- Web Screening share adds `screening_parity_trace.csv`, a compact full-scored-universe audit trace for temporary PC/Web migration diagnostics. It is diagnostic, not a new investment input contract.
+- Existing alpha98 PED / EarningsReactionPending invariants and Web-first semantics are preserved.

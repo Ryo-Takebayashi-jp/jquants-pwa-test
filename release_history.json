@@ -1,8 +1,8 @@
 {
-  "current_release": "v7e-alpha98",
+  "current_release": "v7e-alpha99",
   "history": [
     {
-      "version": "v7e-alpha98",
+      "version": "v7e-alpha99",
       "date": "2026-09-07",
       "summary": "ReactionPending parity + Web screening filename separation + safe Portfolio trade input VOID/correction."
     },
@@ -161,5 +161,5 @@
       "note": "Top-level direct Investment Tracking registration/update/Watchlist close UI using verified Preview→Commit semantics; current registry view; Discovery history remains non-destructive."
     }
   ],
-  "latest": "v7e-alpha98"
+  "latest": "v7e-alpha99"
 }
