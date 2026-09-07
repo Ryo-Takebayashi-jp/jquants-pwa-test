@@ -55,6 +55,45 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <button id="aiShareDownloadBtn" class="secondary" disabled>生成済みZIPをダウンロード</button>
   <pre id="aiShareZipResult" class="result">未実行</pre>
 </section>
+<section class="card" id="quickInvestmentManageCard">
+  <h2>銘柄を登録・管理（Web-only）</h2>
+  <p><b>investment_tracking_input.csv を作らず、1銘柄ずつ登録・更新・Watchlist終了できます。</b> 既存のInvestment Tracking Preview → Commitエンジンをそのまま使います。</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
+    <label>銘柄コード <input id="quickInvCode" type="text" inputmode="text" placeholder="例: 3932"></label>
+    <label>Status <select id="quickInvStatus"><option>TRACK_ONLY</option><option>WATCH</option><option>ACTIONABLE</option><option>WATCH_ONLY</option></select></label>
+    <label>Action <select id="quickInvAction"><option>ADD</option><option>UPSERT</option><option>REREGISTER</option><option>CLOSE</option></select></label>
+    <label>StartDate <input id="quickInvStartDate" type="date"></label>
+  </div>
+  <details id="quickInvDiscoveryFields" open>
+    <summary>Discovery項目（TRACK_ONLY / WATCH / ACTIONABLE）</summary>
+    <label>SelectionType <input id="quickInvSelectionType" type="text" placeholder="例: ScreeningCandidate"></label>
+    <label>Conviction <select id="quickInvConviction"><option value="">選択</option><option>Low</option><option>Medium</option><option>High</option></select></label>
+    <label>ExpectedHorizon <input id="quickInvExpectedHorizon" type="text" placeholder="例: 1-3M"></label>
+    <label>PrimaryStrategy <input id="quickInvPrimaryStrategy" type="text" placeholder="任意"></label>
+    <label>PrimaryCatalyst <textarea id="quickInvPrimaryCatalyst" rows="2"></textarea></label>
+    <label>PrimaryRisk <textarea id="quickInvPrimaryRisk" rows="2"></textarea></label>
+  </details>
+  <details id="quickInvWatchFields">
+    <summary>Watchlist項目（WATCH / ACTIONABLE / WATCH_ONLY）</summary>
+    <label>WatchReason <textarea id="quickInvWatchReason" rows="2"></textarea></label>
+    <label>CurrentDecision <input id="quickInvCurrentDecision" type="text" placeholder="例: WaitPullback"></label>
+    <label>ThesisSummary <textarea id="quickInvThesisSummary" rows="2"></textarea></label>
+    <label>InvalidationSummary <textarea id="quickInvInvalidationSummary" rows="2"></textarea></label>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">
+      <label>ReviewExpiry <input id="quickInvReviewExpiry" type="date"></label>
+      <label>PriceTrigger1% <input id="quickInvPrice1" type="number" step="0.1" value="-5"></label>
+      <label>PriceTrigger2% <input id="quickInvPrice2" type="number" step="0.1" value="-10"></label>
+      <label>PriceTrigger3% <input id="quickInvPrice3" type="number" step="0.1" value="-15"></label>
+    </div>
+  </details>
+  <label>AnalystNote <textarea id="quickInvNote" rows="2" placeholder="任意メモ"></textarea></label>
+  <button id="quickInvPreviewBtn">登録・変更をプレビュー</button>
+  <button id="quickInvCommitBtn" disabled>この内容を確定・保存</button>
+  <button id="quickInvRefreshBtn" class="secondary">現在の登録一覧を更新</button>
+  <pre id="quickInvResult" class="result">未実行</pre>
+  <div id="quickInvTable"></div>
+  <p class="desc">CLOSEはActive/ReviewDueのWatchlistを終了します。Discovery Episode履歴は削除しません。TRACK_ONLYにはWatchlistがないためCLOSE対象外です。誤操作防止のため必ずPreview → Commitの2段階です。</p>
+</section>
 <section class="card" id="dailyTopCard">
   <h2>次の取引日を全データ更新</h2>
   <p><b>普段の更新はこのボタンを使います。</b> 日足DataLakeの最新日から次に配信済みの取引日を自動検出し、日足・Master・財務・決算予定・TOPIX・営業日・需給5種・需給正規化まで順次更新します。</p>

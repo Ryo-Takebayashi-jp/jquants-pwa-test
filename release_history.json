@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha94",
+  "current_release": "v7e-alpha95",
   "history": [
     {
       "release": "v7e-alpha70",
@@ -136,11 +136,14 @@
       "release": "v7e-alpha94",
       "date": "2026-09-07",
       "note": "Canonical share as-of resolver from latest PASS daily pipeline + DataLake; separate Generate/Download controls with reusable in-memory ZIP artifacts and fail-closed date consistency checks."
+    },
+    {
+      "release": "v7e-alpha95",
+      "date": "2026-09-07",
+      "schema": "web-local-first-v7e",
+      "migration": "none",
+      "note": "Top-level direct Investment Tracking registration/update/Watchlist close UI using verified Preview→Commit semantics; current registry view; Discovery history remains non-destructive."
     }
   ],
-  "latest": {
-    "version": "v7e-alpha93",
-    "date": "2026-09-07",
-    "summary": "Web-only Screening share ZIP + top-level daily output"
-  }
+  "latest": "v7e-alpha95"
 }

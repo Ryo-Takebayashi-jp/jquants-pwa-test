@@ -1,3 +1,11 @@
+## v7e-alpha95 - 2026-09-07
+- Add top-level Web-only `銘柄を登録・管理` daily-use UI backed by the existing alpha90 Investment Tracking Preview → Commit engine.
+- Support direct single-code ADD / UPSERT / REREGISTER / CLOSE without creating `investment_tracking_input.csv`.
+- Add current Discovery/Watchlist registry view and one-tap Watchlist close form population; destructive state changes still require explicit Preview then Commit.
+- Preserve Discovery Episode history on Watchlist close; TRACK_ONLY remains non-destructive and cannot be hard-deleted through the daily UI.
+- Resolve direct-registration apply date from the same canonical Web-first as-of resolver used by share outputs; Discovery recalculation runs after committed Discovery create/update.
+- alpha91 daily pipeline and alpha94 canonical share/download semantics are unchanged.
+
 ## v7e-alpha94 - 2026-09-07
 - Share ZIP canonical as-of resolver now uses latest PASS daily-pipeline checkpoint plus DataLake latest trading day; stale UI date fields are no longer authoritative.
 - Screening/ChatGPT share ZIP generation and download are separated. Generated artifacts can be downloaded repeatedly without rerunning analysis.

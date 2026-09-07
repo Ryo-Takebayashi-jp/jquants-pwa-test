@@ -1030,6 +1030,22 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
 
+ if(cmd==="investment-tracking-state-load"){
+   let pdb=null;try{
+     const files=poolFileNamesSafe(p).map(f=>f.replace(/^\/+/,""));
+     if(!files.includes("jq_private_v1.sqlite")){self.postMessage({ok:true,type:"result",discovery:[],master:[],state:[]});return}
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     pdb.exec(`CREATE TABLE IF NOT EXISTS discovery_episode_master(event_id TEXT PRIMARY KEY,code TEXT NOT NULL,episode_start_date TEXT NOT NULL,row_json TEXT NOT NULL,imported_at TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_master_web(watch_id TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     pdb.exec(`CREATE TABLE IF NOT EXISTS watchlist_state_web(watch_id TEXT PRIMARY KEY,row_json TEXT NOT NULL,updated_at TEXT NOT NULL) WITHOUT ROWID`);
+     const parse=x=>{try{return JSON.parse(String(x.row_json||"{}"))}catch(_){return{}}};
+     const discovery=execRows(pdb,"SELECT event_id,code,episode_start_date,row_json FROM discovery_episode_master ORDER BY episode_start_date,event_id").map(x=>({...parse(x),EventID:parse(x).EventID||String(x.event_id||""),Code:parse(x).Code||String(x.code||""),EpisodeStartDate:parse(x).EpisodeStartDate||String(x.episode_start_date||"")}));
+     const master=execRows(pdb,"SELECT watch_id,row_json FROM watchlist_master_web ORDER BY watch_id").map(x=>({...parse(x),WatchID:parse(x).WatchID||String(x.watch_id||"")}));
+     const state=execRows(pdb,"SELECT watch_id,row_json FROM watchlist_state_web ORDER BY watch_id").map(x=>({...parse(x),WatchID:parse(x).WatchID||String(x.watch_id||"")}));
+     pdb.close();pdb=null;self.postMessage({ok:true,type:"result",discovery,master,state,discoveryCount:discovery.length,masterCount:master.length,stateCount:state.length});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}self.postMessage({ok:false,type:"error",stage:"investment-tracking-state-load",message:String(err?.message||err),stack:String(err?.stack||"")});return}
+ }
+
  if(cmd==="investment-tracking-preview" || cmd==="investment-tracking-commit"){
    let pdb=null,cdb=null;const opened=[];
    try{

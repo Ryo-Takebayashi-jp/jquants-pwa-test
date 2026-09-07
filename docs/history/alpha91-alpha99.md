@@ -24,3 +24,9 @@ Web-only Portfolio/AI Share stage 1. Added top-level current-snapshot ZIP export
 ## alpha94
 - Canonical share as-of resolver and separate Generate/Download controls for both daily share ZIPs.
 - Prevents stale UI dates from silently producing old bundles.
+
+## alpha95
+- Added top-level direct Investment Tracking management UI for daily Web-only use.
+- Single-code ADD/UPSERT/REREGISTER/CLOSE routes through the existing alpha90 Preview→Commit transaction semantics.
+- Added combined current registry view (latest Discovery episode + active Watchlist) and close-action form helper.
+- Watchlist CLOSE preserves Discovery history; TRACK_ONLY hard delete is intentionally unsupported.
