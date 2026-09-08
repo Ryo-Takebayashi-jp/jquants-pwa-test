@@ -1,6 +1,11 @@
 {
-  "current_release": "v7e-alpha99",
+  "current_release": "v7e-alpha101",
   "history": [
+    {
+      "version": "v7e-alpha101",
+      "date": "2026-09-08",
+      "summary": "AI Share Stage 2 data-quality hotfix: price-history shard/code fix; market-level short-ratio/investor-flow semantics; canonical large-short aggregation; EPS semantic split; header-safe/fail-closed exports."
+    },
     {
       "version": "v7e-alpha99",
       "date": "2026-09-07",
@@ -166,5 +171,5 @@
       "summary": "AI Share Stage 2: compact portfolio price/financial/supply/market-flow/trade histories for Web-first AI analysis."
     }
   ],
-  "latest": "v7e-alpha99"
+  "latest": "v7e-alpha101"
 }

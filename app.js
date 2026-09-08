@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-alpha100");
+ const w=new Worker("./sqlite-worker.js?v=v7e-alpha101");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -2266,6 +2266,9 @@ async function buildWebPortfolioIntegrated(asOf){
  if(!latestFinancialNormalized||latestFinancialNormalizedAsOf!==asOf){const fr=await workerCall("financial-normalize-latest",180000,null,null,{asOf});latestFinancialNormalized=fr.rows;latestFinancialNormalizedAsOf=asOf}
  const sr=await workerCall("supply-demand-portfolio-snapshot",180000);
  const pr=await workerCall("portfolio-integrated-snapshot",180000,null,null,{stocks,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized,supply:sr.result});
+ const lsr=await workerCall("portfolio-large-short-canonical",180000,null,null,{asOf,codes:stocks.map(x=>x.code)});
+ const lmap=new Map((lsr.rows||[]).map(x=>[String(x.code),x]));
+ for(const row of (pr.rows||[])){const z=lmap.get(String(row.code));if(z)Object.assign(row,z)}
  return {rows:pr.rows||[],count:pr.count||0,stockCount:stocks.length,techUniverse:(tech.all||tech.top||[]).length};
 }
 
@@ -2285,6 +2288,11 @@ function csvAllColumns(rows){
  if(!rows?.length)return "\uFEFF";
  const keys=[];const seen=new Set();for(const r of rows)for(const k of Object.keys(r||{}))if(!seen.has(k)){seen.add(k);keys.push(k)}
  const esc=v=>'"'+String(v??"").replaceAll('"','""')+'"';return "\uFEFF"+[keys.map(esc).join(","),...rows.map(r=>keys.map(k=>esc(r?.[k]??"")).join(","))].join("\n");
+}
+function csvWithHeaders(rows,headers){
+ const esc=v=>'"'+String(v??"").replaceAll('"','""')+'"';
+ const keys=[...headers];for(const r of (rows||[]))for(const k of Object.keys(r||{}))if(!keys.includes(k))keys.push(k);
+ return "\uFEFF"+[keys.map(esc).join(","),...(rows||[]).map(r=>keys.map(k=>esc(r?.[k]??"")).join(","))].join("\n");
 }
 function rowsDateSet(rows,fields=["Date","date"]){return [...new Set((rows||[]).map(r=>fields.map(f=>String(r?.[f]||"").slice(0,10)).find(Boolean)||"").filter(Boolean))].sort()}
 async function ensureScreeningShareState(asOf,progress){
@@ -2306,8 +2314,8 @@ if($("screeningShareZipBtn")) $("screeningShareZipBtn").onclick=async()=>{
   const candidates=latestScreeningCandidates||[],episodes=latestDiscoveryWebRows||[],daily=latestDiscoveryDailyWebRows||[],factors=latestFactorWebRows||[],summary=latestFactorSummaryRows?.length?latestFactorSummaryRows:buildFactorSummaryWeb(factors);
   if(!candidates.length)throw new Error("Screening候補が空です。日次運用のScreening工程を確認してください。");
   const parityTrace=screeningParityTraceRows(latestScreeningScoredRows||[]);const files=[{name:"screening_candidates.csv",data:csvAllColumns(candidates)},{name:"screening_ai.csv",data:csvAllColumns(candidates)},{name:"screening_parity_trace.csv",data:csvAllColumns(parityTrace)},{name:"factor_monitor_latest.csv",data:simpleCsv(factors,FACTOR_FIELDS)},{name:"factor_summary.csv",data:simpleCsv(summary,FACTOR_SUMMARY_FIELDS)},{name:"discovery_episode_master.csv",data:discoveryCsv(episodes)},{name:"discovery_episode_analysis.csv",data:discoveryCsv(episodes)},{name:"discovery_episode_daily.csv",data:discoveryDailyCsv(daily)}];
-  const omitted=["candidate_earnings_history.csv","management_guidance_summary.csv"],manifest={bundle:"Web Screening Share",version:"v7e-alpha100",asOf,generatedAt:new Date().toISOString(),canonical:"Web-first",canonicalAsOfSource:canon.source,dataLakeDate:canon.dataLakeDate,lastPassPipelineDate:canon.passDate,counts:{screeningCandidates:candidates.length,screeningParityTrace:parityTrace.length,factors:factors.length,factorSummary:summary.length,discoveryEpisodes:episodes.length,discoveryDaily:daily.length},files:files.map(x=>x.name),omitted,notes:["screening_parity_trace.csv is an audit-only compact trace of the full Web scored universe for PC/Web migration diagnostics.","PC refresh is not required.","ZIP generation and download are separated; re-download never reruns analysis.","candidate_earnings_history.csv and management_guidance_summary.csv remain omitted until Web-native semantics are implemented."]};
-  files.push({name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:`J-Quants Web-first Screening Share v7e-alpha100\nAsOf: ${asOf}\nCandidates: ${candidates.length}\nFactors: ${factors.length}\nDiscovery Episodes: ${episodes.length}\nDiscovery Daily rows: ${daily.length}\n`});
+  const omitted=["candidate_earnings_history.csv","management_guidance_summary.csv"],manifest={bundle:"Web Screening Share",version:"v7e-alpha101",asOf,generatedAt:new Date().toISOString(),canonical:"Web-first",canonicalAsOfSource:canon.source,dataLakeDate:canon.dataLakeDate,lastPassPipelineDate:canon.passDate,counts:{screeningCandidates:candidates.length,screeningParityTrace:parityTrace.length,factors:factors.length,factorSummary:summary.length,discoveryEpisodes:episodes.length,discoveryDaily:daily.length},files:files.map(x=>x.name),omitted,notes:["screening_parity_trace.csv is an audit-only compact trace of the full Web scored universe for PC/Web migration diagnostics.","PC refresh is not required.","ZIP generation and download are separated; re-download never reruns analysis.","candidate_earnings_history.csv and management_guidance_summary.csv remain omitted until Web-native semantics are implemented."]};
+  files.push({name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:`J-Quants Web-first Screening Share v7e-alpha101\nAsOf: ${asOf}\nCandidates: ${candidates.length}\nFactors: ${factors.length}\nDiscovery Episodes: ${episodes.length}\nDiscovery Daily rows: ${daily.length}\n`});
   const blob=zipStoreBlob(files),name=`web_screening_${asOf.replaceAll("-","")}.zip`;latestScreeningShareArtifact={blob,name,asOf,generatedAt:new Date().toISOString()};artifactReady("screeningShareDownloadBtn",latestScreeningShareArtifact);
   box("screeningShareZipResult","pass",`Screening共有ZIP 生成PASS\n基準日: ${asOf}\nDataLake: ${canon.dataLakeDate}\n候補: ${candidates.length}\nFactor: ${factors.length}\nDiscovery Episode: ${episodes.length}\nDiscovery Daily: ${daily.length}\n\n${name} を生成済みです。下のダウンロードボタンから何度でも取得できます。`);
  }catch(e){latestScreeningShareArtifact=null;artifactReady("screeningShareDownloadBtn",null);box("screeningShareZipResult","fail","Screening共有ZIP FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
@@ -2318,25 +2326,26 @@ if($("aiShareZipBtn")) $("aiShareZipBtn").onclick=async()=>{
  const btn=$("aiShareZipBtn");btn.disabled=true;box("aiShareZipResult","run","canonical基準日を確認し、Web private DB + DataLakeから共有データを構築中…");
  try{
   const canon=await resolveCanonicalShareAsOf(),asOf=canon.asOf,r=await buildWebPortfolioIntegrated(asOf),rows=r.rows;
-  const tech=rows.filter(x=>x.close!=null).length,fin=rows.filter(x=>x.discDate).length,margin=rows.filter(x=>x.marginLong!=null||x.marginShort!=null||x.marginRatio!=null).length,shorts=rows.filter(x=>x.shortSaleValue!=null||x.shortRatio!=null).length;
+  const tech=rows.filter(x=>x.close!=null).length,fin=rows.filter(x=>x.discDate).length,margin=rows.filter(x=>x.marginLong!=null||x.marginShort!=null||x.marginRatio!=null).length,shorts=rows.filter(x=>x.largeShortSubjectCount>0).length;
   if(!rows.length)throw new Error("共有対象銘柄が0件です");
   const priceDates=[...new Set(rows.map(x=>String(x.date||x.Date||x.priceDate||"").slice(0,10)).filter(Boolean))];if(priceDates.length&&priceDates.some(d=>d!==asOf))throw new Error(`Portfolio価格基準日不整合: canonical=${asOf} / rows=${priceDates.join("/")}`);
   box("aiShareZipResult","run","Stage 2履歴（価格・財務・需給・市場フロー・売買）を収集中…");
   const h=await workerCall("ai-share-stage2",600000,null,null,{asOf,codes:rows.map(x=>x.code)});
-  const payload={schema:"web-jqp-v3-ai-share-stage2",generatedAt:new Date().toISOString(),asOf,portfolioCount:rows.length,layers:["portfolio","master","price","technical","topix-relative","financial","supply-demand","price-history","financial-history","margin-history","short-history","market-flow","trade-history"],rows};
+  if(!(h.counts?.priceHistory>0))throw new Error("Data Quality FAIL: 保有銘柄の価格履歴が0件です。共有ZIPは生成しません。"+(h.meta?.errors?.length?"\n"+h.meta.errors.join("\n"):""));
+  const payload={schema:"web-jqp-v3-ai-share-stage2",generatedAt:new Date().toISOString(),asOf,portfolioCount:rows.length,layers:["portfolio","master","price","technical","topix-relative","financial","supply-demand","price-history","financial-history","margin-history","market-short-ratio-history","large-short-history","market-flow","trade-history"],rows};
   const headers=Object.keys(rows[0]),csv=simpleCsv(rows,headers);
   const extra=[
-   {name:"portfolio_prices_history.csv",data:csvAllColumns(h.priceHistory||[])},
-   {name:"portfolio_financials_history.csv",data:csvAllColumns(h.financialHistory||[])},
-   {name:"portfolio_margin_history.csv",data:csvAllColumns(h.marginHistory||[])},
-   {name:"portfolio_short_ratio_history.csv",data:csvAllColumns(h.shortRatioHistory||[])},
-   {name:"portfolio_large_short_history.csv",data:csvAllColumns(h.largeShortHistory||[])},
-   {name:"market_flow_history.csv",data:csvAllColumns(h.marketFlow||[])},
-   {name:"web_trade_history.csv",data:csvAllColumns(h.tradeHistory||[])}
+   {name:"portfolio_prices_history.csv",data:csvWithHeaders(h.priceHistory||[],["Code","Date","Open","High","Low","Close","Volume","TradingValue"])},
+   {name:"portfolio_financials_history.csv",data:csvWithHeaders(h.financialHistory||[],["Code","DataDate","DisclosureDate","PeriodType","FYEnd","PeriodEnd","Sales","OperatingProfit","OrdinaryProfit","NetProfit","EPS","BPS","ForecastSales","ForecastOperatingProfit","ForecastOrdinaryProfit","ForecastNetProfit","ForecastEPS","CFO","CFI","CFF","Equity","TotalAssets","DocumentType"])},
+   {name:"portfolio_margin_history.csv",data:csvWithHeaders(h.marginHistory||[],["Code","Date","Long","Short","Ratio"])},
+   {name:"market_short_ratio_history.csv",data:csvWithHeaders(h.marketShortRatioHistory||[],["Date","Section","SellExShortValue","ShortWithRestrictionValue","ShortNoRestrictionValue","ShortRatioPct"])},
+   {name:"portfolio_large_short_history.csv",data:csvWithHeaders(h.largeShortHistory||[],["Code","StoredDate","DisclosureDate","CalculationDate","ShortSeller","FundName","Ratio","Shares"])},
+   {name:"market_flow_history.csv",data:csvWithHeaders(h.marketFlow||[],["DataDate","PublishedDate","StartDate","EndDate","Section"])},
+   {name:"web_trade_history.csv",data:csvWithHeaders(h.tradeHistory||[],["trade_id","trade_date","code","name","account","action","shares","price","before_shares","before_avg_cost","after_shares","after_avg_cost","realized_pnl","memo","created_at","status","voided_at","void_reason"])}
   ];
   const files=["web_jqp.json","web_portfolio_integrated.csv",...extra.map(x=>x.name),"manifest.json","README.txt"];
-  const manifest={schema:"web-ai-share-manifest-v2",version:"v7e-alpha100",generatedAt:new Date().toISOString(),asOf,canonicalAsOfSource:canon.source,dataLakeDate:canon.dataLakeDate,lastPassPipelineDate:canon.passDate,portfolioCount:rows.length,coverage:{technical:`${tech}/${rows.length}`,financial:`${fin}/${rows.length}`,marginInterest:`${margin}/${rows.length}`,shortSelling:`${shorts}/${rows.length}`},historyCounts:h.counts||{},historyWindow:{priceFrom:h.meta?.from||null,priceTo:asOf,financial:"available Web DataLake history",supply:"available Web DataLake history",marketFlow:"available Web DataLake history",trade:"Web trade ledger since Portfolio Manager adoption"},files,notes:["Stage 2 adds compact historical layers needed for AI investment analysis.","Price history is limited to five years to control mobile ZIP size.","Existing holdings before Web Portfolio Manager remain opening snapshots; web_trade_history.csv is not a reconstructed broker ledger.","VOID trades remain in audit history and must be excluded from performance statistics.","Candidate earnings history and management guidance are Screening-share work and are not duplicated in the portfolio share."]};
-  const readme=`J-Quants Web-first ChatGPT Share Stage 2\nVersion: v7e-alpha100\nAsOf: ${asOf}\nPortfolio: ${rows.length}\nTechnical: ${tech}/${rows.length}\nFinancial: ${fin}/${rows.length}\nMargin interest: ${margin}/${rows.length}\nShort selling: ${shorts}/${rows.length}\nPrice history rows: ${h.counts?.priceHistory??0}\nFinancial history rows: ${h.counts?.financialHistory??0}\nMargin history rows: ${h.counts?.marginHistory??0}\nLarge-short rows: ${h.counts?.largeShortHistory??0}\nMarket-flow rows: ${h.counts?.marketFlow??0}\nWeb trade rows: ${h.counts?.tradeHistory??0}\n`;
+  const manifest={schema:"web-ai-share-manifest-v3",version:"v7e-alpha101",generatedAt:new Date().toISOString(),asOf,canonicalAsOfSource:canon.source,dataLakeDate:canon.dataLakeDate,lastPassPipelineDate:canon.passDate,portfolioCount:rows.length,coverage:{technical:`${tech}/${rows.length}`,financial:`${fin}/${rows.length}`,marginInterest:`${margin}/${rows.length}`,shortSelling:`${shorts}/${rows.length}`},historyCounts:h.counts||{},historyWindow:{priceFrom:h.meta?.from||null,priceTo:asOf,financial:"available Web DataLake history",supply:"available Web DataLake history",marketFlow:"available Web DataLake history",trade:"Web trade ledger since Portfolio Manager adoption"},files,notes:["Stage 2 DQ hotfix: canonical price code/path resolution, market-level short-ratio and investor-flow semantics, canonical large-short aggregation, and explicit EPS semantics.","Price history is limited to five years to control mobile ZIP size.","Existing holdings before Web Portfolio Manager remain opening snapshots; web_trade_history.csv is not a reconstructed broker ledger.","VOID trades remain in audit history and must be excluded from performance statistics.","Candidate earnings history and management guidance are Screening-share work and are not duplicated in the portfolio share."]};
+  const readme=`J-Quants Web-first ChatGPT Share Stage 2 DQ Hotfix\nVersion: v7e-alpha101\nAsOf: ${asOf}\nPortfolio: ${rows.length}\nTechnical: ${tech}/${rows.length}\nFinancial: ${fin}/${rows.length}\nMargin interest: ${margin}/${rows.length}\nLarge-short canonical: ${shorts}/${rows.length}\nPrice history rows: ${h.counts?.priceHistory??0}\nFinancial history rows: ${h.counts?.financialHistory??0}\nMargin history rows: ${h.counts?.marginHistory??0}\nMarket short-ratio rows: ${h.counts?.marketShortRatioHistory??0}\nLarge-short rows: ${h.counts?.largeShortHistory??0}\nMarket-flow rows: ${h.counts?.marketFlow??0}\nWeb trade rows: ${h.counts?.tradeHistory??0}\n`;
   const zipFiles=[{name:"web_jqp.json",data:JSON.stringify(payload,null,2)},{name:"web_portfolio_integrated.csv",data:csv},...extra,{name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:readme}];
   const blob=zipStoreBlob(zipFiles),name=`web_ai_share_${asOf.replaceAll("-","")}.zip`;latestAiShareArtifact={blob,name,asOf,generatedAt:new Date().toISOString()};artifactReady("aiShareDownloadBtn",latestAiShareArtifact);window.__latestPortfolioIntegrated=rows;
   box("aiShareZipResult",tech===rows.length&&fin===rows.length?"pass":"warn",`共有ZIP 生成PASS\n基準日: ${asOf}\nDataLake: ${canon.dataLakeDate}\n銘柄: ${rows.length}\nテクニカル: ${tech}/${rows.length}\n財務: ${fin}/${rows.length}\n信用残: ${margin}/${rows.length}\n空売り系: ${shorts}/${rows.length}\n\n${name} を生成済みです。下のダウンロードボタンから何度でも取得できます。`);
@@ -3310,7 +3319,7 @@ if($("investmentTrackingApplyExportBtn"))$("investmentTrackingApplyExportBtn").o
 if($("investmentTrackingDiscoveryExportBtn"))$("investmentTrackingDiscoveryExportBtn").onclick=()=>{if(!latestInvestmentRoutes.discovery.length)return;downloadBlob(new Blob([simpleCsv(latestInvestmentRoutes.discovery,DISCOVERY_ROUTE_FIELDS)],{type:"text/csv;charset=utf-8"}),`web_investment_tracking_discovery_route_${todayIsoLocal().replaceAll("-","")}.csv`)};
 if($("investmentTrackingWatchlistExportBtn"))$("investmentTrackingWatchlistExportBtn").onclick=()=>{if(!latestInvestmentRoutes.watchlist.length)return;downloadBlob(new Blob([simpleCsv(latestInvestmentRoutes.watchlist,WATCHLIST_ROUTE_FIELDS)],{type:"text/csv;charset=utf-8"}),`web_investment_tracking_watchlist_route_${todayIsoLocal().replaceAll("-","")}.csv`)};
 
-// v7e-alpha100: daily-use direct Investment Tracking registration / update / Watchlist close UI.
+// v7e-alpha101: daily-use direct Investment Tracking registration / update / Watchlist close UI.
 let latestQuickInvestmentRoutes={discovery:[],watchlist:[]},latestQuickInvestmentPreview=null,latestQuickInvestmentState={discovery:[],master:[],state:[]};
 function quickInvValue(id){return String($(id)?.value??"").trim()}
 function quickInvSyncFields(){const status=quickInvValue("quickInvStatus"),action=quickInvValue("quickInvAction"),closing=action==="CLOSE";if($("quickInvDiscoveryFields"))$("quickInvDiscoveryFields").style.display=closing||status==="WATCH_ONLY"?"none":"block";if($("quickInvWatchFields"))$("quickInvWatchFields").style.display=closing||status==="TRACK_ONLY"?"none":"block"}

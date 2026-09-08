@@ -244,3 +244,11 @@
 - 価格履歴はモバイル生成負荷を抑えるため5年に制限。財務・需給・市場フローはWeb DataLakeで利用可能な履歴を出力。
 - Web売買履歴はPortfolio Manager導入後の監査ledger。VOID行を保持し、将来の成績集計では除外可能。
 - PC JQP 16ファイルの盲目的複製ではなく、AI投資分析に必要な履歴レイヤーをWeb-firstで追加。
+
+## v7e-alpha101 — AI Share Stage 2 Data Quality Hotfix (2026-09-08)
+- Fixed `portfolio_prices_history.csv` export: canonical shard path handling and 4-digit/5-digit J-Quants code matching.
+- Corrected short-ratio semantics: `/markets/short-ratio` is exported as market/section-level `market_short_ratio_history.csv`, not as a portfolio-code dataset.
+- Corrected investor-types semantics: market-wide rows are no longer filtered by portfolio code/Section.
+- Added canonical portfolio large-short aggregation by reporting identity and freshness fields to the integrated snapshot.
+- Split EPS semantics into `currentPeriodEPS` and `actualFYEPS`; legacy `eps` now means current-period EPS.
+- Empty Stage 2 CSVs retain explicit headers. Price-history=0 now fails closed instead of producing a misleading PASS ZIP.
