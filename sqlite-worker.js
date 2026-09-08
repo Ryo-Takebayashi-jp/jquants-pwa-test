@@ -1109,6 +1109,28 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){try{if(pdb)pdb.close()}catch(_){}self.postMessage({ok:false,type:"error",stage:"investment-tracking-state-load",message:String(err?.message||err),stack:String(err?.stack||"")});return}
  }
 
+ if(cmd==="investment-tracking-close-code"){
+   let pdb=null;
+   try{
+     const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),scope=String(payload.scope||"both").toLowerCase();let code=String(payload.code||"").trim().toUpperCase();if(code.length===5&&code.endsWith("0"))code=code.slice(0,4);
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf)||!code)throw new Error("close-code payload invalid");
+     pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     const parse=x=>{try{return JSON.parse(String(x||"{}"))}catch(_){return{}}},now=new Date().toISOString();let discoveryClosed=0,watchClosed=0;
+     pdb.exec("BEGIN IMMEDIATE");
+     try{
+       if(scope==="discovery"||scope==="both"){
+         const rows=execRows(pdb,"SELECT event_id,row_json FROM discovery_episode_master WHERE code=? ORDER BY episode_start_date DESC",[code]);
+         for(const x of rows){const r=parse(x.row_json),closed=String(r.PerfEpisodeStatus||"").toLowerCase()==="closed"||String(r.PerfActiveWatchFlag||"")==="0";if(closed)continue;r.PerfActiveWatchFlag="0";r.PerfEpisodeStatus="Closed";r.PerfEpisodeEndDate=asOf;r.PerfEpisodeEndReason="ManualClose";r.ManualClosedAt=now;pdb.exec({sql:"UPDATE discovery_episode_master SET row_json=?,updated_at=? WHERE event_id=?",bind:[JSON.stringify(r),now,String(x.event_id)]});discoveryClosed++;break}
+       }
+       if(scope==="watch"||scope==="both"){
+         const rows=execRows(pdb,"SELECT watch_id,row_json FROM watchlist_master_web");for(const x of rows){const r=parse(x.row_json),c=String(r.Code||"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);if(c!==code||!["Active","ReviewDue"].includes(String(r.Status||"")))continue;r.Status="Closed";r.ClosedAt=asOf;r.CloseReason="ManualClose";pdb.exec({sql:"UPDATE watchlist_master_web SET row_json=?,updated_at=? WHERE watch_id=?",bind:[JSON.stringify(r),now,String(x.watch_id)]});watchClosed++}
+       }
+       pdb.exec("COMMIT");
+     }catch(err){try{pdb.exec("ROLLBACK")}catch(_){}throw err}
+     pdb.close();pdb=null;self.postMessage({ok:true,type:"result",asOf,code,scope,discoveryClosed,watchClosed});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}self.postMessage({ok:false,type:"error",stage:"investment-tracking-close-code",message:String(err?.message||err),stack:String(err?.stack||"")});return}
+ }
+
  if(cmd==="investment-tracking-preview" || cmd==="investment-tracking-commit"){
    let pdb=null,cdb=null;const opened=[];
    try{
@@ -1227,7 +1249,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        const dates=series.map(x=>x[0]),vals=series.map(x=>x[1]);row.PerfCurrentDate=dates.at(-1);row.PerfCurrentPrice=vals.at(-1);row.PerfTradingDaysElapsed=Math.max(0,vals.length-1);
        for(const days of [1,5,10,20,60])if(vals.length>days){const sr=ret(initial,vals[days]),tr=ret(topix.get(dates[0]),topix.get(dates[days]));row[`PerfReturn${days}D`]=sr??"";row[`PerfRelativeTOPIX${days}D`]=relative(sr,tr)??""}
        for(const horizon of [20,60]){const win=vals.slice(0,Math.min(vals.length,horizon+1));if(win.length&&initial){row[`PerfMaxReturn${horizon}D`]=round6((Math.max(...win)/initial-1)*100);let peak=win[0],dd=0;for(const v of win){peak=Math.max(peak,v);if(peak)dd=Math.min(dd,(v/peak-1)*100)}row[`PerfMaxDrawdown${horizon}D`]=round6(dd)}}
-       row.PerfLastUpdatedDate=asOf;if(planned&&asOf>=planned){row.PerfActiveWatchFlag="0";row.PerfEpisodeStatus="Closed";row.PerfEpisodeEndDate=planned;row.PerfEpisodeEndReason=row.PerfEpisodeEndReason||"Max3Months"}else{row.PerfActiveWatchFlag="1";row.PerfEpisodeStatus=row.PerfEpisodeStatus||"Active"}
+       row.PerfLastUpdatedDate=asOf;const manualClosed=String(row.PerfEpisodeStatus||"").toLowerCase()==="closed"&&String(row.PerfEpisodeEndReason||"")==="ManualClose";if(manualClosed){row.PerfActiveWatchFlag="0";row.PerfEpisodeStatus="Closed";row.PerfEpisodeEndDate=row.PerfEpisodeEndDate||asOf}else if(planned&&asOf>=planned){row.PerfActiveWatchFlag="0";row.PerfEpisodeStatus="Closed";row.PerfEpisodeEndDate=planned;row.PerfEpisodeEndReason=row.PerfEpisodeEndReason||"Max3Months"}else{row.PerfActiveWatchFlag="1";row.PerfEpisodeStatus="Active"}
        result.push(row);
      }
 

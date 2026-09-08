@@ -1,4 +1,14 @@
-# v7e-alpha109 — Beta Candidate Hotfix / Portfolio Valuation & Mobile Form (2026-09-08)
+# v7e-alpha110 — Beta Gate UI Finalization (2026-09-08)
+
+- 売買フォームの確認状態を「銘柄名を表示」ボタン直上へ移動し、2列フォームの縦間隔を7pxへ統一。操作→約定単価、株数→売買日の間を同じリズムで微調整。
+- Watchlist/Discovery一覧の状態を分離表示。Discovery Active/Closed と Watch Active を独立バッジ化。
+- Discoveryの既存 `InitialPrice` を登録基準価格として表示し、旧EpisodeでもDataLakeで確定済みの開始価格を再利用。
+- WatchlistとDiscoveryに独立した追跡終了ボタンを追加。終了は物理削除せず履歴を保持し、DiscoveryのManualCloseは日次再計算でも再オープンしない。
+- 追跡終了結果に技術情報＋日本語まとめを併記。既存CSV Importの日本語まとめも維持。
+- alpha109で実機PASSしたPortfolio最新終値14/14・評価額・評価損益resolverを維持。
+- beta1昇格前の最終UI/状態管理候補。
+
+# v7e-alpha110 — Beta Candidate Hotfix / Portfolio Valuation & Mobile Form (2026-09-08)
 
 - 保有一覧の0円損益の真因を修正。`my-stocks-analysis` のbars組み立てで `tv` 未定義参照が発生し、価格解析全体が例外終了していた。終値・出来高から安全に `tv` を生成し、最新終値・評価額・評価損益・損益率を復旧。
 - 売買フォームの銘柄コード入力をモバイル数値キーボード優先へ変更（input自体は英数字を保持できるtext型）。
@@ -316,7 +326,7 @@
 - Empty Stage 2 CSVs retain explicit headers. Price-history=0 now fails closed instead of producing a misleading PASS ZIP.
 
 
-## v7e-alpha109 — Beta Gate Stabilization (2026-09-08)
+## v7e-alpha110 — Beta Gate Stabilization (2026-09-08)
 - Portfolio dashboard latest-close resolver now uses the canonical recent DataLake DB first, with catalog shards as fallback; dashboard valuation no longer depends on the 75-day technical-analysis resolver.
 - Portfolio latest close / market value / unrealized P&L / P&L% are calculated from the resolved latest DataLake close; missing prices fail visibly instead of becoming zero.
 - Watchlist cards now show InvestmentStatus badge, Watch Active state, registration date, ReferencePrice, latest close/date, and return since registration.

@@ -1,8 +1,13 @@
 {
-  "current_release": "v7e-alpha109",
+  "current_release": "v7e-alpha110",
   "history": [
     {
-      "version": "v7e-alpha109",
+      "version": "v7e-alpha110",
+      "date": "2026-09-08",
+      "summary": "Beta gate UI finalization: balanced mobile trade form, explicit Discovery/Watch states, Discovery reference-price display, and audit-preserving independent tracking close actions."
+    },
+    {
+      "version": "v7e-alpha110",
       "date": "2026-09-08",
       "summary": "Beta gate stabilization: canonical latest-close portfolio valuation, Watchlist monitoring cards with reference/latest prices, Japanese CSV outcome summary, and mobile trade-form spacing refinement."
     },
