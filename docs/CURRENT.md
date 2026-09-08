@@ -1,7 +1,7 @@
-# Current Web Release
+# Current Web/PWA Release
 
-- Version: `v7e-alpha105`
+- Version: `v7e-alpha106`
 - Date: 2026-09-08
-- Focus: production UI architecture cleanup + backup/restore + inline trade correction + large-short active-state aggregation.
-- Portfolio AI Share Stage 2 remains PASS/canonical from alpha104.
-- Web-first Screening semantics remain canonical; PC/Web dual-run remains temporary audit.
+- Baseline: alpha104 canonical data semantics + alpha105 backup/cleanup
+- Focus: daily-use UI, Portfolio dashboard, Watchlist management, ×100-share trade input
+- Data semantics: internal Shares remain actual share counts; UI lot input is multiplied by 100 before Preview/Commit.

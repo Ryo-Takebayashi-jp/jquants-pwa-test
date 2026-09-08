@@ -1,3 +1,14 @@
+# v7e-alpha106 — Daily UI / Portfolio / Watchlist refinement (2026-09-08)
+
+- Screening共有ZIPを「日々分析」へ移動し、旧Screeningタブを「ウォッチリスト」へ変更。
+- Watchlist/Investment Trackingを専用ページへ移し、一覧右側から追跡終了できる簡易操作を追加。Discovery履歴は保持。
+- 保有銘柄一覧を口座管理型ダッシュボードへ刷新。全体/NISA/現物/信用買/信用売タブ、現在値、平均取得、評価額、評価損益、損益率を表示。
+- 売買入力に銘柄名確認ボタンを追加。
+- 株数入力を「1 ×100株」方式へ変更。UIで100倍してから既存の実株数Sharesへ渡すため、DB/平均単価/実現損益の意味論は変更しない。Previewで実株数と取引金額を明示。
+- 売買入力のメモ欄を撤去（既存DB列・過去監査データは保持）。
+- 日々分析から開発/保守向けcheckpoint操作を通常表示から外した。
+- alpha105のBackup/Restore、inline VOID、Large Short canonical fixを継承。
+
 # v7e-alpha105 — Production UI Architecture Cleanup / Backup & Restore
 
 - Reorganized the production PWA into four top-level views: 日々分析 / 銘柄・売買 / スクリーニング / 設定・保守.

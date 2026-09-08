@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha105",
+  "current_release": "v7e-alpha106",
   "history": [
     {
       "version": "v7e-alpha101",
@@ -176,8 +176,14 @@
       "summary": "AI Share Stage 2 DQ: fix J-Quants API v2 market short-ratio field mapping and add value-level fail-closed invariant."
     }
   ],
-  "latest": "v7e-alpha105",
+  "latest": "v7e-alpha106",
   "releases": [
+    {
+      "version": "v7e-alpha106",
+      "date": "2026-09-08",
+      "title": "Daily UI / Portfolio / Watchlist refinement",
+      "summary": "日常運用UIを完成形へ寄せ、Screening shareを日々分析へ統合、Watchlist専用ページ、口座管理型Portfolio表示、銘柄名確認、100株単位入力を追加。"
+    },
     {
       "version": "v7e-alpha105",
       "date": "2026-09-08",

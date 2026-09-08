@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08111f">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>J-Quants Local-first PWA v7e-alpha105</title>
+<title>J-Quants Local-first PWA v7e-alpha106</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -22,20 +22,23 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 /* alpha105 production navigation */
 .app-nav{position:sticky;top:0;z-index:50;display:flex;gap:6px;overflow-x:auto;padding:9px 10px;background:rgba(8,17,31,.96);-webkit-overflow-scrolling:touch}.app-nav button{width:auto;min-width:max-content;padding:9px 12px;border-radius:10px;background:#1f2937;font-size:13px}.app-nav button.active{background:#fff;color:#08111f}.app-shell{max-width:850px;margin:auto;padding:14px 16px 28px}.app-page{display:none}.app-page.active{display:block}.page-title{margin:3px 2px 12px;font-size:20px}.page-lead{font-size:13px;color:#4b5563;line-height:1.6;margin:-5px 2px 14px}.legacy-ui-hidden{display:none!important}.compact-note{font-size:12px;color:#6b7280;line-height:1.55}.backup-actions{display:grid;grid-template-columns:1fr;gap:8px;margin:10px 0 14px}.pf-void-inline{margin:7px 0 4px;padding:9px;border:1px solid #f59e0b;border-radius:10px;background:#fffbeb;min-width:230px}.pf-void-inline .row{display:flex;gap:6px;margin-top:7px}.pf-void-inline button{width:auto;padding:7px 10px;font-size:12px}.maintenance-sub{border-top:1px solid #e5e7eb;margin-top:16px;padding-top:14px}@media(min-width:700px){.backup-actions{grid-template-columns:1fr 1fr}}
+
+/* alpha106 daily-use portfolio/watchlist refinement */
+.code-lookup{display:flex;gap:6px;align-items:center}.code-lookup input{min-width:0;flex:1}.compact-btn{width:auto!important;margin-top:0!important;padding:9px 10px!important;font-size:12px!important}.name-result{display:block;margin-top:5px;font-size:12px;font-weight:700;color:#374151}.qty-x100{display:flex;gap:7px;align-items:center}.qty-x100 input{width:64px!important;flex:none}.qty-x100 b{font-size:13px;white-space:nowrap}.portfolio-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0}.summary-cell{border:1px solid #e5e7eb;border-radius:12px;padding:10px;background:#fafafa}.summary-label{font-size:11px;color:#6b7280}.summary-value{font-size:16px;font-weight:800;margin-top:3px}.account-tabs{display:flex;gap:6px;overflow-x:auto;margin:10px 0 4px}.account-tabs button{width:auto;min-width:max-content;padding:8px 11px;font-size:12px;background:#e5e7eb;color:#111827}.account-tabs button.active{background:#08111f;color:#fff}.portfolio-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:8px}.portfolio-row .portfolio-numbers{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;font-size:12px;margin-top:7px}.pnl-plus{color:#b91c1c;font-weight:800}.pnl-minus{color:#1d4ed8;font-weight:800}.watch-remove{background:#991b1b!important;color:#fff!important}@media(min-width:700px){.portfolio-summary{grid-template-columns:repeat(4,1fr)}}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha105</h1><p>Web-first日常運用・銘柄管理・スクリーニング・バックアップを1つに統合したLocal-first投資アプリ。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha106</h1><p>Web-first日常運用・保有管理・Watchlist・バックアップを1つに統合したLocal-first投資アプリ。</p></header>
 <nav class="app-nav" id="appNav" aria-label="メインメニュー">
   <button type="button" data-page="daily" class="active">日々分析</button>
   <button type="button" data-page="stocks">銘柄・売買</button>
-  <button type="button" data-page="screening">スクリーニング</button>
+  <button type="button" data-page="watchlist">ウォッチリスト</button>
   <button type="button" data-page="settings">設定・保守</button>
 </nav>
 <div class="app-shell" id="appShell">
   <section class="app-page active" id="page-daily"><h2 class="page-title">日々分析</h2><p class="page-lead">通常はここだけで日次更新からAI共有まで完結します。</p></section>
   <section class="app-page" id="page-stocks"><h2 class="page-title">銘柄・売買</h2><p class="page-lead">保有ポジション、売買履歴、Discovery / Watchlist対象を管理します。</p></section>
-  <section class="app-page" id="page-screening"><h2 class="page-title">スクリーニング</h2><p class="page-lead">日次運用で計算済みのWeb-first Screeningを共有・確認します。</p></section>
+  <section class="app-page" id="page-watchlist"><h2 class="page-title">ウォッチリスト</h2><p class="page-lead">追跡対象の登録・一覧確認・追跡終了をここで行います。</p></section>
   <section class="app-page" id="page-settings"><h2 class="page-title">設定・保守</h2><p class="page-lead">バックアップ、DataLake保守、診断など普段は触らない機能です。</p></section>
 </div>
 
@@ -51,8 +54,8 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <p><b>通常運用の主ボタンです。</b> DataLake更新 → Screening → Discovery Episode/Daily → Factor/Seasonality → Watchlist Alert Preview を順番に実行します。</p>
   <p class="desc">各工程はprivate DBへcheckpointを保存します。途中で失敗した場合は次回このボタンから未完了工程を再開します。Watchlist AlertはPreviewまでで、Commitは自動実行しません。</p>
   <button id="dailyPipelineBtn">日次運用を実行</button>
-  <button id="dailyPipelineDiagExportBtn" class="secondary" disabled>日次パイプライン診断CSVを書き出す</button>
-  <button id="dailyPipelineResetBtn" class="secondary">未完了checkpointを破棄して新規開始</button>
+  <button id="dailyPipelineDiagExportBtn" class="secondary legacy-ui-hidden" disabled>日次パイプライン診断CSVを書き出す</button>
+  <button id="dailyPipelineResetBtn" class="secondary legacy-ui-hidden">未完了checkpointを破棄して新規開始</button>
   <pre id="dailyPipelineResult" class="result">未実行</pre>
 </section>
 <section class="card" id="screeningShareCard">
@@ -72,8 +75,8 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <pre id="aiShareZipResult" class="result">未実行</pre>
 </section>
 <section class="card" id="quickInvestmentManageCard">
-  <h2>銘柄を登録・管理（Web-only）</h2>
-  <p><b>investment_tracking_input.csv を作らず、1銘柄ずつ登録・更新・Watchlist終了できます。</b> 既存のInvestment Tracking Preview → Commitエンジンをそのまま使います。</p>
+  <h2>ウォッチリストを登録・管理</h2>
+  <p><b>追跡対象を1銘柄ずつ登録し、現在の一覧からすぐ追跡終了できます。</b> 履歴は削除せず監査用に保持します。</p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
     <label>銘柄コード <input id="quickInvCode" type="text" inputmode="text" placeholder="例: 3932"></label>
     <label>Status <select id="quickInvStatus"><option>TRACK_ONLY</option><option>WATCH</option><option>ACTIONABLE</option><option>WATCH_ONLY</option></select></label>
@@ -102,7 +105,6 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
       <label>PriceTrigger3% <input id="quickInvPrice3" type="number" step="0.1" value="-15"></label>
     </div>
   </details>
-  <label>AnalystNote <textarea id="quickInvNote" rows="2" placeholder="任意メモ"></textarea></label>
   <button id="quickInvPreviewBtn">登録・変更をプレビュー</button>
   <button id="quickInvCommitBtn" disabled>この内容を確定・保存</button>
   <button id="quickInvRefreshBtn" class="secondary">現在の登録一覧を更新</button>
@@ -114,19 +116,20 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   <h2>保有銘柄・売買を管理（Web-only）</h2>
   <p><b>現物 / NISA / 信用買 / 信用売の新規・追加・縮小・全決済をWebで記録します。</b> 現在ポジションをprivate DBへ反映し、売買履歴も同時に保存します。</p>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px">
-    <label>銘柄コード <input id="pfTradeCode" type="text" placeholder="例: 1963"></label>
+    <label>銘柄コード <span class="code-lookup"><input id="pfTradeCode" type="text" placeholder="例: 1963"><button type="button" id="pfTradeNameBtn" class="secondary compact-btn">銘柄名を表示</button></span><span id="pfTradeNameResult" class="name-result">未確認</span></label>
     <label>口座/区分 <select id="pfTradeAccount"><option>NISA</option><option>現物</option><option>信用買</option><option>信用売</option></select></label>
     <label>操作 <select id="pfTradeAction"><option value="ADD">新規 / 追加</option><option value="REDUCE">縮小 / 決済</option></select></label>
-    <label>株数 <input id="pfTradeShares" type="number" min="0" step="1" placeholder="例: 100"></label>
+    <label>株数 <span class="qty-x100"><input id="pfTradeShares" type="number" min="1" step="1" inputmode="numeric" placeholder="1"><b>×100株</b></span></label>
     <label>約定単価 <input id="pfTradePrice" type="number" min="0" step="0.01" placeholder="例: 1261"></label>
     <label>売買日 <input id="pfTradeDate" type="date"></label>
   </div>
-  <label>メモ <input id="pfTradeMemo" type="text" placeholder="任意"></label>
   <button id="pfTradePreviewBtn">売買をプレビュー</button>
   <button id="pfTradeCommitBtn" disabled>この売買を確定・保存</button>
   <button id="pfTradeRefreshBtn" class="secondary">現在の保有一覧を更新</button>
   <button id="pfTradeVoidCommitBtn" class="secondary" disabled>この誤入力取消を確定</button>
   <pre id="pfTradeResult" class="result">未実行</pre>
+  <div id="pfPortfolioSummary"></div>
+  <div id="pfAccountTabs" class="account-tabs"></div>
   <div id="pfTradePositions"></div>
   <details style="margin-top:10px"><summary>最近の売買履歴</summary><div id="pfTradeHistory"></div></details>
   <p class="desc">既存保有は現在の平均取得単価を起点に継続管理します。縮小時の実現損益はWeb上の平均取得単価を基準に計算します。税・手数料は含みません。誤入力は最近の売買履歴から「入力取消」→確認→確定できます。同一銘柄・口座は新しい入力から順に取消し、取消済み記録は監査用に残します。</p>
@@ -314,7 +317,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha105 起動確認</h2>
+<h2>v7e-alpha106 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -1111,9 +1114,9 @@ Migration version: history-4</div>
   move('apiKeyCard','daily');
   move('dailyPipelineCard','daily');
   move('aiShareCard','daily');
+  move('screeningShareCard','daily');
   move('quickPortfolioManageCard','stocks');
-  move('quickInvestmentManageCard','stocks');
-  move('screeningShareCard','screening');
+  move('quickInvestmentManageCard','watchlist');
   move('backupCard','settings');
   move('simpleOpsCard','settings');
   move('poolDiagnosticCard','settings');
@@ -1125,11 +1128,11 @@ Migration version: history-4</div>
   const nav=byId('appNav');
   const activate=(name)=>{for(const p of document.querySelectorAll('.app-page'))p.classList.toggle('active',p.id==='page-'+name);for(const b of nav.querySelectorAll('button[data-page]'))b.classList.toggle('active',b.dataset.page===name);try{sessionStorage.setItem('jq-active-page',name)}catch(_){}};
   nav.addEventListener('click',e=>{const b=e.target.closest('button[data-page]');if(b)activate(b.dataset.page)});
-  let initial='daily';try{const x=sessionStorage.getItem('jq-active-page');if(['daily','stocks','screening','settings'].includes(x))initial=x}catch(_){}activate(initial);
+  let initial='daily';try{const x=sessionStorage.getItem('jq-active-page');if(['daily','stocks','watchlist','settings'].includes(x))initial=x}catch(_){}activate(initial);
   // Legacy global VOID commit remains available to code but is no longer part of normal mobile UI.
   const oldVoid=byId('pfTradeVoidCommitBtn');if(oldVoid)oldVoid.classList.add('legacy-ui-hidden');
 })();
 </script>
-<script src="./app.js?v=v7e-alpha105"></script>
+<script src="./app.js?v=v7e-alpha106"></script>
 </body>
 </html>
