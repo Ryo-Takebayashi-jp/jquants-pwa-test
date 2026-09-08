@@ -1,6 +1,11 @@
 {
-  "current_release": "v7e-alpha110",
+  "current_release": "v7e-alpha111",
   "history": [
+    {
+      "version": "v7e-alpha111",
+      "date": "2026-09-08",
+      "summary": "Beta gate final polish: mobile trade identity-row alignment and concise Watchlist/Discovery role legend; no calculation semantics changed."
+    },
     {
       "version": "v7e-alpha110",
       "date": "2026-09-08",

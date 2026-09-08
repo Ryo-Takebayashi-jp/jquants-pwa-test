@@ -1,3 +1,10 @@
+# v7e-alpha111 — Beta Gate Final Polish (2026-09-08)
+
+- Trade identity row finalized for mobile: Code / confirmation state / Account labels align horizontally; confirmation is centered above the name lookup button without inflating adjacent field spacing.
+- Preserved alpha110 portfolio valuation, trade-row vertical rhythm, Watchlist/Discovery state semantics, and audit-preserving close actions.
+- Added concise Watchlist-page legend: Watchlist = daily monitoring; Discovery = post-discovery follow-up tracking.
+- No calculation semantics changed.
+
 # v7e-alpha110 — Beta Gate UI Finalization (2026-09-08)
 
 - 売買フォームの確認状態を「銘柄名を表示」ボタン直上へ移動し、2列フォームの縦間隔を7pxへ統一。操作→約定単価、株数→売買日の間を同じリズムで微調整。

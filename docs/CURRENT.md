@@ -1,6 +1,6 @@
 # Current Web/PWA Release
 
-- Version: `v7e-alpha110`
+- Version: `v7e-alpha111`
 - Role: Beta Gate Stabilization
 - Canonical baseline: Web-first local DataLake + Portfolio/Watchlist/AI Share
 - Promotion gate: real-device PASS for latest-close portfolio valuation, investment_tracking_input.csv import, and next daily pipeline.
