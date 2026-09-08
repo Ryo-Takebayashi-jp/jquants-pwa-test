@@ -1,3 +1,11 @@
+# v7e-alpha103 — Short-ratio fail-closed + schema compatibility
+
+- Fixed the alpha102 false-PASS condition: `SellExShortValue` alone is no longer considered valid short-ratio analytics.
+- DQ now requires a real short-selling component (`ShortWithRestrictionValue`, `ShortNoRestrictionValue`, or compatible total-short field), a finite 0–100 ratio, and at least one non-zero ratio row.
+- Added compatibility aliases for possible v2 short-component keys and optional `ShortTotalValue`; exporter can derive the ratio from total short value when split restriction fields are unavailable.
+- If the stored DataLake still lacks short components, AI-share generation fails closed instead of exporting a misleading 0% series.
+- This release intentionally does not fabricate short-selling values from `SellExShortValue`.
+
 # v7e-alpha102 - 2026-09-08
 
 - Fixed `/markets/short-ratio` AI-share mapping for J-Quants API v2 abbreviated fields: `S33`, `SellExShortVa`, `ShortWithResVa`, `ShortWoResVa`; legacy/full-name aliases remain readable.
