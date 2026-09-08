@@ -1,3 +1,10 @@
+# v7e-alpha108 — Beta Candidate Hotfix / Portfolio Valuation & Mobile Form (2026-09-08)
+
+- 保有一覧の0円損益の真因を修正。`my-stocks-analysis` のbars組み立てで `tv` 未定義参照が発生し、価格解析全体が例外終了していた。終値・出来高から安全に `tv` を生成し、最新終値・評価額・評価損益・損益率を復旧。
+- 売買フォームの銘柄コード入力をモバイル数値キーボード優先へ変更（input自体は英数字を保持できるtext型）。
+- 売買フォームを明示2列グリッド化し、操作/株数と約定単価/売買日の間の余分な縦空白を除去。
+- alpha108もβ昇格判定用Release Candidate。実機で最新終値・損益表示、Watchlist CSV Import、次回日次PASSを確認後にbeta1へ昇格予定。
+
 # v7e-alpha107 — Beta Candidate / Daily UX & canonical close fix (2026-09-08)
 
 - Watchlistの主操作を `investment_tracking_input.csv` 一括Import → Preview → Commitへ変更。個別手入力は折りたたみへ格下げ。

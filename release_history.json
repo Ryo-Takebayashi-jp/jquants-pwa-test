@@ -176,8 +176,14 @@
       "summary": "AI Share Stage 2 DQ: fix J-Quants API v2 market short-ratio field mapping and add value-level fail-closed invariant."
     }
   ],
-  "latest": "v7e-alpha107",
+  "latest": "v7e-alpha108",
   "releases": [
+    {
+      "version": "v7e-alpha108",
+      "date": "2026-09-08",
+      "title": "Beta Candidate Hotfix / Portfolio Valuation & Mobile Form",
+      "summary": "Fix portfolio latest-close valuation crash, prefer numeric mobile code entry, and tighten the 2-column trade form layout."
+    },
     {
       "version": "v7e-alpha107",
       "date": "2026-09-08",

@@ -998,10 +998,10 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          for(const r of rs){
            const d=String(r.date);if(!chosenSet.has(d))continue;
            const code=String(r.code),c=Number(r.c),v=(r.volume==null||r.volume==="")?null:Number(r.volume),
-                 h=Number(r.h),l=Number(r.l);
+                 h=Number(r.h),l=Number(r.l),tv=(Number.isFinite(c)&&Number.isFinite(v))?c*v:null;
            if(!Number.isFinite(c)||c<=0)continue;
            if(!byCode.has(code))byCode.set(code,[]);
-           byCode.get(code).push({date:d,c,v,tv:Number.isFinite(tv)?tv:null,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c});
+           byCode.get(code).push({date:d,c,v,tv,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c});
          }
        }finally{try{if(db)db.close()}catch(_){}}
      }
