@@ -1,4 +1,13 @@
-# v7e-alpha106 — Daily UI / Portfolio / Watchlist refinement (2026-09-08)
+# v7e-alpha107 — Beta Candidate / Daily UX & canonical close fix (2026-09-08)
+
+- Watchlistの主操作を `investment_tracking_input.csv` 一括Import → Preview → Commitへ変更。個別手入力は折りたたみへ格下げ。
+- 保有一覧の価格resolverを修正。`my-stocks-analysis` の未定義変数で価格取得が落ち、0円表示になっていた不具合を修正。
+- 「現在値」を「最新終値」へ変更し、最新終値ベースで評価額・評価損益・損益率を算出。価格なしは0円ではなく明示。
+- 約定単価をモバイルのdecimal数値入力へ統一。株数は従来どおりUI入力×100、DB内部Sharesは実株数。
+- 旧テスト・詳細ツールはproduction 4タブから非表示を維持。
+- alpha107はβ昇格判定用Release Candidate。実機で日次・Portfolio価格・CSV ImportがPASS後にβへ昇格予定。
+
+# v7e-alpha107 — Daily UI / Portfolio / Watchlist refinement (2026-09-08)
 
 - Screening共有ZIPを「日々分析」へ移動し、旧Screeningタブを「ウォッチリスト」へ変更。
 - Watchlist/Investment Trackingを専用ページへ移し、一覧右側から追跡終了できる簡易操作を追加。Discovery履歴は保持。

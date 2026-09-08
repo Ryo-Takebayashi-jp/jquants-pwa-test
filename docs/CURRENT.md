@@ -1,7 +1,6 @@
 # Current Web/PWA Release
 
-- Version: `v7e-alpha106`
-- Date: 2026-09-08
-- Baseline: alpha104 canonical data semantics + alpha105 backup/cleanup
-- Focus: daily-use UI, Portfolio dashboard, Watchlist management, ×100-share trade input
-- Data semantics: internal Shares remain actual share counts; UI lot input is multiplied by 100 before Preview/Commit.
+- Version: `v7e-alpha107`
+- Role: Beta Candidate / daily-use UX refinement
+- Canonical baseline: Web-first local DataLake + Portfolio/Watchlist/AI Share
+- Promotion gate: real-device PASS for daily pipeline, latest-close portfolio valuation, investment_tracking_input.csv import.
