@@ -1,4 +1,12 @@
-# v7e-alpha103 — Short-ratio fail-closed + schema compatibility
+# v7e-alpha104 — Short-ratio canonical field fix
+
+- Root cause confirmed against J-Quants API v2 schema: `/markets/short-ratio` uses `ShrtWithResVa` and `ShrtNoResVa`; alpha102/103 incorrectly expected `ShortWithResVa` / `ShortWoResVa`.
+- AI Share Stage 2 now reads canonical v2 fields `S33`, `SellExShortVa`, `ShrtWithResVa`, `ShrtNoResVa`, while retaining legacy aliases for compatibility.
+- Existing raw rows in Web DataLake can be re-exported without re-running the daily pipeline because raw JSON was preserved intact.
+- alpha103 fail-closed DQ remains: SellExShort-only rows cannot pass; short component + finite ratio + non-zero evidence are required.
+- Version/header/worker/service-worker cache metadata synchronized to alpha104.
+
+# v7e-alpha104 — Short-ratio fail-closed + schema compatibility
 
 - Fixed the alpha102 false-PASS condition: `SellExShortValue` alone is no longer considered valid short-ratio analytics.
 - DQ now requires a real short-selling component (`ShortWithRestrictionValue`, `ShortNoRestrictionValue`, or compatible total-short field), a finite 0–100 ratio, and at least one non-zero ratio row.

@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha103",
+  "current_release": "v7e-alpha104",
   "history": [
     {
       "version": "v7e-alpha101",
@@ -171,10 +171,17 @@
       "summary": "AI Share Stage 2: compact portfolio price/financial/supply/market-flow/trade histories for Web-first AI analysis."
     },
     {
-      "version": "v7e-alpha103",
+      "version": "v7e-alpha104",
       "date": "2026-09-08",
       "summary": "AI Share Stage 2 DQ: fix J-Quants API v2 market short-ratio field mapping and add value-level fail-closed invariant."
     }
   ],
-  "latest": "v7e-alpha103"
+  "latest": "v7e-alpha104",
+  "releases": [
+    {
+      "version": "v7e-alpha104",
+      "date": "2026-09-08",
+      "summary": "Fix canonical J-Quants API v2 short-ratio field names (ShrtWithResVa/ShrtNoResVa) while preserving fail-closed DQ."
+    }
+  ]
 }
