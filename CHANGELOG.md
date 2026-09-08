@@ -1,4 +1,12 @@
-# v7e-alpha111 — Beta Gate Final Polish (2026-09-08)
+# v7e-alpha112 — Trade Form Mobile Layout Final Polish (2026-09-09)
+
+- 売買フォーム上段を「銘柄コード / 口座・区分」の2列に戻し、銘柄名確認を独立した次行へ移動。
+- 「銘柄名を表示」ボタンの右隣に `未確認 / 銘柄名` を表示し、長い銘柄名が口座・区分や株数のレイアウトを押し広げない構造へ変更。
+- alpha111までに確定した操作→約定単価、株数→売買日の縦間隔は維持。
+- Watchlist / Discovery の簡潔な説明文とalpha110以降の計算・追跡終了ロジックは変更なし。
+- 計算意味論の変更なし。
+
+# v7e-alpha112 — Beta Gate Final Polish (2026-09-08)
 
 - Trade identity row finalized for mobile: Code / confirmation state / Account labels align horizontally; confirmation is centered above the name lookup button without inflating adjacent field spacing.
 - Preserved alpha110 portfolio valuation, trade-row vertical rhythm, Watchlist/Discovery state semantics, and audit-preserving close actions.
