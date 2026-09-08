@@ -1,3 +1,10 @@
+# v7e-alpha102 - 2026-09-08
+
+- Fixed `/markets/short-ratio` AI-share mapping for J-Quants API v2 abbreviated fields: `S33`, `SellExShortVa`, `ShortWithResVa`, `ShortWoResVa`; legacy/full-name aliases remain readable.
+- `market_short_ratio_history.csv` now derives `ShortRatioPct` from actual market/sector turnover values instead of exporting populated rows with blank analytics.
+- Added `marketShortRatioValid` DQ count and fail-closed invariant: if stored short-ratio rows exist but zero rows contain analytic values, AI-share ZIP generation fails.
+- Preserved alpha101 price-history, market-flow, large-short canonicalization, EPS split, and Web-first semantics.
+
 # v7e-alpha99 - 2026-09-07
 
 - Web日次Screeningで決算当日銘柄をFinancialDataFlagに関係なくEarningsReactionPendingとして保持。worker pending件数と候補pending件数のinvariantを追加。
