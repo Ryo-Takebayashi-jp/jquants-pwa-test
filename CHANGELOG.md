@@ -1,3 +1,15 @@
+# v7e-alpha105 — Production UI Architecture Cleanup / Backup & Restore
+
+- Reorganized the production PWA into four top-level views: 日々分析 / 銘柄・売買 / スクリーニング / 設定・保守.
+- Removed legacy/duplicated development cards from the normal production UI while keeping mature handlers available internally for diagnostics and rollback safety.
+- Daily page now centers on the canonical Web-first daily pipeline and AI Share; the redundant standalone daily-update path is no longer shown in normal use.
+- Portfolio Trade VOID confirmation is now completed inline in the trade-history row (Preview → 確定 / やめる) with no scroll-back requirement.
+- Large-short canonical aggregation now treats a latest zero-ratio/zero-share subject report as an exit and excludes it from active SubjectCount / aggregate freshness.
+- Added lightweight user-data backup ZIP for jq_private_v1.sqlite, covering Portfolio / Watchlist / Discovery / Investment Tracking / Web trade + VOID audit state. API keys are explicitly excluded.
+- Added guarded user-data restore from the alpha105 STORE-format ZIP with SQLite-header validation, format check, explicit confirmation, streaming import and post-restore quick_check.
+- Existing full DataLake external backup/restore remains available in Settings / Maintenance for device migration and disaster recovery.
+- Version/header/app worker/service-worker/release metadata synchronized to alpha105.
+
 # v7e-alpha104 — Short-ratio canonical field fix
 
 - Root cause confirmed against J-Quants API v2 schema: `/markets/short-ratio` uses `ShrtWithResVa` and `ShrtNoResVa`; alpha102/103 incorrectly expected `ShortWithResVa` / `ShortWoResVa`.

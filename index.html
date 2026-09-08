@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08111f">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>J-Quants Local-first PWA v7e-alpha104</title>
+<title>J-Quants Local-first PWA v7e-alpha105</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -19,10 +19,25 @@ button:disabled{opacity:.5}input[type=file]{width:100%;box-sizing:border-box;pad
 .meter{height:11px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin-top:10px}.meter>div{height:100%;width:0;background:#08111f;transition:width .15s}
 footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} details.card>summary{cursor:pointer;font-size:16px;padding:2px 0 8px}
 .inv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:9px;margin-top:10px}.inv-item{border:1px solid #e5e7eb;border-radius:12px;padding:11px;background:#fafafa}.inv-title{font-weight:800;font-size:14px;margin-bottom:6px}.inv-meta{font-size:12px;line-height:1.55;color:#374151}.inv-actions{margin-top:8px;display:flex;gap:6px}.inv-actions button{width:auto;padding:7px 12px;font-size:12px}.portfolio-row{border:1px solid #e5e7eb;border-radius:12px;padding:11px;margin-top:8px;background:#fafafa}.portfolio-title{font-weight:800}.portfolio-meta{font-size:12px;color:#374151;line-height:1.55;margin-top:4px}
+
+/* alpha105 production navigation */
+.app-nav{position:sticky;top:0;z-index:50;display:flex;gap:6px;overflow-x:auto;padding:9px 10px;background:rgba(8,17,31,.96);-webkit-overflow-scrolling:touch}.app-nav button{width:auto;min-width:max-content;padding:9px 12px;border-radius:10px;background:#1f2937;font-size:13px}.app-nav button.active{background:#fff;color:#08111f}.app-shell{max-width:850px;margin:auto;padding:14px 16px 28px}.app-page{display:none}.app-page.active{display:block}.page-title{margin:3px 2px 12px;font-size:20px}.page-lead{font-size:13px;color:#4b5563;line-height:1.6;margin:-5px 2px 14px}.legacy-ui-hidden{display:none!important}.compact-note{font-size:12px;color:#6b7280;line-height:1.55}.backup-actions{display:grid;grid-template-columns:1fr;gap:8px;margin:10px 0 14px}.pf-void-inline{margin:7px 0 4px;padding:9px;border:1px solid #f59e0b;border-radius:10px;background:#fffbeb;min-width:230px}.pf-void-inline .row{display:flex;gap:6px;margin-top:7px}.pf-void-inline button{width:auto;padding:7px 10px;font-size:12px}.maintenance-sub{border-top:1px solid #e5e7eb;margin-top:16px;padding-top:14px}@media(min-width:700px){.backup-actions{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-alpha104</h1><p>1.12GBレスキューSQLiteをCloudflare側OPFSへストリーミングImportし、公式SQLite-WASMで直接開く実機PoC。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-alpha105</h1><p>Web-first日常運用・銘柄管理・スクリーニング・バックアップを1つに統合したLocal-first投資アプリ。</p></header>
+<nav class="app-nav" id="appNav" aria-label="メインメニュー">
+  <button type="button" data-page="daily" class="active">日々分析</button>
+  <button type="button" data-page="stocks">銘柄・売買</button>
+  <button type="button" data-page="screening">スクリーニング</button>
+  <button type="button" data-page="settings">設定・保守</button>
+</nav>
+<div class="app-shell" id="appShell">
+  <section class="app-page active" id="page-daily"><h2 class="page-title">日々分析</h2><p class="page-lead">通常はここだけで日次更新からAI共有まで完結します。</p></section>
+  <section class="app-page" id="page-stocks"><h2 class="page-title">銘柄・売買</h2><p class="page-lead">保有ポジション、売買履歴、Discovery / Watchlist対象を管理します。</p></section>
+  <section class="app-page" id="page-screening"><h2 class="page-title">スクリーニング</h2><p class="page-lead">日次運用で計算済みのWeb-first Screeningを共有・確認します。</p></section>
+  <section class="app-page" id="page-settings"><h2 class="page-title">設定・保守</h2><p class="page-lead">バックアップ、DataLake保守、診断など普段は触らない機能です。</p></section>
+</div>
 
 
 <section class="card" id="apiKeyCard">
@@ -51,7 +66,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <section class="card" id="aiShareCard">
   <h2>ChatGPT共有ZIPを作成（Web-only）</h2>
   <p><b>PC版を起動せず、Web private DBの登録銘柄と最新DataLakeから共有用ZIPを生成します。</b></p>
-  <p class="desc">Portfolio / Master / Price / Technical / TOPIX相対 / Financial / Supply-demand を統合します。これはWeb-first共有の第1段階で、PC版JQPの履歴系CSVすべてを完全再現するものではありません。</p>
+  <p class="desc">Portfolio / Master / Price / Technical / TOPIX相対 / Financial / Supply-demand を統合します。Stage 2として価格・財務・需給・市場フロー・Web売買履歴まで同梱します。</p>
   <button id="aiShareZipBtn">ChatGPT共有ZIPを生成</button>
   <button id="aiShareDownloadBtn" class="secondary" disabled>生成済みZIPをダウンロード</button>
   <pre id="aiShareZipResult" class="result">未実行</pre>
@@ -299,7 +314,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-alpha104 起動確認</h2>
+<h2>v7e-alpha105 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -639,7 +654,19 @@ Legacy DataLakeは未使用・未変更。
 <p class="desc">土日はAPIを呼ばずスキップ。平日の祝日・休場日はAPI 0件としてスキップ。1日ごとに取得→該当年ShardへCommit→日次行数＋quick_checkを検証します。再実行はUPSERTなので安全です。</p>
 </section>
 <section class="card" id="backupCard">
-<h2>正式バックアップ / 復元</h2>
+<h2>バックアップ / 復元</h2>
+<div class="notice"><b>おすすめ:</b> 普段は「ユーザーデータZIP」、端末移行や災害対策では「フルDataLakeバックアップ」を使います。APIキーはバックアップしません。</div>
+<h3>ユーザーデータ軽量バックアップ</h3>
+<p class="desc"><code>jq_private_v1.sqlite</code> をZIP化します。Portfolio / Watchlist / Discovery / Investment Tracking / Web売買履歴・VOID履歴など、ユーザー固有状態をまとめて保存します。</p>
+<div class="backup-actions">
+  <button id="userBackupZipBtn">ユーザーデータZIPを作成</button>
+  <button id="userBackupDownloadBtn" class="secondary" disabled>生成済みZIPをダウンロード</button>
+</div>
+<div id="userBackupResult" class="result">未実行</div>
+<label>ユーザーデータZIPから復元 <input id="userRestoreZipFile" type="file" accept=".zip,application/zip"></label>
+<button id="userRestoreZipBtn" class="secondary">復元内容を確認して実行</button>
+<div id="userRestoreResult" class="result">未実行</div>
+<div class="maintenance-sub"><h3>フルDataLakeバックアップ</h3></div>
 <p>
 Catalog＋年別Shardを<b>iPhoneのFilesなどブラウザ外へ保存</b>します。
 SAH Pool内だけのコピーではなく、Safariのサイトデータ消失にも備える正式バックアップです。
@@ -830,20 +857,7 @@ Migration version: history-4</div>
 <footer>Version v7e-alpha70 / Build 2026-09-02 / Schema catalog-shards-v1 / Migration history-8<br>
 通常運用は上部カードだけを使用。旧PoCテストは「開発者診断」に隔離しています。</footer>
 </main>
-<script>
-document.addEventListener("DOMContentLoaded",()=>{
-  const host=document.getElementById("legacyDiagnosticsHost");
-  const main=document.querySelector("main");
-  if(!host||!main)return;
-  const cards=[...main.querySelectorAll(":scope > section.card")];
-  for(const card of cards){
-    if(card.classList.contains("production-card")) continue;
-    const h=card.querySelector("h2")?.textContent||"";
-    if(h.includes("更新履歴")||h.includes("Build情報")) continue;
-    host.appendChild(card);
-  }
-});
-</script>
+
 </body>
 </html
 </div>
@@ -1086,21 +1100,36 @@ Migration version: history-4</div>
 </main>
 
 
-<script>
-document.addEventListener("DOMContentLoaded",()=>{
-  const host=document.getElementById("legacyDiagnosticsHost");
-  const main=document.querySelector("main");
-  if(!host||!main)return;
-  const cards=[...main.querySelectorAll(":scope > section.card")];
-  for(const card of cards){
-    if(card.classList.contains("production-card")) continue;
-    const h=card.querySelector("h2")?.textContent||"";
-    if(h.includes("更新履歴")||h.includes("Build情報")) continue;
-    host.appendChild(card);
-  }
-});
-</script>
 
-<script src="./app.js?v=v7e-alpha104"></script>
+
+
+<script>
+(function(){
+  const byId=(id)=>document.getElementById(id);
+  const move=(id,page)=>{const el=byId(id),host=byId('page-'+page);if(el&&host){el.classList.add('app-managed-card');host.appendChild(el);}};
+  // Daily workflow: one pipeline already includes DataLake update, so the old standalone daily-update card stays out of normal UI.
+  move('apiKeyCard','daily');
+  move('dailyPipelineCard','daily');
+  move('aiShareCard','daily');
+  move('quickPortfolioManageCard','stocks');
+  move('quickInvestmentManageCard','stocks');
+  move('screeningShareCard','screening');
+  move('backupCard','settings');
+  move('simpleOpsCard','settings');
+  move('poolDiagnosticCard','settings');
+  move('bootCard','settings');
+  const backup=byId('backupCard'); if(backup){for(const d of backup.querySelectorAll(':scope > details'))d.classList.add('legacy-ui-hidden');}
+  // Hide all legacy/duplicated development UI while retaining DOM compatibility for mature handlers and emergency diagnostics.
+  for(const el of document.querySelectorAll('body > section.card')) if(!el.classList.contains('app-managed-card')) el.classList.add('legacy-ui-hidden');
+  for(const m of document.querySelectorAll('body > main')) m.classList.add('legacy-ui-hidden');
+  const nav=byId('appNav');
+  const activate=(name)=>{for(const p of document.querySelectorAll('.app-page'))p.classList.toggle('active',p.id==='page-'+name);for(const b of nav.querySelectorAll('button[data-page]'))b.classList.toggle('active',b.dataset.page===name);try{sessionStorage.setItem('jq-active-page',name)}catch(_){}};
+  nav.addEventListener('click',e=>{const b=e.target.closest('button[data-page]');if(b)activate(b.dataset.page)});
+  let initial='daily';try{const x=sessionStorage.getItem('jq-active-page');if(['daily','stocks','screening','settings'].includes(x))initial=x}catch(_){}activate(initial);
+  // Legacy global VOID commit remains available to code but is no longer part of normal mobile UI.
+  const oldVoid=byId('pfTradeVoidCommitBtn');if(oldVoid)oldVoid.classList.add('legacy-ui-hidden');
+})();
+</script>
+<script src="./app.js?v=v7e-alpha105"></script>
 </body>
 </html>

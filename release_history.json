@@ -1,5 +1,5 @@
 {
-  "current_release": "v7e-alpha104",
+  "current_release": "v7e-alpha105",
   "history": [
     {
       "version": "v7e-alpha101",
@@ -176,8 +176,13 @@
       "summary": "AI Share Stage 2 DQ: fix J-Quants API v2 market short-ratio field mapping and add value-level fail-closed invariant."
     }
   ],
-  "latest": "v7e-alpha104",
+  "latest": "v7e-alpha105",
   "releases": [
+    {
+      "version": "v7e-alpha105",
+      "date": "2026-09-08",
+      "summary": "Production UI architecture cleanup, inline VOID confirmation, large-short exit-state fix, and user/private + full DataLake backup/restore organization."
+    },
     {
       "version": "v7e-alpha104",
       "date": "2026-09-08",
