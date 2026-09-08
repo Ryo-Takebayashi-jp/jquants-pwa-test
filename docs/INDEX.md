@@ -1,6 +1,6 @@
 # Documentation Index
 
-Current: **v7e-alpha107**
+Current: **v7e-alpha109**
 
 - `README.md` — current Web/PWA architecture and development direction
 - `CURRENT.md` — current release pointer

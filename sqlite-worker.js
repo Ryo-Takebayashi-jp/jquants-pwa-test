@@ -925,6 +925,17 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    finally{try{if(db)db.close()}catch(_){}}
  }
 
+ if(cmd==="portfolio-latest-prices"){
+   const payload=e.data.payload||{},asOf=String(payload.asOf||"").slice(0,10),codes=[...new Set((payload.codes||[]).map(v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean))];
+   if(!codes.length){self.postMessage({ok:true,type:"result",asOf,rows:[],count:0});return}
+   const jq=codes.map(c=>c.length===4?c+"0":c),best=new Map(),dbNames=[];
+   // Canonical latest-close resolver: recent DB first, then catalog shards as fallback.
+   dbNames.push("/jq_bars_recent_v1.sqlite");
+   let cdb=null;try{cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");for(const r of execRows(cdb,`SELECT logical_name FROM shard_catalog WHERE dataset='bars_daily' AND state IN ('ready','pilot-migrated') ORDER BY CASE WHEN shard_key='bars_recent' THEN 0 ELSE 1 END, range_end DESC, shard_key DESC`)){const n=String(r.logical_name||"");if(n&&!dbNames.includes(n.startsWith("/")?n:"/"+n))dbNames.push(n.startsWith("/")?n:"/"+n)}}catch(_){}finally{try{if(cdb)cdb.close()}catch(_){}}
+   for(const nm of dbNames){let db=null;try{db=new p.OpfsSAHPoolDb(nm,"r");const ph=jq.map(()=>"?").join(",");if(!ph)continue;const rs=execRows(db,`SELECT code,date,c,adj_c,raw_json FROM bars_daily WHERE date<=? AND code IN (${ph}) AND COALESCE(adj_c,c) IS NOT NULL ORDER BY date DESC`,[asOf||"9999-12-31",...jq]);for(const r of rs){let code=String(r.code||"").trim().toUpperCase();if(code.length===5&&code.endsWith("0"))code=code.slice(0,4);if(best.has(code))continue;let o={};try{o=JSON.parse(String(r.raw_json||"{}"))}catch(_){}const n=v=>{if(v==null||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)?x:null},close=n(o.AdjC)??n(o.AdjustmentClose)??n(o.AdjClose)??n(o.C)??n(o.Close)??n(r.adj_c)??n(r.c);if(close!=null&&close>0)best.set(code,{code,date:String(r.date||""),close,source:nm})}}catch(_){}finally{try{if(db)db.close()}catch(_){}}}
+   const rows=codes.map(code=>best.get(code)||{code,date:"",close:null,source:""});self.postMessage({ok:true,type:"result",asOf,rows,count:rows.filter(x=>x.close!=null).length,missing:rows.filter(x=>x.close==null).map(x=>x.code)});return;
+ }
+
  if(cmd==="my-stocks-analysis"){
    const payload=e.data.payload||{},asOf=String(payload.asOf||"");
    let pdb=null,cdb=null,stage="01-validate";
@@ -958,7 +969,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
      const cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end
        FROM shard_catalog WHERE dataset='bars_daily' AND state='ready'
-       AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key DESC`);
+       ORDER BY CASE WHEN shard_key='bars_recent' THEN 0 ELSE 1 END, range_end DESC, shard_key DESC`);
      cdb.close();cdb=null;
 
      const dates=[];
