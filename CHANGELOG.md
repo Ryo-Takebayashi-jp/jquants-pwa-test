@@ -1,3 +1,13 @@
+# v7e-beta1 — Data Quality Canonicalization (2026-09-09)
+
+- Promoted from final alpha gate `v7e-alpha114` to the first beta.
+- Fixed `web_portfolio_integrated.csv` master attributes by mapping the actual master schema (`market_name`, `sector17_name`, `sector33_name`, `margin_name`).
+- AI Share price history now resolves one canonical year shard per year and uses `bars_recent` only as fallback, preventing year/recent overlap double-counting.
+- AI Share canonical export removes exact duplicate rows from margin, market short-ratio, large-short and investor-flow histories while preserving the raw DataLake for audit.
+- Added `historyDataQuality` to AI Share manifest with raw/canonical/removed counts.
+- Raw range writers now use stable content-based row identity instead of response-order `seq`, reducing future duplicate accumulation across overlapping refetches.
+- No destructive DataLake migration. Existing raw rows remain intact.
+
 # v7e-alpha114 — Trade Export Freshness + Form Reset Hotfix (2026-09-09)
 
 - AI Share `web_trade_history.csv` now reads `jq_private_v1.sqlite` through a fresh writable SAH Pool connection so trades committed earlier in the same browser session are visible to the export.

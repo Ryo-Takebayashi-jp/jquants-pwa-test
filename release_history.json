@@ -1,6 +1,11 @@
 {
-  "current_release": "v7e-alpha114",
+  "current_release": "v7e-beta1",
   "history": [
+    {
+      "version": "v7e-beta1",
+      "date": "2026-09-09",
+      "summary": "First beta / data-quality canonicalization: Portfolio master schema mapping fix, canonical price-history shard selection, export duplicate suppression with DQ counts, and stable content-based raw row identity; no destructive DataLake migration."
+    },
     {
       "version": "v7e-alpha114",
       "date": "2026-09-09",

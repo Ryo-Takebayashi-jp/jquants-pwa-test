@@ -1854,12 +1854,16 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          const del=db.prepare(`DELETE FROM ${cfg.table} WHERE data_date=?`);
          try{for(const dt of coverageDates){del.bind([dt]);del.step();del.reset()}}finally{try{del.finalize()}catch(_){}}
        }
-       let seq=0;
        for(const r of rows){
          const date=[r.Date,r.date,r.DiscDate,r.CalcDate,r.StartDate,r.PubDate].map(v=>String(v??"").slice(0,10)).find(Boolean)||"";
          const code=String(r.Code??r.code??r.S33??r.Sector33Code??r.Section??"").trim();
          const signature=JSON.stringify(r);
-         const rowKey=[date,code,signature.slice(0,120),seq++].join("|");
+         // Stable content identity: do not include API response sequence/order.
+         // Re-fetching the same logical row now resolves to the same PK.
+         let h1=2166136261>>>0,h2=2246822519>>>0;
+         for(let i=0;i<signature.length;i++){const cc=signature.charCodeAt(i);h1=Math.imul(h1^cc,16777619)>>>0;h2=Math.imul(h2^cc,3266489917)>>>0}
+         const fingerprint=h1.toString(16).padStart(8,"0")+h2.toString(16).padStart(8,"0");
+         const rowKey=[date,code,fingerprint].join("|");
          stmt.bind([rowKey,date||null,code||null,signature]).stepReset();
        }
        if(coverageDates.length){const counts=new Map();for(const r of rows){const dt=String(r.Date??r.date??r.DiscDate??r.CalcDate??r.StartDate??r.PubDate??"").slice(0,10);if(dt)counts.set(dt,(counts.get(dt)||0)+1)}const cov=db.prepare(`INSERT OR REPLACE INTO fetch_coverage(query_date,row_count,fetched_at) VALUES(?,?,?)`);try{const now=new Date().toISOString();for(const dt of coverageDates){cov.bind([dt,Number(counts.get(dt)||0),now]);cov.step();cov.reset()}}finally{try{cov.finalize()}catch(_){}}}
@@ -2255,7 +2259,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    let mdb=null; const names=new Map();
    try{
      mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");
-     const rs=execRows(mdb,"SELECT code,company_name,market,sector17,sector33,margin_category FROM equities_master");
+     const rs=execRows(mdb,"SELECT code,company_name,market_name AS market,sector17_name AS sector17,sector33_name AS sector33,margin_name AS margin_category FROM equities_master");
      for(const r of rs){
        let c=String(r.code||""); if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);
        names.set(c,r);
@@ -2330,7 +2334,18 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
      const cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end FROM shard_catalog WHERE dataset='bars_daily' AND state='ready' AND COALESCE(range_end,'9999-12-31')>=? AND COALESCE(range_start,'0000-01-01')<=? ORDER BY range_start,shard_key`,[from,asOf]);cdb.close();cdb=null;
      const jq=[...wanted].flatMap(c=>[c,c.length===4?c+"0":c]);
-     for(const sh of cats){let db=null;try{const nm=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");for(let off=0;off<jq.length;off+=400){const chunk=jq.slice(off,off+400),ph=chunk.map(()=>"?").join(",");if(!ph)continue;const rs=execRows(db,`SELECT code,date,o,h,l,c,adj_o,adj_h,adj_l,adj_c,adj_volume,volume,turnover_value FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[from,asOf,...chunk]);for(const r of rs){const n=v=>v==null||v===""?null:(Number.isFinite(Number(v))?Number(v):null);out.priceHistory.push({Code:norm(r.code),Date:r.date,Open:n(r.adj_o)??n(r.o),High:n(r.adj_h)??n(r.h),Low:n(r.adj_l)??n(r.l),Close:n(r.adj_c)??n(r.c),Volume:n(r.adj_volume)??n(r.volume),TradingValue:n(r.turnover_value)})}}db.close()}catch(e){try{if(db)db.close()}catch(__){}out.meta.errors.push(`price:${sh.shard_key}:${String(e?.message||e)}`)}}
+     // Canonical price-history shard selection: prefer one ready year shard per year.
+     // bars_recent is fallback only when that year's canonical shard is absent, so
+     // overlapping year/recent coverage cannot double-count (Code,Date).
+     const y1=Number(from.slice(0,4)),y2=Number(asOf.slice(0,4)),selected=[];
+     for(let y=y1;y<=y2;y++){
+       const yf=`${y}-01-01`,yt=`${y}-12-31`,segFrom=from>yf?from:yf,segTo=asOf<yt?asOf:yt;
+       let sh=cats.find(r=>String(r.shard_key)===`bars_${y}`);
+       if(!sh) sh=cats.find(r=>String(r.shard_key)==="bars_recent"&&String(r.range_end||"9999-12-31")>=segFrom&&String(r.range_start||"0000-01-01")<=segTo);
+       if(sh) selected.push({segFrom,segTo,...sh});
+       else out.meta.errors.push(`price-catalog:${y}:no canonical shard`);
+     }
+     for(const sh of selected){let db=null;try{const nm=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");for(let off=0;off<jq.length;off+=400){const chunk=jq.slice(off,off+400),ph=chunk.map(()=>"?").join(",");if(!ph)continue;const rs=execRows(db,`SELECT code,date,o,h,l,c,adj_o,adj_h,adj_l,adj_c,adj_volume,volume,turnover_value FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[sh.segFrom,sh.segTo,...chunk]);for(const r of rs){const n=v=>v==null||v===""?null:(Number.isFinite(Number(v))?Number(v):null);out.priceHistory.push({Code:norm(r.code),Date:r.date,Open:n(r.adj_o)??n(r.o),High:n(r.adj_h)??n(r.h),Low:n(r.adj_l)??n(r.l),Close:n(r.adj_c)??n(r.c),Volume:n(r.adj_volume)??n(r.volume),TradingValue:n(r.turnover_value)})}}db.close()}catch(e){try{if(db)db.close()}catch(__){}out.meta.errors.push(`price:${sh.shard_key}:${String(e?.message||e)}`)}}
    }catch(e){try{if(cdb)cdb.close()}catch(__){}out.meta.errors.push(`price-catalog:${String(e?.message||e)}`)}
    // Financial disclosure history.
    let fdb=null;try{fdb=new p.OpfsSAHPoolDb("/jq_fins_summary_v1.sqlite","r");for(const r of execRows(fdb,"SELECT data_date,code,disclosed_date,raw_json FROM fins_summary WHERE disclosed_date<=? ORDER BY disclosed_date,data_date",[asOf])){const code=norm(r.code);if(!wanted.has(code))continue;let x={};try{x=JSON.parse(String(r.raw_json||"{}"))}catch(_){};const g=(...ks)=>{for(const k of ks)if(x[k]!=null&&x[k]!=="")return x[k];return null};out.financialHistory.push({Code:code,DataDate:r.data_date,DisclosureDate:String(r.disclosed_date||g("DiscDate","DisclosedDate")||"").slice(0,10),PeriodType:g("CurPerType","PeriodType"),FYEnd:g("CurFYEn","CurFYEnd","FYEnd"),PeriodEnd:g("CurPerEn","CurPerEnd"),Sales:g("Sales"),OperatingProfit:g("OP","OperatingProfit"),OrdinaryProfit:g("OdP","OrdinaryProfit"),NetProfit:g("NP","Profit","NetProfit"),EPS:g("EPS"),BPS:g("BPS"),ForecastSales:g("FSales","ForecastSales"),ForecastOperatingProfit:g("FOP","ForecastOP","ForecastOperatingProfit"),ForecastOrdinaryProfit:g("FOdP","ForecastOrdinaryProfit"),ForecastNetProfit:g("FNP","ForecastNP","ForecastNetProfit"),ForecastEPS:g("FEPS","ForecastEPS"),CFO:g("CFO"),CFI:g("CFI"),CFF:g("CFF"),Equity:g("Eq","Equity"),TotalAssets:g("TA","TotalAssets"),DocumentType:g("DocType","Type")})}fdb.close();fdb=null}catch(e){try{if(fdb)fdb.close()}catch(__){}out.meta.errors.push(`financial:${String(e?.message||e)}`)}
@@ -2345,12 +2360,22 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    // Investor types are market-wide. Preserve J-Quants fields instead of treating Section as a security code.
    readRaw("/jq_investor_types_v1.sqlite","investor_types",(r,x)=>{out.marketFlow.push({DataDate:String(r.data_date||"").slice(0,10),...x})});
    let pdb=null;try{pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");if(Number(scalarBind(pdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='portfolio_trade_log'",[])||0)>0){/* Use a fresh read-write connection so same-session commits are visible in AI Share export. */out.tradeHistory=execRows(pdb,"SELECT trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at,status,voided_at,void_reason FROM portfolio_trade_log ORDER BY trade_date,created_at")};pdb.close();pdb=null}catch(e){try{if(pdb)pdb.close()}catch(__){}out.meta.errors.push(`trade:${String(e?.message||e)}`)}
+   // Canonical export layer: keep raw DataLake intact, but remove repeated rows
+   // before analytics/share so historical changes and averages cannot double-count.
+   const dq={};
+   const dedupeExact=(arr,label)=>{const rawRows=arr.length,seen=new Set(),z=[];for(const x of arr){const k=JSON.stringify(x);if(seen.has(k))continue;seen.add(k);z.push(x)}dq[label]={rawRows,canonicalRows:z.length,duplicatesRemoved:rawRows-z.length};return z};
+   const dedupeKey=(arr,label,keyFn)=>{const rawRows=arr.length,seen=new Set(),z=[];for(const x of arr){const k=keyFn(x);if(seen.has(k))continue;seen.add(k);z.push(x)}dq[label]={rawRows,canonicalRows:z.length,duplicatesRemoved:rawRows-z.length};return z};
+   out.priceHistory=dedupeKey(out.priceHistory,"priceHistory",x=>`${x.Code}|${x.Date}`);
+   out.marginHistory=dedupeExact(out.marginHistory,"marginHistory");
+   out.marketShortRatioHistory=dedupeExact(out.marketShortRatioHistory,"marketShortRatioHistory");
+   out.largeShortHistory=dedupeExact(out.largeShortHistory,"largeShortHistory");
+   out.marketFlow=dedupeExact(out.marketFlow,"marketFlow");
    out.priceHistory.sort((a,b)=>(a.Code+"|"+a.Date).localeCompare(b.Code+"|"+b.Date));
    const shortRatioComponentValid=out.marketShortRatioHistory.filter(x=>x.ShortWithRestrictionValue!=null||x.ShortNoRestrictionValue!=null||x.ShortTotalValue!=null).length;
    const shortRatioPctValid=out.marketShortRatioHistory.filter(x=>x.ShortRatioPct!=null&&Number.isFinite(Number(x.ShortRatioPct))&&Number(x.ShortRatioPct)>=0&&Number(x.ShortRatioPct)<=100).length;
    const shortRatioNonZero=out.marketShortRatioHistory.filter(x=>x.ShortRatioPct!=null&&Number(x.ShortRatioPct)>0).length;
    const shortRatioValid=out.marketShortRatioHistory.filter(x=>(x.ShortWithRestrictionValue!=null||x.ShortNoRestrictionValue!=null||x.ShortTotalValue!=null)&&x.ShortRatioPct!=null&&Number.isFinite(Number(x.ShortRatioPct))&&Number(x.ShortRatioPct)>=0&&Number(x.ShortRatioPct)<=100).length;
-   self.postMessage({ok:true,type:"result",...out,counts:{priceHistory:out.priceHistory.length,financialHistory:out.financialHistory.length,marginHistory:out.marginHistory.length,marketShortRatioHistory:out.marketShortRatioHistory.length,marketShortRatioValid:shortRatioValid,marketShortRatioComponentValid:shortRatioComponentValid,marketShortRatioPctValid:shortRatioPctValid,marketShortRatioNonZero:shortRatioNonZero,largeShortHistory:out.largeShortHistory.length,marketFlow:out.marketFlow.length,tradeHistory:out.tradeHistory.length}});return;
+   self.postMessage({ok:true,type:"result",...out,dq,counts:{priceHistory:out.priceHistory.length,financialHistory:out.financialHistory.length,marginHistory:out.marginHistory.length,marketShortRatioHistory:out.marketShortRatioHistory.length,marketShortRatioValid:shortRatioValid,marketShortRatioComponentValid:shortRatioComponentValid,marketShortRatioPctValid:shortRatioPctValid,marketShortRatioNonZero:shortRatioNonZero,largeShortHistory:out.largeShortHistory.length,marketFlow:out.marketFlow.length,tradeHistory:out.tradeHistory.length}});return;
  }
 
  if(cmd==="technical-screening-poc"){
