@@ -1,6 +1,11 @@
 {
-  "current_release": "v7e-beta1",
+  "current_release": "v7e-beta2",
   "history": [
+    {
+      "version": "v7e-beta2",
+      "date": "2026-09-09",
+      "summary": "Persistent security/account trade memo with inline holding-card edit/save; legacy test/detail UI stays out of production tabs while hidden diagnostics remain available for rollback safety."
+    },
     {
       "version": "v7e-beta1",
       "date": "2026-09-09",

@@ -1,3 +1,12 @@
+# v7e-beta2 — Trade Memo + Production UI Cleanup (2026-09-09)
+
+- Added one persistent memo per security × account/category (`NISA` / `現物` / `信用買` / `信用売`) in private DB.
+- Trade entry now has a single memo field below price/date; Preview/Commit carries the memo into the audit log and position memo.
+- Each active holding card shows the same memo with inline edit/save beside `縮小/決済`. Memo survives full close/re-entry via a dedicated `portfolio_position_memo` table.
+- Existing `user_stocks.memo` values are non-destructively migrated on first use.
+- Legacy test/detail UI remains removed from the four production tabs while mature diagnostic DOM/handlers stay hidden for rollback safety; no calculation semantics changed.
+- Inherits beta1 Data Quality Canonicalization unchanged.
+
 # v7e-beta1 — Data Quality Canonicalization (2026-09-09)
 
 - Promoted from final alpha gate `v7e-alpha114` to the first beta.

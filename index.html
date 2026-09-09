@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#08111f">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>J-Quants Local-first PWA v7e-beta1</title>
+<title>J-Quants Local-first PWA v7e-beta2</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -24,13 +24,13 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 .app-nav{position:sticky;top:0;z-index:50;display:flex;gap:6px;overflow-x:auto;padding:9px 10px;background:rgba(8,17,31,.96);-webkit-overflow-scrolling:touch}.app-nav button{width:auto;min-width:max-content;padding:9px 12px;border-radius:10px;background:#1f2937;font-size:13px}.app-nav button.active{background:#fff;color:#08111f}.app-shell{max-width:850px;margin:auto;padding:14px 16px 28px}.app-page{display:none}.app-page.active{display:block}.page-title{margin:3px 2px 12px;font-size:20px}.page-lead{font-size:13px;color:#4b5563;line-height:1.6;margin:-5px 2px 14px}.legacy-ui-hidden{display:none!important}.compact-note{font-size:12px;color:#6b7280;line-height:1.55}.backup-actions{display:grid;grid-template-columns:1fr;gap:8px;margin:10px 0 14px}.pf-void-inline{margin:7px 0 4px;padding:9px;border:1px solid #f59e0b;border-radius:10px;background:#fffbeb;min-width:230px}.pf-void-inline .row{display:flex;gap:6px;margin-top:7px}.pf-void-inline button{width:auto;padding:7px 10px;font-size:12px}.maintenance-sub{border-top:1px solid #e5e7eb;margin-top:16px;padding-top:14px}@media(min-width:700px){.backup-actions{grid-template-columns:1fr 1fr}}
 
 /* alpha109 beta-candidate hotfix refinement */
-.trade-identity-row{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;align-items:start}.trade-identity-row label{margin:0!important;padding:0!important;min-width:0;display:flex;flex-direction:column;gap:3px;line-height:1.2}.trade-identity-row input,.trade-identity-row select{box-sizing:border-box;width:100%;margin:0!important}.trade-name-check{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;margin-top:7px}.trade-name-check .name-result{margin:0;text-align:left;min-height:14px;overflow-wrap:anywhere}.compact-btn{width:auto!important;margin-top:0!important;padding:9px 10px!important;font-size:12px!important;white-space:nowrap}.name-result{display:block;font-size:12px;font-weight:700;color:#374151}.qty-x100{display:flex;gap:7px;align-items:center}.qty-x100 input{width:64px!important;flex:none}.qty-x100 b{font-size:13px;white-space:nowrap}.portfolio-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0}.summary-cell{border:1px solid #e5e7eb;border-radius:12px;padding:10px;background:#fafafa}.summary-label{font-size:11px;color:#6b7280}.summary-value{font-size:16px;font-weight:800;margin-top:3px}.account-tabs{display:flex;gap:6px;overflow-x:auto;margin:10px 0 4px}.account-tabs button{width:auto;min-width:max-content;padding:8px 11px;font-size:12px;background:#e5e7eb;color:#111827}.account-tabs button.active{background:#08111f;color:#fff}.portfolio-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:8px}.portfolio-row .portfolio-numbers{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;font-size:12px;margin-top:7px}.pnl-plus{color:#b91c1c;font-weight:800}.pnl-minus{color:#1d4ed8;font-weight:800}.watch-remove{background:#991b1b!important;color:#fff!important}@media(min-width:700px){.portfolio-summary{grid-template-columns:repeat(4,1fr)}}
+.trade-identity-row{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;align-items:start}.trade-identity-row label{margin:0!important;padding:0!important;min-width:0;display:flex;flex-direction:column;gap:3px;line-height:1.2}.trade-identity-row input,.trade-identity-row select{box-sizing:border-box;width:100%;margin:0!important}.trade-name-check{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;margin-top:7px}.trade-name-check .name-result{margin:0;text-align:left;min-height:14px;overflow-wrap:anywhere}.compact-btn{width:auto!important;margin-top:0!important;padding:9px 10px!important;font-size:12px!important;white-space:nowrap}.name-result{display:block;font-size:12px;font-weight:700;color:#374151}.qty-x100{display:flex;gap:7px;align-items:center}.qty-x100 input{width:64px!important;flex:none}.qty-x100 b{font-size:13px;white-space:nowrap}.portfolio-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0}.summary-cell{border:1px solid #e5e7eb;border-radius:12px;padding:10px;background:#fafafa}.summary-label{font-size:11px;color:#6b7280}.summary-value{font-size:16px;font-weight:800;margin-top:3px}.account-tabs{display:flex;gap:6px;overflow-x:auto;margin:10px 0 4px}.account-tabs button{width:auto;min-width:max-content;padding:8px 11px;font-size:12px;background:#e5e7eb;color:#111827}.account-tabs button.active{background:#08111f;color:#fff}.portfolio-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:8px}.portfolio-row .portfolio-numbers{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;font-size:12px;margin-top:7px}.pnl-plus{color:#b91c1c;font-weight:800}.pnl-minus{color:#1d4ed8;font-weight:800}.watch-remove{background:#991b1b!important;color:#fff!important}.trade-memo-label{grid-column:1/-1}.portfolio-memo{margin-top:9px}.portfolio-memo label{font-size:11px;color:#6b7280}.portfolio-memo-row{display:flex;gap:6px;align-items:center;margin-top:4px}.portfolio-memo-row input{flex:1;min-width:0;margin:0!important}.portfolio-memo-row button{width:auto;margin:0!important;padding:8px 10px;font-size:12px}@media(min-width:700px){.portfolio-summary{grid-template-columns:repeat(4,1fr)}}
 .watch-import-box{border:1px solid #dbeafe;background:#eff6ff;border-radius:12px;padding:12px;margin:10px 0 12px}.watch-import-box label{font-weight:700}.price-date{font-size:11px;color:#6b7280;margin-top:3px}
 .trade-form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;row-gap:7px;align-items:start}.trade-form-grid>label{margin:0!important;padding:0!important;min-width:0;display:flex;flex-direction:column;justify-content:flex-start;gap:3px;line-height:1.2}.trade-form-grid input,.trade-form-grid select{box-sizing:border-box;max-width:100%;margin:0!important}.watch-badges{display:flex;gap:5px;flex-wrap:wrap;margin:5px 0}.watch-badge{display:inline-block;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:800;background:#e5e7eb}.watch-badge.active{background:#dcfce7;color:#166534}.watch-badge.inactive{background:#f3f4f6;color:#6b7280}.watch-badge.status{background:#dbeafe;color:#1e40af}
 </style>
 </head>
 <body>
-<header><h1>J-Quants Local-first PWA v7e-beta1</h1><p>Web-first日常運用・保有管理・Watchlist・バックアップを1つに統合したLocal-first投資アプリ。</p></header>
+<header><h1>J-Quants Local-first PWA v7e-beta2</h1><p>Web-first日常運用・保有管理・Watchlist・バックアップを1つに統合したLocal-first投資アプリ。</p></header>
 <nav class="app-nav" id="appNav" aria-label="メインメニュー">
   <button type="button" data-page="daily" class="active">日々分析</button>
   <button type="button" data-page="stocks">銘柄・売買</button>
@@ -135,6 +135,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
     <label>株数 <span class="qty-x100"><input id="pfTradeShares" type="number" min="1" step="1" inputmode="numeric" placeholder="1"><b>×100株</b></span></label>
     <label>約定単価 <input id="pfTradePrice" type="number" min="0" step="0.01" inputmode="decimal" pattern="[0-9.]*" placeholder="例: 1261"></label>
     <label>売買日 <input id="pfTradeDate" type="date"></label>
+    <label class="trade-memo-label">メモ <input id="pfTradeMemo" type="text" maxlength="500" autocomplete="off" placeholder="例: 決算跨ぎなし / 3,900円割れ再評価"></label>
   </div>
   <button id="pfTradePreviewBtn">売買をプレビュー</button>
   <button id="pfTradeCommitBtn" disabled>この売買を確定・保存</button>
@@ -330,7 +331,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <main>
 <section class="card production-card" id="bootCard">
-<h2>v7e-beta1 起動確認</h2>
+<h2>v7e-beta2 起動確認</h2>
 <div id="appBootStatus" class="result pass">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div id="dateEngineStatus" class="result">日付エンジン確認中…</div>
 </section>
@@ -1146,6 +1147,6 @@ Migration version: history-4</div>
   const oldVoid=byId('pfTradeVoidCommitBtn');if(oldVoid)oldVoid.classList.add('legacy-ui-hidden');
 })();
 </script>
-<script src="./app.js?v=v7e-beta1"></script>
+<script src="./app.js?v=v7e-beta2"></script>
 </body>
 </html>
