@@ -1,11 +1,17 @@
-# v7e-alpha113 — Trade Name Row Width Final Polish (2026-09-09)
+# v7e-alpha114 — Trade Export Freshness + Form Reset Hotfix (2026-09-09)
+
+- AI Share `web_trade_history.csv` now reads `jq_private_v1.sqlite` through a fresh writable SAH Pool connection so trades committed earlier in the same browser session are visible to the export.
+- Successful trade COMMIT now resets the entry form only after the save succeeds: code/price cleared, name status returns to `未確認`, lots returns to `1 ×100株`, date returns to the canonical current date, and account/action return to safe defaults. Preview or failed COMMIT does not clear input.
+- No Screening, Portfolio valuation, Watchlist/Discovery, or daily-pipeline calculation semantics changed.
+
+# v7e-alpha114 — Trade Name Row Width Final Polish (2026-09-09)
 
 - 売買フォームの「銘柄名を表示 / 未確認・銘柄名」行をフォーム全幅に拡張。
 - 銘柄名表示領域が右端近くまで使えるため、長い銘柄名の不要な折り返しを大幅に削減。
 - 銘柄コード / 口座・区分、操作 / 株数、約定単価 / 売買日の配置・縦間隔は変更なし。
 - 計算・Portfolio・Watchlist / Discovery・追跡終了ロジックは変更なし。
 
-# v7e-alpha113 — Trade Form Mobile Layout Final Polish (2026-09-09)
+# v7e-alpha114 — Trade Form Mobile Layout Final Polish (2026-09-09)
 
 - 売買フォーム上段を「銘柄コード / 口座・区分」の2列に戻し、銘柄名確認を独立した次行へ移動。
 - 「銘柄名を表示」ボタンの右隣に `未確認 / 銘柄名` を表示し、長い銘柄名が口座・区分や株数のレイアウトを押し広げない構造へ変更。
@@ -13,7 +19,7 @@
 - Watchlist / Discovery の簡潔な説明文とalpha110以降の計算・追跡終了ロジックは変更なし。
 - 計算意味論の変更なし。
 
-# v7e-alpha113 — Beta Gate Final Polish (2026-09-08)
+# v7e-alpha114 — Beta Gate Final Polish (2026-09-08)
 
 - Trade identity row finalized for mobile: Code / confirmation state / Account labels align horizontally; confirmation is centered above the name lookup button without inflating adjacent field spacing.
 - Preserved alpha110 portfolio valuation, trade-row vertical rhythm, Watchlist/Discovery state semantics, and audit-preserving close actions.
