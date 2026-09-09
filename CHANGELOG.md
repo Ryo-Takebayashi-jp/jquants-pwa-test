@@ -1,3 +1,13 @@
+# v7e-beta2 cleanup — Legacy UI Dependency Cleanup (2026-09-10)
+
+- Physically removed the legacy test/parity/detail UI markup from the production document instead of hiding it with CSS.
+- Rebuilt the four production tabs as the only application DOM surface; retained only current daily, trade, watchlist, backup/DataLake maintenance, and emergency diagnostic cards.
+- Audited the daily pipeline dependency path before removal. Shared calculation/worker functions remain intact; legacy status rendering is now optional when its old diagnostic DOM is absent.
+- Fixed Discovery recalculation to accept the canonical pipeline/share `asOf` directly instead of depending on the removed legacy date input.
+- Preserved the operational Watchlist alert dependency by moving only the required Preview result / explicit Commit surface into the current Watchlist management card.
+- Removed the old global VOID control and obsolete same-browser snapshot UI; current inline trade VOID and external backup remain unchanged.
+- beta1 data-quality canonicalization and beta2 trade-memo semantics are unchanged.
+
 # v7e-beta2 — Trade Memo + Production UI Cleanup (2026-09-09)
 
 - Added one persistent memo per security × account/category (`NISA` / `現物` / `信用買` / `信用売`) in private DB.
@@ -381,3 +391,9 @@
 - Trade form row spacing tightened so Operation/Shares and Execution Price/Trade Date render as adjacent rows on mobile.
 - Existing Backup/Restore, VOID audit semantics, x100 UI conversion, Web-first Screening/AI Share semantics remain unchanged.
 - This remains an alpha beta-gate build; promote to beta1 after real-device latest-close valuation + Watchlist import + next daily pipeline PASS.
+
+
+## v7e-beta2 UI cleanup hotfix
+- Fixed legacy/test/detail UI still rendering outside the production app shell on all tabs.
+- Direct body legacy cards/details/notices/main blocks are now hidden before JavaScript runs; production cards are relocated into their intended tabs and remain visible.
+- No DataLake, canonicalization, portfolio/trade memo semantics, Screening, or private DB logic changed.

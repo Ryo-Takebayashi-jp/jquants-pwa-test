@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-beta2");
+ const w=new Worker("./sqlite-worker.js?v=v7e-beta2-cleanup");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -134,12 +134,12 @@ async function sqliteProxyCheck(){
  for(const t of targets){const r=await fetch(t.url,{cache:"no-store"}),ct=(r.headers.get("content-type")||"").toLowerCase(),px=r.headers.get("x-jq-sqlite-proxy")||"-";const typeOk=t.type==="application/wasm"?ct.includes("application/wasm"):ct.includes("javascript");if(!r.ok||!typeOk||px!=="3.53.0-build1")throw new Error(`${t.url}: HTTP=${r.status} type=${ct} proxy=${px}`);lines.push(`${t.url}: PASS / ${ct} / proxy=${px}`);} box("proxyResult","pass","Same-origin SQLite core assets: PASS\n"+lines.join("\n"));}
  catch(e){box("proxyResult","fail","Same-origin SQLite core assets: FAIL\n"+e)}}
 
-$("proxyBtn").onclick=sqliteProxyCheck;
+if($("proxyBtn")) $("proxyBtn").onclick=sqliteProxyCheck;
 
 
 async function initOnly(){box("initResult","run","SQLite-WASM opfs-sahpool初期化中…");try{const r=await workerCall("init",180000,s=>box("initResult","run",`Stage: ${s.stage}\n${s.detail||""}`));state.init=r;const ok=r.vfs&&r.poolClass;box("initResult",ok?"pass":"fail",`${ok?"PASS":"FAIL"}\nSQLite version: ${r.sqliteVersion}\nVFS: ${r.vfsName} / ${r.vfs?"PASS":"FAIL"}\nOpfsSAHPoolDb class: ${r.poolClass?"PASS":"FAIL"}\nPool capacity: ${r.capacity}\n既存DB: ${(r.files||[]).join(", ")||"なし"}\n初期化時間: ${(r.elapsedMs/1000).toFixed(2)}秒`);}catch(e){state.init={ok:false,error:String(e)};box("initResult","fail","SQLite Init FAIL\n"+e)}}
 
-$("initBtn").onclick=initOnly;
+if($("initBtn")) $("initBtn").onclick=initOnly;
 
 async function smokeTest(){
  box("smokeResult","run","小型DBを書き込み中…");
@@ -152,7 +152,7 @@ async function smokeTest(){
   box("smokeResult",ok?"pass":"fail",`${ok?"PASS":"FAIL"}\n別Worker再Open: ${ok?"PASS":"FAIL"}\n行数: ${r.rows}\n値: ${r.value}\n永続化: ${ok?"PASS":"FAIL"}\n処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒`);
  }catch(e){state.smoke={ok:false,error:String(e)};box("smokeResult","fail","SAH Pool基本動作 FAIL\n"+e)}
 }
-$("smokeBtn").onclick=smokeTest;
+if($("smokeBtn")) $("smokeBtn").onclick=smokeTest;
 
 async function openDb(){
  box("openResult","run","SQLite-WASMを起動してDBを開いています…");
@@ -204,13 +204,13 @@ quick_check: ${q?"PASS":state.quick?"要確認":"未実行（任意）"}
 ${env&&imp&&ini&&op?"次段階v7dで、このDBへJ-Quants差分/残り期間をSQLite-WASM経由で直接追記し、10年完走テストへ進めます。":""}`);
 }
 
-$("envBtn").onclick=envCheck;
-$("importBtn").onclick=importDb;
-$("openBtn").onclick=openDb;
-$("quickBtn").onclick=quickCheck;
+if($("envBtn")) $("envBtn").onclick=envCheck;
+if($("importBtn")) $("importBtn").onclick=importDb;
+if($("openBtn")) $("openBtn").onclick=openDb;
+if($("quickBtn")) $("quickBtn").onclick=quickCheck;
 
 
-$("summaryBtn").onclick=summary;
+if($("summaryBtn")) $("summaryBtn").onclick=summary;
 
 async function showHistory(){
  try{
@@ -230,9 +230,9 @@ async function showHistory(){
   box("historyResult","pass",lines.join("\n"));
  }catch(e){box("historyResult","fail","更新履歴の読み込みFAIL\n"+e)}
 }
-$("historyBtn").onclick=showHistory;
+if($("historyBtn")) $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-beta2").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-beta2-cleanup").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2331,7 +2331,7 @@ function csvWithHeaders(rows,headers){
 function rowsDateSet(rows,fields=["Date","date"]){return [...new Set((rows||[]).map(r=>fields.map(f=>String(r?.[f]||"").slice(0,10)).find(Boolean)||"").filter(Boolean))].sort()}
 async function ensureScreeningShareState(asOf,progress){
  const candDates=rowsDateSet(latestScreeningCandidates);if(!latestScreeningCandidates.length||!candDates.includes(asOf)){progress?.("Screening候補をcanonical基準日で再構築中…");await runScreeningWebDaily(asOf,progress)}
- if(!latestDiscoveryWebRows.length){progress?.("Discovery Episodeをprivate DBから再計算中…");if($("discoveryAsOf"))$("discoveryAsOf").value=asOf;const ep=await runDiscoveryRecalc();latestDiscoveryWebRows=ep.rows||[]}
+ if(!latestDiscoveryWebRows.length){progress?.("Discovery Episodeをprivate DBから再計算中…");if($("discoveryAsOf"))$("discoveryAsOf").value=asOf;const ep=await runDiscoveryRecalc(null,asOf);latestDiscoveryWebRows=ep.rows||[]}
  const dailyDates=rowsDateSet(latestDiscoveryDailyWebRows);if(!latestDiscoveryDailyWebRows.length||!dailyDates.includes(asOf)){progress?.("Discovery Dailyの保存済み履歴を読込中…");const d=await workerCall("discovery-daily-recalc",600000,null,null,{asOf});latestDiscoveryDailyWebRows=d.storedRows||[];latestDiscoveryDailyEngineRows=d.rows||[]}
  let factorDate="";try{const fs=await workerCall("factor-state-load",120000),dates=[...new Set((fs.rows||[]).map(x=>String(x.date||"")).filter(Boolean))].sort();factorDate=dates.at(-1)||"";if(factorDate===asOf){latestFactorWebRows=(fs.rows||[]).filter(x=>String(x.date||"")===asOf).map(x=>x.row||{});latestFactorSummaryRows=buildFactorSummaryWeb(latestFactorWebRows)}}catch(_){}
  if(!latestFactorWebRows.length||factorDate!==asOf){progress?.("Factor / Seasonalityをcanonical基準日で補完中…");await runFactorSeasonalityWebDaily(asOf,progress);factorDate=asOf}
@@ -3207,6 +3207,7 @@ function discoveryParity(pcRows,webRows){
   return {compared,perfect,missingWeb,webOnly,diffs,pass:missingWeb===0&&webOnly.length===0&&diffs.length===0};
 }
 function renderDiscoveryParity(summary,web){
+  if(!$("discoveryParityResult")||!$("discoveryParityTable"))return;
   const cls=summary?.pass?"pass":summary?"warn":"pass";
   const lines=[
     summary?(summary.pass?"完全一致 PASS":"要確認"):"Web Discovery 再計算 PASS",
@@ -3226,12 +3227,12 @@ async function discoveryReadPcAnalysis(){
   const f=$("discoveryAnalysisFile")?.files?.[0]; if(!f)return [];
   return parseCsv(await f.text()).rows;
 }
-async function runDiscoveryRecalc(importRows=null){
-  const asOf=$("discoveryAsOf")?.value||todayIsoLocal();
+async function runDiscoveryRecalc(importRows=null,asOfOverride=null){
+  const asOf=asOfOverride||$("discoveryAsOf")?.value||todayIsoLocal();
   const cmd=importRows?"discovery-master-import-recalc":"discovery-recalc";
   const payload={asOf}; if(importRows)payload.rows=importRows;
-  const r=await workerCall(cmd,600000,s=>box("discoveryParityResult","run",`Discovery計算中…\n${s.stage||""}\n${s.detail||""}`),null,payload);
-  latestDiscoveryWebRows=r.rows||[]; $("discoveryWebExportBtn").disabled=!latestDiscoveryWebRows.length;
+  const r=await workerCall(cmd,600000,s=>{if($("discoveryParityResult"))box("discoveryParityResult","run",`Discovery計算中…\n${s.stage||""}\n${s.detail||""}`)},null,payload);
+  latestDiscoveryWebRows=r.rows||[]; if($("discoveryWebExportBtn"))$("discoveryWebExportBtn").disabled=!latestDiscoveryWebRows.length;
   return r;
 }
 if($("discoveryImportBtn"))$("discoveryImportBtn").onclick=async()=>{
@@ -3331,7 +3332,7 @@ function wEvaluateWatchlist(masterRows,stateRows,screeningRows,factorRows,asOf,o
   const expiry=String(m.ReviewExpiry||"").slice(0,10),expired=!!expiry&&asOf>=expiry;if(expired&&String(st.LastExpiryAlerted||"")!=="1"){local.push(wAlert(m,row,asOf,"ReviewExpiry","再評価期限到達。継続/再登録/解除をAI判断","RequiredReview",factor,tech));st.LastExpiryAlerted="1";st.LastAlertDateExpiry=asOf;m.Status="ReviewDue";m.ClosedAt=asOf;m.CloseReason="ReviewExpiry"}
   st.LastEvaluatedDate=asOf;states.set(String(m.WatchID||""),st);alerts.push(...local);diag.push({WatchID:m.WatchID||"",Code:code,Status:m.Status||"",ScreeningRowFound:1,FactorKey:fk,FactorDate:factor.Date||opts.factorDate||"",FactorEngineVersion:factor.FactorEngineVersion||"",CurrentPrice:cur??"",ReferencePrice:ref??"",PriceChangePct:chg??"",PriceAlertLevel:level,PrevPriceAlertLevel:prevPrice,CurrentPER:per??"",TargetPER:tper??"",CurrentPBR:pbr??"",TargetPBR:tpbr??"",DividendYield:yld??"",TargetDividendYieldPct:tyld??"",LatestPeriodType:row.LatestPeriodType||"",ProfitType:row.ProfitType||"",CurrentPrimaryProfit:wCanonicalPrimary(row).current??"",ForecastPrimaryProfit:wCanonicalPrimary(row).forecast??"",PrimaryProfitProgressPct:wCanonicalPrimary(row).progress??"",FinancialChanged:financialChanged?1:0,PrevFinancialFingerprint:oldFp,CurrentFinancialFingerprint:fp,FactorState:fstate,PrevFactorState:oldFactor,SeasonState:factor.SeasonState||"",SeasonalAlert:season,PrevSeasonalAlert:oldSeason,TechnicalState:tech,PrevTechnicalState:oldTech,DaysToEarnings:days??"",CatalystLevel:catalyst??"",PrevCatalystLevel:prevCatalyst??"",ReviewExpiry:expiry,Expired:expired?1:0,MigrationBaseline:migrationBaseline?1:0,SuppressedReason:suppressed,AlertTypes:local.map(x=>x.AlertType).join(";"),AlertCount:local.length})}
  return{master,state:[...states.values()],alerts,diag,migrationBaseline}}
-function renderWatchlistAlertPreview(p,asOf,factorDate){const types={};for(const a of p.alerts)types[a.AlertType]=(types[a.AlertType]||0)+1;const missing=p.diag.filter(x=>!Number(x.ScreeningRowFound)).length,supp=p.diag.filter(x=>x.SuppressedReason).length,active=p.master.filter(x=>String(x.Status||"")==="Active").length,review=p.master.filter(x=>String(x.Status||"")==="ReviewDue").length;box("watchlistAlertResult",missing?"warn":"pass",["Web-first Watchlist Alert PREVIEW",`基準日: ${asOf} / Factor state: ${factorDate||"-"}`,`Watch: ${p.diag.length} / Active after preview: ${active} / ReviewDue: ${review}`,`Alert: ${p.alerts.length} (${Object.entries(types).map(([k,v])=>`${k}=${v}`).join(" / ")||"なし"})`,`Screening欠損: ${missing}`,`Factor engine migration baseline抑制: ${supp}`,p.migrationBaseline?"初回Web-first移行のためFactor/Seasonal『変化』Alertだけ1回抑制。現在stateはcommit時にbaseline化します。":"Factor/Seasonal transitionは通常運用。","","※ PREVIEWはstate未更新。AlertはBuySignalではなく再評価要求です。"].join("\n"));const esc=x=>String(x??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));const rows=p.alerts.length?p.alerts:p.diag.filter(x=>x.SuppressedReason||!Number(x.ScreeningRowFound));$("watchlistAlertTable").innerHTML=rows.length?`<div style="overflow:auto"><table style="width:100%;font-size:12px"><tr><th>Code</th><th>Type/Status</th><th>Reason</th></tr>${rows.slice(0,50).map(x=>`<tr><td>${esc(x.Code)}</td><td>${esc(x.AlertType||x.SuppressedReason||"Missing")}</td><td>${esc(x.TriggerReason||x.SuppressedReason||"Screening row missing")}</td></tr>`).join("")}</table></div>`:""}
+function renderWatchlistAlertPreview(p,asOf,factorDate){if(!$("watchlistAlertResult")||!$("watchlistAlertTable"))return;const types={};for(const a of p.alerts)types[a.AlertType]=(types[a.AlertType]||0)+1;const missing=p.diag.filter(x=>!Number(x.ScreeningRowFound)).length,supp=p.diag.filter(x=>x.SuppressedReason).length,active=p.master.filter(x=>String(x.Status||"")==="Active").length,review=p.master.filter(x=>String(x.Status||"")==="ReviewDue").length;box("watchlistAlertResult",missing?"warn":"pass",["Web-first Watchlist Alert PREVIEW",`基準日: ${asOf} / Factor state: ${factorDate||"-"}`,`Watch: ${p.diag.length} / Active after preview: ${active} / ReviewDue: ${review}`,`Alert: ${p.alerts.length} (${Object.entries(types).map(([k,v])=>`${k}=${v}`).join(" / ")||"なし"})`,`Screening欠損: ${missing}`,`Factor engine migration baseline抑制: ${supp}`,p.migrationBaseline?"初回Web-first移行のためFactor/Seasonal『変化』Alertだけ1回抑制。現在stateはcommit時にbaseline化します。":"Factor/Seasonal transitionは通常運用。","","※ PREVIEWはstate未更新。AlertはBuySignalではなく再評価要求です。"].join("\n"));const esc=x=>String(x??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));const rows=p.alerts.length?p.alerts:p.diag.filter(x=>x.SuppressedReason||!Number(x.ScreeningRowFound));$("watchlistAlertTable").innerHTML=rows.length?`<div style="overflow:auto"><table style="width:100%;font-size:12px"><tr><th>Code</th><th>Type/Status</th><th>Reason</th></tr>${rows.slice(0,50).map(x=>`<tr><td>${esc(x.Code)}</td><td>${esc(x.AlertType||x.SuppressedReason||"Missing")}</td><td>${esc(x.TriggerReason||x.SuppressedReason||"Screening row missing")}</td></tr>`).join("")}</table></div>`:""}
 async function watchlistAlertPreview(){const asOf=$("watchlistAlertAsOf")?.value||todayIsoLocal(),btn=$("watchlistAlertPreviewBtn");btn.disabled=true;try{box("watchlistAlertResult","run",`Watchlist Alert入力を構築中…\n基準日: ${asOf}`);const wl=await workerCall("watchlist-load",120000),master=wl.master||[],state=wl.state||[];if(!master.length)throw new Error("Web Watchlistが未移行です。先に⑧でmaster/stateを移行してください。");const fs=await workerCall("factor-state-load",120000),dated=(fs.rows||[]).filter(x=>String(x.date||"")===asOf),factorDate=[...new Set((fs.rows||[]).map(x=>String(x.date||"")).filter(Boolean))].sort().at(-1)||"";if(!dated.length||factorDate!==asOf)throw new Error(`Factor stateが基準日と一致しません。Factor / Seasonalityを ${asOf} で先に再計算してください。現在=${factorDate||"なし"}`);const factorRows=dated.map(x=>x.row||{}),base=await ensureFactorBase(asOf),migrationBaseline=String(wl.meta?.engineVersion||"")!==WATCHLIST_ALERT_ENGINE_VERSION,p=wEvaluateWatchlist(master,state,base,factorRows,asOf,{migrationBaseline,factorDate});latestWatchlistAlertPreview={...p,asOf,factorDate};latestWatchlistWeb={master,state};$("watchlistAlertCommitBtn").disabled=false;$("watchlistAlertExportBtn").disabled=false;$("watchlistAlertDiagExportBtn").disabled=false;renderWatchlistAlertPreview(p,asOf,factorDate)}catch(e){latestWatchlistAlertPreview=null;$("watchlistAlertCommitBtn").disabled=true;box("watchlistAlertResult","fail","PREVIEW FAIL\n"+(e?.message||e))}finally{btn.disabled=false}}
 if($("watchlistAlertPreviewBtn"))$("watchlistAlertPreviewBtn").onclick=watchlistAlertPreview;
 if($("watchlistAlertCommitBtn"))$("watchlistAlertCommitBtn").onclick=async()=>{const p=latestWatchlistAlertPreview;if(!p)return;const btn=$("watchlistAlertCommitBtn");btn.disabled=true;try{const r=await workerCall("watchlist-evaluation-save",180000,null,null,{master:p.master,state:p.state,alerts:p.alerts,asOf:p.asOf,engineVersion:WATCHLIST_ALERT_ENGINE_VERSION,factorDate:p.factorDate});latestWatchlistWeb={master:p.master,state:p.state};box("watchlistAlertResult","pass",[`Watchlist Alert COMMIT PASS`,`基準日: ${p.asOf}`,`Master: ${r.masterCount} / State: ${r.stateCount}`,`今回Alert: ${r.alertCount} / 累積Alert履歴: ${r.historyCount}`,`Engine: ${WATCHLIST_ALERT_ENGINE_VERSION}`,"","同じ基準日を再実行してもstateにより同一triggerは原則再通知しません。"].join("\n"));latestWatchlistAlertPreview=null;btn.disabled=true}catch(e){box("watchlistAlertResult","fail","COMMIT FAIL\n"+(e?.message||e))}finally{if(latestWatchlistAlertPreview)btn.disabled=false}};
@@ -3521,19 +3522,19 @@ async function runScreeningWebDaily(asOf,progress){
  const workerPending=(ev.rows||[]).filter(x=>x.EarningsReactionPending===true).length,candidatePending=latestScreeningCandidates.filter(x=>x.CandidateStatus==="ReactionPending").length;
  if(workerPending>0&&candidatePending!==Math.min(workerPending,20))throw new Error(`Screening ReactionPending invariant failed: worker=${workerPending}, candidate=${candidatePending}`);
  if($("screeningCandidatesExportBtn"))$("screeningCandidatesExportBtn").disabled=!latestScreeningCandidates.length;
- box("screeningStrategyResult","pass",`Web-first日次Screening PASS\n基準日: ${asOf}\n母集団: ${base.length}\n候補ユニーク: ${latestScreeningCandidates.length}`);
+ if($("screeningStrategyResult"))box("screeningStrategyResult","pass",`Web-first日次Screening PASS\n基準日: ${asOf}\n母集団: ${base.length}\n候補ユニーク: ${latestScreeningCandidates.length}`);
  return{baseCount:base.length,candidateCount:latestScreeningCandidates.length,reactionPending:latestScreeningCandidates.filter(x=>x.CandidateStatus==="ReactionPending").length,eventWorkerRows:(ev.rows||[]).length,eventJoinedCount,pedScoredCount:latestScreeningCandidates.filter(x=>x.PostEarningsDriftScore!=null).length,pedSelectedCount:latestScreeningCandidates.filter(x=>x.PostEarningsDriftRank!=null).length};
 }
 async function runDiscoveryDailyWeb(asOf,progress){
- progress?.("Discovery Episodeを最新DataLakeで再計算中");if($("discoveryAsOf"))$("discoveryAsOf").value=asOf;const ep=await runDiscoveryRecalc();renderDiscoveryParity(null,ep);
+ progress?.("Discovery Episodeを最新DataLakeで再計算中");if($("discoveryAsOf"))$("discoveryAsOf").value=asOf;const ep=await runDiscoveryRecalc(null,asOf);if($("discoveryParityResult"))renderDiscoveryParity(null,ep);
  progress?.("Discovery Dailyをappend/freeze規則で更新中");const daily=await workerCall("discovery-daily-recalc",600000,null,null,{asOf});latestDiscoveryDailyWebRows=daily.storedRows||[];latestDiscoveryDailyEngineRows=daily.rows||[];latestDiscoveryDailyHistoryStart=String(daily.coverage?.historyStart||daily.historyStart||"");if($("discoveryDailyExportBtn"))$("discoveryDailyExportBtn").disabled=!latestDiscoveryDailyWebRows.length;if($("discoveryDailyEngineExportBtn"))$("discoveryDailyEngineExportBtn").disabled=!latestDiscoveryDailyEngineRows.length;
- box("discoveryDailyParityResult","pass",`Web-first Discovery Daily PASS\n基準日: ${asOf}\n計算行: ${daily.count??latestDiscoveryDailyEngineRows.length}\n保存済み固定Daily: ${daily.storedCount??latestDiscoveryDailyWebRows.length}\n過去行はfreeze、当日行のみ再計算。`);
+ if($("discoveryDailyParityResult"))box("discoveryDailyParityResult","pass",`Web-first Discovery Daily PASS\n基準日: ${asOf}\n計算行: ${daily.count??latestDiscoveryDailyEngineRows.length}\n保存済み固定Daily: ${daily.storedCount??latestDiscoveryDailyWebRows.length}\n過去行はfreeze、当日行のみ再計算。`);
  return{episodeCount:ep.count??(ep.rows||[]).length,dailyCount:daily.count??latestDiscoveryDailyEngineRows.length,storedCount:daily.storedCount??latestDiscoveryDailyWebRows.length,coverage:daily.coverage||{}};
 }
 async function runFactorSeasonalityWebDaily(asOf,progress){
  progress?.("Factor baseを準備中");const base=await ensureFactorBase(asOf);latestFactorBaseRows=base;latestFactorMembershipRows=factorMembershipDiagnostics(base);let web=buildFactorCore(base,asOf),state=await workerCall("factor-state-load",120000),compatible=(state.rows||[]).filter(x=>String(x.date||"")<asOf&&String(x.row?.FactorEngineVersion||"")===FACTOR_ENGINE_VERSION),prev=new Map(compatible.map(x=>[String(x.factorKey),factorNum(x.strength)]));for(const r of web){const pv=prev.get(r.FactorKey);r.StrengthChange1D=pv!=null&&r.Strength!=null?r.Strength-pv:null}
  const monthKey=asOf.slice(0,7).replace("-","");let sp={profile:[],stockMonths:"-",topixMonths:"-"},source="";progress?.("Seasonality月次cacheを確認中");const cached=await workerCall("factor-seasonality-cache-load",120000,null,null,{monthKey});if((cached.rows||[]).length){latestFactorSeasonalityProfile=cached.rows;source=`Web月次cache(${cached.source||"stored"})`}else{progress?.("Seasonality profileをWeb DataLakeから構築中");sp=await workerCall("factor-seasonality-profile",900000,null,null,{asOf,codeSectors:base.map(r=>({code:r.NormalizedCode,sector:r.Sector33}))});latestFactorSeasonalityProfile=sp.profile||[];if(latestFactorSeasonalityProfile.length)await workerCall("factor-seasonality-cache-save",120000,null,null,{monthKey,rows:latestFactorSeasonalityProfile,source:"WebBuilt"});source="Web新規構築→月次cache保存"}
- web=enrichFactorSeasonality(web,latestFactorSeasonalityProfile,asOf);for(const r of web)r.FactorEngineVersion=FACTOR_ENGINE_VERSION;latestFactorWebRows=web;latestFactorSummaryRows=buildFactorSummaryWeb(web);await workerCall("factor-state-save",120000,null,null,{date:asOf,rows:web});const unsafeFY=base.filter(r=>String(r.FactorPreviousFYResolver||"")==="LatestActualFYFallback").length;if(unsafeFY)throw new Error(`Factor unsafe FY fallback=${unsafeFY}`);if(!latestFactorSeasonalityProfile.length)throw new Error("Seasonality profileが空です");box("factorParityResult","pass",[`Web-first Factor / Seasonality PASS`,`基準日: ${asOf}`,`Factor: ${web.length}`,`Strength履歴: ${prev.size?"Web前日state":"初回Web baseline（前日stateなし）"}`,`Seasonality: ${latestFactorSeasonalityProfile.length} rows / ${source}`,`unsafe FY fallback: ${unsafeFY}`].join("\n"));return{factorCount:web.length,seasonalityRows:latestFactorSeasonalityProfile.length,historyMode:prev.size?"WebPreviousState":"WebBaselineNoPrevious",seasonalitySource:source,unsafeFY};
+ web=enrichFactorSeasonality(web,latestFactorSeasonalityProfile,asOf);for(const r of web)r.FactorEngineVersion=FACTOR_ENGINE_VERSION;latestFactorWebRows=web;latestFactorSummaryRows=buildFactorSummaryWeb(web);await workerCall("factor-state-save",120000,null,null,{date:asOf,rows:web});const unsafeFY=base.filter(r=>String(r.FactorPreviousFYResolver||"")==="LatestActualFYFallback").length;if(unsafeFY)throw new Error(`Factor unsafe FY fallback=${unsafeFY}`);if(!latestFactorSeasonalityProfile.length)throw new Error("Seasonality profileが空です");if($("factorParityResult"))box("factorParityResult","pass",[`Web-first Factor / Seasonality PASS`,`基準日: ${asOf}`,`Factor: ${web.length}`,`Strength履歴: ${prev.size?"Web前日state":"初回Web baseline（前日stateなし）"}`,`Seasonality: ${latestFactorSeasonalityProfile.length} rows / ${source}`,`unsafe FY fallback: ${unsafeFY}`].join("\n"));return{factorCount:web.length,seasonalityRows:latestFactorSeasonalityProfile.length,historyMode:prev.size?"WebPreviousState":"WebBaselineNoPrevious",seasonalitySource:source,unsafeFY};
 }
 async function runWatchlistAlertPreviewWebDaily(asOf,progress){
  progress?.("Watchlist / Factor stateを読込中");const wl=await workerCall("watchlist-load",120000),master=wl.master||[],state=wl.state||[];if(!master.length)throw new Error("Web Watchlistが未移行です。先にWatchlist master/stateを移行してください。");const fs=await workerCall("factor-state-load",120000),dated=(fs.rows||[]).filter(x=>String(x.date||"")===asOf),factorDate=[...new Set((fs.rows||[]).map(x=>String(x.date||"")).filter(Boolean))].sort().at(-1)||"";if(!dated.length||factorDate!==asOf)throw new Error(`Factor stateが基準日と一致しません。現在=${factorDate||"なし"}`);const factorRows=dated.map(x=>x.row||{}),base=await ensureFactorBase(asOf),migrationBaseline=String(wl.meta?.engineVersion||"")!==WATCHLIST_ALERT_ENGINE_VERSION,p=wEvaluateWatchlist(master,state,base,factorRows,asOf,{migrationBaseline,factorDate});latestWatchlistAlertPreview={...p,asOf,factorDate};latestWatchlistWeb={master,state};if($("watchlistAlertCommitBtn"))$("watchlistAlertCommitBtn").disabled=false;if($("watchlistAlertExportBtn"))$("watchlistAlertExportBtn").disabled=false;if($("watchlistAlertDiagExportBtn"))$("watchlistAlertDiagExportBtn").disabled=false;renderWatchlistAlertPreview(p,asOf,factorDate);return{watchCount:p.diag.length,alertCount:p.alerts.length,missingScreening:p.diag.filter(x=>!Number(x.ScreeningRowFound)).length,suppressedBaseline:p.diag.filter(x=>x.SuppressedReason).length,factorDate};
@@ -3548,8 +3549,8 @@ async function runDailyPipeline(){
      try{const detail=await fn(progress),status=stage.key==="DATA_UPDATE"&&run.mode==="REPAIR"?"REPAIR":"PASS",reason=detail?.reason||"完了";await workerCall("daily-pipeline-step-save",120000,null,null,{runId:run.run_id,stage:stage.key,ordinal:stage.ordinal,status,detail:{...detail,reason}});const row={RunID:run.run_id,TargetDate:run.target_date,Mode:run.mode,Ordinal:stage.ordinal,Stage:stage.key,Status:status,Reason:reason,StartedAt:started,FinishedAt:pipelineIsoNow(),UpdatedAt:pipelineIsoNow(),Detail:JSON.stringify(detail||{})};latestDailyPipelineDiagRows=latestDailyPipelineDiagRows.filter(x=>x.Stage!==stage.key);latestDailyPipelineDiagRows.push(row);renderDailyPipeline(run,latestDailyPipelineDiagRows);return detail}catch(e){const message=String(e?.message||e);await workerCall("daily-pipeline-step-save",120000,null,null,{runId:run.run_id,stage:stage.key,ordinal:stage.ordinal,status:"FAIL",detail:{reason:message},runStatus:"FAIL",runNote:`${stage.key}: ${message}`});const row={RunID:run.run_id,TargetDate:run.target_date,Mode:run.mode,Ordinal:stage.ordinal,Stage:stage.key,Status:"FAIL",Reason:message,StartedAt:started,FinishedAt:pipelineIsoNow(),UpdatedAt:pipelineIsoNow(),Detail:JSON.stringify({reason:message})};latestDailyPipelineDiagRows=latestDailyPipelineDiagRows.filter(x=>x.Stage!==stage.key);latestDailyPipelineDiagRows.push(row);renderDailyPipeline(run,latestDailyPipelineDiagRows,"途中停止。次回はこの工程から再開します。");throw e}}
    await execute(DAILY_PIPELINE_STAGES[0],p=>pipelineDataLakeStage(run.target_date,run.mode,token,p));
    await execute(DAILY_PIPELINE_STAGES[1],p=>runScreeningWebDaily(run.target_date,p));
-   const dep=await execute(DAILY_PIPELINE_STAGES[2],async p=>{p("Discovery Episode再計算中");if($("discoveryAsOf"))$("discoveryAsOf").value=run.target_date;const ep=await runDiscoveryRecalc();renderDiscoveryParity(null,ep);return{episodeCount:ep.count??(ep.rows||[]).length,reason:"既存Episodeを最新DataLakeで再計算"}});
-   await execute(DAILY_PIPELINE_STAGES[3],async p=>{p("Discovery Daily更新中");const d=await workerCall("discovery-daily-recalc",600000,null,null,{asOf:run.target_date});latestDiscoveryDailyWebRows=d.storedRows||[];latestDiscoveryDailyEngineRows=d.rows||[];box("discoveryDailyParityResult","pass",`Web-first Discovery Daily PASS\n基準日: ${run.target_date}\n計算行: ${d.count??latestDiscoveryDailyEngineRows.length}\n保存済み: ${d.storedCount??latestDiscoveryDailyWebRows.length}`);return{dailyCount:d.count??latestDiscoveryDailyEngineRows.length,storedCount:d.storedCount??latestDiscoveryDailyWebRows.length,coverage:d.coverage||{},reason:"append/freeze。過去行維持・当日行更新"}});
+   const dep=await execute(DAILY_PIPELINE_STAGES[2],async p=>{p("Discovery Episode再計算中");if($("discoveryAsOf"))$("discoveryAsOf").value=run.target_date;const ep=await runDiscoveryRecalc(null,run.target_date);if($("discoveryParityResult"))renderDiscoveryParity(null,ep);return{episodeCount:ep.count??(ep.rows||[]).length,reason:"既存Episodeを最新DataLakeで再計算"}});
+   await execute(DAILY_PIPELINE_STAGES[3],async p=>{p("Discovery Daily更新中");const d=await workerCall("discovery-daily-recalc",600000,null,null,{asOf:run.target_date});latestDiscoveryDailyWebRows=d.storedRows||[];latestDiscoveryDailyEngineRows=d.rows||[];if($("discoveryDailyParityResult"))box("discoveryDailyParityResult","pass",`Web-first Discovery Daily PASS\n基準日: ${run.target_date}\n計算行: ${d.count??latestDiscoveryDailyEngineRows.length}\n保存済み: ${d.storedCount??latestDiscoveryDailyWebRows.length}`);return{dailyCount:d.count??latestDiscoveryDailyEngineRows.length,storedCount:d.storedCount??latestDiscoveryDailyWebRows.length,coverage:d.coverage||{},reason:"append/freeze。過去行維持・当日行更新"}});
    await execute(DAILY_PIPELINE_STAGES[4],p=>runFactorSeasonalityWebDaily(run.target_date,p));
    await execute(DAILY_PIPELINE_STAGES[5],p=>runWatchlistAlertPreviewWebDaily(run.target_date,p));
    await workerCall("daily-pipeline-step-save",120000,null,null,{runId:run.run_id,stage:"WATCHLIST_ALERT_PREVIEW",ordinal:60,status:"PASS",detail:{reason:"Preview ready; Commit is explicit/manual",alertCount:latestWatchlistAlertPreview?.alerts?.length||0},runStatus:"PASS",runNote:"Web-first daily pipeline completed through Watchlist Alert Preview"});
