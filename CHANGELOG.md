@@ -1,3 +1,11 @@
+# v7e-beta7 — Fresh install builder / collapsible Settings
+
+- DataLakeが存在しない完全初期状態でも、期間管理から年別日足Shardを直接作成できるよう修正。
+- 日足0件日を年別Shardの `web_no_data_dates` に記録し、再監査で同じ休場日を不足扱いし続けない。
+- 取得した年別Shardを年ごとにfinalizeし、Catalogへcanonical登録。
+- 設定・保守の①データ構築・補完、②データ取り込み、③バックアップ保存、④トラブル診断をすべて折りたたみ化。初期状態は全閉。
+- APIキーcanonical一本化・preflightはbeta6から継続。
+
 # v7e-beta6 — Settings token canonicalization / preflight
 
 - J-Quants APIキーをセッション内で1本のcanonical値へ統一。日々分析と設定・保守の2つの可視入力は双方向同期し、旧/非表示入力はcanonicalからのミラー専用に変更。

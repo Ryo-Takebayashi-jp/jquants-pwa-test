@@ -83,7 +83,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=v7e-beta6");
+ const w=new Worker("./sqlite-worker.js?v=v7e-beta7");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -232,7 +232,7 @@ async function showHistory(){
 }
 if($("historyBtn")) $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-beta6").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=v7e-beta7").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -580,7 +580,7 @@ if($("recentRepairBtn")) $("recentRepairBtn").onclick=async()=>{
 
 
 let lastGapPlan=[];
-// v7e-beta6: exactly one canonical J-Quants API key per browser session.
+// v7e-beta7: exactly one canonical J-Quants API key per browser session.
 // Only the two visible production inputs may originate a token. Legacy/hidden inputs are output mirrors only.
 let sessionJqToken="";
 const JQ_CANONICAL_TOKEN_INPUT_IDS=["globalToken","simpleGapToken"];
@@ -789,7 +789,7 @@ ${e}`)}
 };
 
 
-// v7e-beta6: simplified Settings / Maintenance + read-only OPFS diagnostics.
+// v7e-beta7: simplified Settings / Maintenance + read-only OPFS diagnostics.
 function jqFmtBytes(n){const x=Number(n||0);if(!Number.isFinite(x))return "-";const u=["B","KB","MB","GB","TB"];let v=x,i=0;while(v>=1024&&i<u.length-1){v/=1024;i++}return `${v.toFixed(i>=2?2:1)} ${u[i]}`}
 async function jqPhysicalOpfsInventory(){
   if(!navigator.storage?.getDirectory)throw new Error("OPFS未対応");
@@ -845,10 +845,20 @@ async function jqDataPeriodImportAll(){
   lines.push(`APIキー確認: PASS (${auth.endpoint})`);
   let plan=jqDataPeriodPlan;if(!plan||plan.from!==from||plan.to!==to)plan=await workerCall("data-period-audit",600000,null,null,{from,to});
   const byKey=new Map((plan.datasets||[]).map(x=>[x.key,x]));
-  // Ensure catalog/recent exists only when actual import was requested.
+  // Fresh-install safe bars builder: write directly to canonical year shards.
+  // This path must not require a pre-existing legacy market DB.
   const barsPlan=byKey.get("bars_daily");
-  if(barsPlan?.missingCount){try{await workerCall("shard-bootstrap",120000)}catch(_){}}
-  if(barsPlan?.missingDates?.length){let done=0,real=0;for(const d of barsPlan.missingDates){report(`日足 ${d} (${done+1}/${barsPlan.missingDates.length})`);const x=await autoCommitDate(d,token,"backfill");done++;if(x.rows)real++;}lines.push(`日足: ${done}日確認 / 実データ ${real}日`)}else lines.push("日足: 補完不要");
+  if(barsPlan?.missingDates?.length){
+    let done=0,real=0;const touchedYears=new Set();
+    for(const d of barsPlan.missingDates){
+      report(`日足 ${d} (${done+1}/${barsPlan.missingDates.length})`);
+      const got=await jqFetchDaily(d,token);
+      await workerCall("shard-write-api-date",300000,null,null,{date:d,rows:got.rows});
+      touchedYears.add(Number(d.slice(0,4)));done++;if(got.rows.length)real++;
+    }
+    for(const y of [...touchedYears].sort((a,b)=>a-b)){report(`日足 ${y}年Shardを確定中…`);await workerCall("shard-finalize-api-year",300000,null,null,{year:y});}
+    lines.push(`日足: ${done}日確認 / 実データ ${real}日 / ${touchedYears.size}年Shard確定`);
+  }else lines.push("日足: 補完不要");
   // Master snapshot: one current snapshot is sufficient for names/sectors.
   report("銘柄マスターを確認中…");try{const g=await jqFetchEquitiesMaster(to,token);const w=await workerCall("equities-master-write",300000,null,null,{date:to,rows:g.rows});lines.push(`銘柄マスター: ${g.rows.length.toLocaleString()} rows`)}catch(e){lines.push(`銘柄マスター: NG ${e?.message||e}`)}
   const finsPlan=byKey.get("fins_summary");if(finsPlan?.missingDates?.length){let done=0,rows=0;for(const d of finsPlan.missingDates){report(`財務サマリー ${d} (${done+1}/${finsPlan.missingDates.length})`);const g=await jqFetchFinsSummary(d,token);await workerCall("fins-summary-write",300000,null,null,{date:d,rows:g.rows,replaceDate:true});done++;rows+=g.rows.length;if(done%10===0)await sleep(150)}lines.push(`財務サマリー: ${done}日 / ${rows.toLocaleString()} rows`)}else lines.push("財務サマリー: 補完不要");
@@ -1408,7 +1418,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v7e-beta6",
+   appVersion:"v7e-beta7",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -2367,8 +2377,8 @@ if($("userBackupZipBtn")) $("userBackupZipBtn").onclick=async()=>{
   const inv=await workerCall("shard-backup-inventory",300000),priv=(inv.items||[]).find(x=>x.fileName==="jq_private_v1.sqlite");
   if(!priv||priv.quickCheck!=="ok")throw new Error("jq_private_v1.sqlite が見つからないか quick_check がokではありません");
   const r=await workerCall("shard-backup-export",900000,null,null,{name:"/jq_private_v1.sqlite"});
-  const bytes=new Uint8Array(r.buffer),manifest={format:"JQ-USER-BACKUP-v1",appVersion:"v7e-beta6",createdAt:new Date().toISOString(),db:"jq_private_v1.sqlite",bytes:r.bytes,sha256:r.sha256||null,quickCheck:priv.quickCheck,tables:priv.tables||[],includes:["portfolio","watchlist","discovery","investment-tracking","web-trade-ledger","void-audit","pipeline-checkpoints"],excludes:["J-Quants API key","market DataLake"]};
-  const blob=zipStoreBlob([{name:"jq_private_v1.sqlite",data:bytes},{name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:"J-Quants User Data Backup v7e-beta6\nAPI key is intentionally excluded.\nRestore only from the Settings / Maintenance page.\n"}]);
+  const bytes=new Uint8Array(r.buffer),manifest={format:"JQ-USER-BACKUP-v1",appVersion:"v7e-beta7",createdAt:new Date().toISOString(),db:"jq_private_v1.sqlite",bytes:r.bytes,sha256:r.sha256||null,quickCheck:priv.quickCheck,tables:priv.tables||[],includes:["portfolio","watchlist","discovery","investment-tracking","web-trade-ledger","void-audit","pipeline-checkpoints"],excludes:["J-Quants API key","market DataLake"]};
+  const blob=zipStoreBlob([{name:"jq_private_v1.sqlite",data:bytes},{name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:"J-Quants User Data Backup v7e-beta7\nAPI key is intentionally excluded.\nRestore only from the Settings / Maintenance page.\n"}]);
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");latestUserBackupArtifact={blob,name:`jquants_user_backup_${stamp}.zip`,manifest};$("userBackupDownloadBtn").disabled=false;
   box("userBackupResult","pass",`PASS\nPortfolio / Watchlist / Discovery / 売買履歴を含むprivate DBをバックアップしました。\nサイズ: ${fmt(r.bytes)}\nquick_check: ${priv.quickCheck}\nSHA-256: ${r.sha256||"未取得"}`);
  }catch(e){latestUserBackupArtifact=null;$("userBackupDownloadBtn").disabled=true;box("userBackupResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
@@ -2459,8 +2469,8 @@ if($("screeningShareZipBtn")) $("screeningShareZipBtn").onclick=async()=>{
   const companyMap=new Map(candidates.map(x=>[String(x.NormalizedCode||x.Code),x.CompanyName||""]));eh.rows=(eh.rows||[]).map(x=>({...x,CompanyName:x.CompanyName||companyMap.get(String(x.Code))||""}));gh.rows=(gh.rows||[]).map(x=>({...x,CompanyName:x.CompanyName||companyMap.get(String(x.Code))||""}));
   const gm=new Map((gh.rows||[]).map(x=>[String(x.Code),x]));const enrichedCandidates=candidates.map(x=>({...x,...(gm.get(String(x.NormalizedCode||x.Code))||{})}));
   const parityTrace=screeningParityTraceRows(latestScreeningScoredRows||[]);const files=[{name:"screening_candidates.csv",data:csvAllColumns(enrichedCandidates)},{name:"screening_ai.csv",data:csvAllColumns(enrichedCandidates)},{name:"screening_parity_trace.csv",data:csvAllColumns(parityTrace)},{name:"factor_monitor_latest.csv",data:simpleCsv(factors,FACTOR_FIELDS)},{name:"factor_summary.csv",data:simpleCsv(summary,FACTOR_SUMMARY_FIELDS)},{name:"candidate_earnings_history.csv",data:csvWithHeaders(eh.rows||[],CANDIDATE_EARNINGS_FIELDS)},{name:"management_guidance_summary.csv",data:csvWithHeaders(gh.rows||[],GUIDANCE_SUMMARY_FIELDS)},{name:"discovery_episode_master.csv",data:discoveryCsv(episodes)},{name:"discovery_episode_analysis.csv",data:discoveryCsv(episodes)},{name:"discovery_episode_daily.csv",data:discoveryDailyCsv(daily)}];
-  const omitted=[],manifest={bundle:"Web Screening Share",version:"v7e-beta6",asOf,generatedAt:new Date().toISOString(),canonical:"Web-first",canonicalAsOfSource:canon.source,dataLakeDate:canon.dataLakeDate,lastPassPipelineDate:canon.passDate,counts:{screeningCandidates:enrichedCandidates.length,screeningParityTrace:parityTrace.length,factors:factors.length,factorSummary:summary.length,candidateEarningsHistory:eh.count||0,candidateEarningsCodes:eh.codes||0,managementGuidance:gh.count||0,managementGuidanceCodes:(gh.rows||[]).filter(x=>Number(x.ObservedFiscalYears||0)>0).length,discoveryEpisodes:episodes.length,discoveryDaily:daily.length},earningsDataQuality:{requestedCodes:new Set(codes.map(String)).size,candidateHistoryCodes:eh.codes||0,candidateHistoryRows:eh.count||0,guidanceRows:gh.count||0,guidanceObservedCodes:(gh.rows||[]).filter(x=>Number(x.ObservedFiscalYears||0)>0).length},files:files.map(x=>x.name),omitted,engines:{candidateEarnings:eh.engineVersion||"WebNativeV1",managementGuidance:gh.engineVersion||"WebNativeV1"},notes:["screening_parity_trace.csv is an audit-only compact trace of the full Web scored universe for PC/Web migration diagnostics.","PC refresh is not required.","ZIP generation and download are separated; re-download never reruns analysis.","Candidate earnings history and management guidance are generated natively from the Web DataLake. Guidance confidence is explicitly versioned WebNativeV1 and is not claimed to be byte-for-byte PC parity until real-device comparison is completed."]};
-  files.push({name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:`J-Quants Web-first Screening Share v7e-beta6\nAsOf: ${asOf}\nCandidates: ${enrichedCandidates.length}\nCandidate earnings rows: ${eh.count||0}\nManagement guidance rows: ${gh.count||0}\nFactors: ${factors.length}\nDiscovery Episodes: ${episodes.length}\nDiscovery Daily rows: ${daily.length}\n`});
+  const omitted=[],manifest={bundle:"Web Screening Share",version:"v7e-beta7",asOf,generatedAt:new Date().toISOString(),canonical:"Web-first",canonicalAsOfSource:canon.source,dataLakeDate:canon.dataLakeDate,lastPassPipelineDate:canon.passDate,counts:{screeningCandidates:enrichedCandidates.length,screeningParityTrace:parityTrace.length,factors:factors.length,factorSummary:summary.length,candidateEarningsHistory:eh.count||0,candidateEarningsCodes:eh.codes||0,managementGuidance:gh.count||0,managementGuidanceCodes:(gh.rows||[]).filter(x=>Number(x.ObservedFiscalYears||0)>0).length,discoveryEpisodes:episodes.length,discoveryDaily:daily.length},earningsDataQuality:{requestedCodes:new Set(codes.map(String)).size,candidateHistoryCodes:eh.codes||0,candidateHistoryRows:eh.count||0,guidanceRows:gh.count||0,guidanceObservedCodes:(gh.rows||[]).filter(x=>Number(x.ObservedFiscalYears||0)>0).length},files:files.map(x=>x.name),omitted,engines:{candidateEarnings:eh.engineVersion||"WebNativeV1",managementGuidance:gh.engineVersion||"WebNativeV1"},notes:["screening_parity_trace.csv is an audit-only compact trace of the full Web scored universe for PC/Web migration diagnostics.","PC refresh is not required.","ZIP generation and download are separated; re-download never reruns analysis.","Candidate earnings history and management guidance are generated natively from the Web DataLake. Guidance confidence is explicitly versioned WebNativeV1 and is not claimed to be byte-for-byte PC parity until real-device comparison is completed."]};
+  files.push({name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:`J-Quants Web-first Screening Share v7e-beta7\nAsOf: ${asOf}\nCandidates: ${enrichedCandidates.length}\nCandidate earnings rows: ${eh.count||0}\nManagement guidance rows: ${gh.count||0}\nFactors: ${factors.length}\nDiscovery Episodes: ${episodes.length}\nDiscovery Daily rows: ${daily.length}\n`});
   const blob=zipStoreBlob(files),name=`web_screening_${asOf.replaceAll("-","")}.zip`;latestScreeningShareArtifact={blob,name,asOf,generatedAt:new Date().toISOString()};artifactReady("screeningShareDownloadBtn",latestScreeningShareArtifact);
   box("screeningShareZipResult","pass",`Screening共有ZIP 生成PASS\n基準日: ${asOf}\nDataLake: ${canon.dataLakeDate}\n候補: ${enrichedCandidates.length}\n決算履歴: ${eh.count||0}行\nGuidance: ${gh.count||0}銘柄\nFactor: ${factors.length}\nDiscovery Episode: ${episodes.length}\nDiscovery Daily: ${daily.length}\n\n${name} を生成済みです。下のダウンロードボタンから何度でも取得できます。`);
  }catch(e){latestScreeningShareArtifact=null;artifactReady("screeningShareDownloadBtn",null);box("screeningShareZipResult","fail","Screening共有ZIP FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
@@ -2490,9 +2500,9 @@ if($("aiShareZipBtn")) $("aiShareZipBtn").onclick=async()=>{
    {name:"web_trade_history.csv",data:csvWithHeaders(h.tradeHistory||[],["trade_id","trade_date","code","name","account","action","shares","price","before_shares","before_avg_cost","after_shares","after_avg_cost","realized_pnl","memo","created_at","status","voided_at","void_reason"])}
   ];
   const files=["web_jqp.json","web_portfolio_integrated.csv",...extra.map(x=>x.name),"manifest.json","README.txt"];
-  const manifest={schema:"web-ai-share-manifest-v3",version:"v7e-beta6",generatedAt:new Date().toISOString(),asOf,canonicalAsOfSource:canon.source,dataLakeDate:canon.dataLakeDate,lastPassPipelineDate:canon.passDate,portfolioCount:rows.length,coverage:{technical:`${tech}/${rows.length}`,financial:`${fin}/${rows.length}`,marginInterest:`${margin}/${rows.length}`,shortSelling:`${shorts}/${rows.length}`},historyCounts:h.counts||{},historyDataQuality:h.dq||{},historyWindow:{priceFrom:h.meta?.from||null,priceTo:asOf,financial:"available Web DataLake history",supply:"available Web DataLake history",marketFlow:"available Web DataLake history",trade:"Web trade ledger since Portfolio Manager adoption"},files,notes:["Beta1 canonical history export removes repeated rows before analytics/share while preserving the raw DataLake for audit.","Price history resolves one canonical year shard per year and uses bars_recent only as fallback.","Stage 2 DQ: short-ratio requires an actual short-selling component plus a finite 0-100 ratio; SellExShortValue alone can no longer satisfy DQ.","Price history is limited to five years to control mobile ZIP size.","Existing holdings before Web Portfolio Manager remain opening snapshots; web_trade_history.csv is not a reconstructed broker ledger.","VOID trades remain in audit history and must be excluded from performance statistics.","Candidate earnings history and management guidance are Screening-share work and are not duplicated in the portfolio share."]};
+  const manifest={schema:"web-ai-share-manifest-v3",version:"v7e-beta7",generatedAt:new Date().toISOString(),asOf,canonicalAsOfSource:canon.source,dataLakeDate:canon.dataLakeDate,lastPassPipelineDate:canon.passDate,portfolioCount:rows.length,coverage:{technical:`${tech}/${rows.length}`,financial:`${fin}/${rows.length}`,marginInterest:`${margin}/${rows.length}`,shortSelling:`${shorts}/${rows.length}`},historyCounts:h.counts||{},historyDataQuality:h.dq||{},historyWindow:{priceFrom:h.meta?.from||null,priceTo:asOf,financial:"available Web DataLake history",supply:"available Web DataLake history",marketFlow:"available Web DataLake history",trade:"Web trade ledger since Portfolio Manager adoption"},files,notes:["Beta1 canonical history export removes repeated rows before analytics/share while preserving the raw DataLake for audit.","Price history resolves one canonical year shard per year and uses bars_recent only as fallback.","Stage 2 DQ: short-ratio requires an actual short-selling component plus a finite 0-100 ratio; SellExShortValue alone can no longer satisfy DQ.","Price history is limited to five years to control mobile ZIP size.","Existing holdings before Web Portfolio Manager remain opening snapshots; web_trade_history.csv is not a reconstructed broker ledger.","VOID trades remain in audit history and must be excluded from performance statistics.","Candidate earnings history and management guidance are Screening-share work and are not duplicated in the portfolio share."]};
   const dqLine=k=>{const x=h.dq?.[k]||{};return `${k}: raw=${x.rawRows??"n/a"}, canonical=${x.canonicalRows??"n/a"}, duplicatesRemoved=${x.duplicatesRemoved??"n/a"}`};
-  const readme=`J-Quants Web-first ChatGPT Share Beta6 Earnings Intelligence\nVersion: v7e-beta6\nAsOf: ${asOf}\nPortfolio: ${rows.length}\nTechnical: ${tech}/${rows.length}\nFinancial: ${fin}/${rows.length}\nMargin interest: ${margin}/${rows.length}\nLarge-short canonical: ${shorts}/${rows.length}\nPrice history rows: ${h.counts?.priceHistory??0}\nFinancial history rows: ${h.counts?.financialHistory??0}\nMargin history rows: ${h.counts?.marginHistory??0}\nMarket short-ratio rows: ${h.counts?.marketShortRatioHistory??0}\nMarket short-ratio valid rows: ${h.counts?.marketShortRatioValid??0}\nMarket short-ratio component rows: ${h.counts?.marketShortRatioComponentValid??0}\nMarket short-ratio non-zero rows: ${h.counts?.marketShortRatioNonZero??0}\nLarge-short rows: ${h.counts?.largeShortHistory??0}\nMarket-flow rows: ${h.counts?.marketFlow??0}\nWeb trade rows: ${h.counts?.tradeHistory??0}\n\nData Quality Canonicalization\n${dqLine("priceHistory")}\n${dqLine("marginHistory")}\n${dqLine("marketShortRatioHistory")}\n${dqLine("largeShortHistory")}\n${dqLine("marketFlow")}\n`;
+  const readme=`J-Quants Web-first ChatGPT Share Beta7 Fresh Install\nVersion: v7e-beta7\nAsOf: ${asOf}\nPortfolio: ${rows.length}\nTechnical: ${tech}/${rows.length}\nFinancial: ${fin}/${rows.length}\nMargin interest: ${margin}/${rows.length}\nLarge-short canonical: ${shorts}/${rows.length}\nPrice history rows: ${h.counts?.priceHistory??0}\nFinancial history rows: ${h.counts?.financialHistory??0}\nMargin history rows: ${h.counts?.marginHistory??0}\nMarket short-ratio rows: ${h.counts?.marketShortRatioHistory??0}\nMarket short-ratio valid rows: ${h.counts?.marketShortRatioValid??0}\nMarket short-ratio component rows: ${h.counts?.marketShortRatioComponentValid??0}\nMarket short-ratio non-zero rows: ${h.counts?.marketShortRatioNonZero??0}\nLarge-short rows: ${h.counts?.largeShortHistory??0}\nMarket-flow rows: ${h.counts?.marketFlow??0}\nWeb trade rows: ${h.counts?.tradeHistory??0}\n\nData Quality Canonicalization\n${dqLine("priceHistory")}\n${dqLine("marginHistory")}\n${dqLine("marketShortRatioHistory")}\n${dqLine("largeShortHistory")}\n${dqLine("marketFlow")}\n`;
   const zipFiles=[{name:"web_jqp.json",data:JSON.stringify(payload,null,2)},{name:"web_portfolio_integrated.csv",data:csv},...extra,{name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:readme}];
   const blob=zipStoreBlob(zipFiles),name=`web_ai_share_${asOf.replaceAll("-","")}.zip`;latestAiShareArtifact={blob,name,asOf,generatedAt:new Date().toISOString()};artifactReady("aiShareDownloadBtn",latestAiShareArtifact);window.__latestPortfolioIntegrated=rows;
   box("aiShareZipResult",tech===rows.length&&fin===rows.length?"pass":"warn",`共有ZIP 生成PASS\n基準日: ${asOf}\nDataLake: ${canon.dataLakeDate}\n銘柄: ${rows.length}\nテクニカル: ${tech}/${rows.length}\n財務: ${fin}/${rows.length}\n信用残: ${margin}/${rows.length}\n空売り系: ${shorts}/${rows.length}\n\n${name} を生成済みです。下のダウンロードボタンから何度でも取得できます。`);

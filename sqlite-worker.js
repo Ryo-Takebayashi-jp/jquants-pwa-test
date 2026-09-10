@@ -3014,6 +3014,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      ) WITHOUT ROWID`);
      db.exec(`CREATE INDEX IF NOT EXISTS idx_bars_year_date ON bars_daily(date)`);
      db.exec(`CREATE TABLE IF NOT EXISTS shard_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+     db.exec(`CREATE TABLE IF NOT EXISTS web_no_data_dates(dataset TEXT NOT NULL,date TEXT NOT NULL,checked_at TEXT NOT NULL,reason TEXT,PRIMARY KEY(dataset,date)) WITHOUT ROWID`);
 
      if(rows.length){
        stage="03-write";
@@ -3053,6 +3054,9 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          db.exec("COMMIT");
        }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
        finally{stmt.finalize()}
+       db.exec({sql:"DELETE FROM web_no_data_dates WHERE dataset=? AND date=?",bind:["bars_daily",iso]});
+     }else{
+       db.exec({sql:`INSERT INTO web_no_data_dates(dataset,date,checked_at,reason) VALUES(?,?,?,?) ON CONFLICT(dataset,date) DO UPDATE SET checked_at=excluded.checked_at,reason=excluded.reason`,bind:["bars_daily",iso,new Date().toISOString(),"API returned 0 rows"]});
      }
 
      stage="04-verify-date";

@@ -225,5 +225,10 @@
     "version": "v7e-beta6",
     "date": "2026-09-10",
     "summary": "Canonical single-session J-Quants token, preflight auth validation, and ordered Settings/Maintenance UI."
+  },
+  "v7e-beta7": {
+    "version": "v7e-beta7",
+    "date": "2026-09-10",
+    "summary": "Fresh-install DataLake builder and fully collapsible Settings/Maintenance sections."
   }
 }
