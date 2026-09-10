@@ -827,6 +827,8 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
  if(cmd==="portfolio-trade-list"||cmd==="portfolio-trade-commit"||cmd==="portfolio-trade-void-preview"||cmd==="portfolio-trade-void-commit"||cmd==="portfolio-memo-upsert"){
    let db=null,stage="01-open";try{
+     const privateExists=poolFileNamesSafe(p).some(f=>String(f).replace(/^\/+/,"")==="jq_private_v1.sqlite");
+     if(cmd==="portfolio-trade-list"&&!privateExists){self.postMessage({ok:true,type:"result",stage:"PASS",positions:[],memos:[],history:[],count:0,privateExists:false,elapsedMs:Math.round(performance.now()-t0)});return}
      db=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
      db.exec(`CREATE TABLE IF NOT EXISTS user_stocks(code TEXT NOT NULL,name TEXT,account TEXT NOT NULL DEFAULT '',shares REAL,avg_cost REAL,strategy TEXT,memo TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(code,account)) WITHOUT ROWID`);
      db.exec(`CREATE TABLE IF NOT EXISTS portfolio_trade_log(trade_id TEXT PRIMARY KEY,trade_date TEXT NOT NULL,code TEXT NOT NULL,name TEXT,account TEXT NOT NULL,action TEXT NOT NULL,shares REAL NOT NULL,price REAL NOT NULL,before_shares REAL,before_avg_cost REAL,after_shares REAL,after_avg_cost REAL,realized_pnl REAL,memo TEXT,created_at TEXT NOT NULL)`);
@@ -1759,9 +1761,10 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    try{
      db=new p.OpfsSAHPoolDb("/jq_earnings_date_v2.sqlite","c");
      db.exec(`CREATE TABLE IF NOT EXISTS earnings_date(row_key TEXT PRIMARY KEY,pub_date TEXT NOT NULL,scheduled_date TEXT,code TEXT NOT NULL,fq_name TEXT,fy_end TEXT,company_name TEXT,company_name_en TEXT,raw_json TEXT NOT NULL) WITHOUT ROWID`);
-     db.exec("CREATE INDEX IF NOT EXISTS idx_earnings_date_pub ON earnings_date(pub_date)");db.exec("CREATE INDEX IF NOT EXISTS idx_earnings_date_code ON earnings_date(code)");db.exec("CREATE INDEX IF NOT EXISTS idx_earnings_date_sch ON earnings_date(scheduled_date)");
+     db.exec("CREATE INDEX IF NOT EXISTS idx_earnings_date_pub ON earnings_date(pub_date)");db.exec("CREATE INDEX IF NOT EXISTS idx_earnings_date_code ON earnings_date(code)");db.exec("CREATE INDEX IF NOT EXISTS idx_earnings_date_sch ON earnings_date(scheduled_date)");db.exec(`CREATE TABLE IF NOT EXISTS fetch_coverage(query_date TEXT PRIMARY KEY,row_count INTEGER NOT NULL,fetched_at TEXT NOT NULL) WITHOUT ROWID`);
      const st=db.prepare("INSERT OR REPLACE INTO earnings_date(row_key,pub_date,scheduled_date,code,fq_name,fy_end,company_name,company_name_en,raw_json) VALUES(?,?,?,?,?,?,?,?,?)");let written=0;
      db.exec("BEGIN");try{for(const r of rows){const pub=normDate(r.PubDate??r.pub_date??r.Date),sch=normDate(r.SchDate??r.scheduled_date),code=normCode(r.Code??r.code),fq=String(r.FQName??r.fq_name??""),fy=normDate(r.FYE??r.fy_end),cn=String(r.CoName??r.company_name??""),en=String(r.CoNameEn??r.company_name_en??"");if(!pub||!code)continue;const key=[pub,sch,code,fq,fy].join("|");st.bind([key,pub,sch||null,code,fq||null,fy||null,cn||null,en||null,JSON.stringify(r)]).stepReset();written++}db.exec("COMMIT")}catch(e){try{db.exec("ROLLBACK")}catch(_){}throw e}finally{st.finalize()}
+     const qd=String(payload.queryDate||"").slice(0,10);if(/^\d{4}-\d{2}-\d{2}$/.test(qd))db.exec({sql:"INSERT OR REPLACE INTO fetch_coverage(query_date,row_count,fetched_at) VALUES(?,?,?)",bind:[qd,written,new Date().toISOString()]});
      const out={written,total:Number(scalar(db,"SELECT count(*) FROM earnings_date")||0),minPubDate:scalar(db,"SELECT min(pub_date) FROM earnings_date"),maxPubDate:scalar(db,"SELECT max(pub_date) FROM earnings_date"),codes:Number(scalar(db,"SELECT count(DISTINCT code) FROM earnings_date")||0),quickCheck:scalar(db,"PRAGMA quick_check"),dbName:"/jq_earnings_date_v2.sqlite"};db.close();db=null;self.postMessage({ok:true,type:"result",...out});return;
    }catch(e){try{if(db)db.close()}catch(_){}throw e}
  }
@@ -1794,6 +1797,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      ) WITHOUT ROWID`);
      db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_date ON ${table}(data_date)`);
      db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_code ON ${table}(code)`);
+     if(isFins)db.exec(`CREATE TABLE IF NOT EXISTS fetch_coverage(query_date TEXT PRIMARY KEY,row_count INTEGER NOT NULL,fetched_at TEXT NOT NULL) WITHOUT ROWID`);
      const stmt=db.prepare(`INSERT OR REPLACE INTO ${table}(row_key,data_date,code,disclosed_date,disclosed_time,raw_json) VALUES(?,?,?,?,?,?)`);
      db.exec("BEGIN");
      try{
@@ -1809,6 +1813,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        db.exec("COMMIT");
      }catch(err){try{db.exec("ROLLBACK")}catch(_){} throw err}
      stmt.finalize();
+     if(isFins && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate))db.exec({sql:"INSERT OR REPLACE INTO fetch_coverage(query_date,row_count,fetched_at) VALUES(?,?,?)",bind:[requestedDate,rows.length,new Date().toISOString()]});
      const count=Number(scalar(db,`SELECT count(*) FROM ${table}`)||0);
      const minDate=scalar(db,`SELECT min(data_date) FROM ${table}`);
      const maxDate=scalar(db,`SELECT max(data_date) FROM ${table}`);
@@ -3315,6 +3320,32 @@ if(cmd==="market-fast-health"){
  return;
 }
 
+
+if(cmd==="data-period-audit"){
+  const payload=e.data.payload||{},from=String(payload.from||"").slice(0,10),to=String(payload.to||"").slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)throw new Error("from/to invalid");
+  const files=poolFileNamesSafe(p),hasFile=n=>files.some(f=>String(f).replace(/^\/+/,"")===String(n).replace(/^\/+/,""));
+  const addDays=(iso,n)=>{const d=new Date(iso+"T00:00:00Z");d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)},days=(a,b,weekdaysOnly=false)=>{const out=[];for(let x=a,g=0;x<=b&&g<6000;x=addDays(x,1),g++){const dow=new Date(x+"T00:00:00Z").getUTCDay();if(!weekdaysOnly||(dow!==0&&dow!==6))out.push(x)}return out};
+  const datasets=[];
+  const push=(key,label,status,coverageStart=null,coverageEnd=null,missingDates=[],note="")=>datasets.push({key,label,status,coverageStart,coverageEnd,missingDates,missingCount:missingDates.length,note});
+  // bars: exact observed/no-data dates by selected year shards. No DB is created here.
+  try{
+    if(!hasFile("jq_catalog_v1.sqlite")){push("bars_daily","日足","未構築",null,null,days(from,to,true),"Catalogなし")}else{let c=null;try{c=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");const ss=execRows(c,`SELECT shard_key,logical_name,range_start,range_end FROM shard_catalog WHERE dataset='bars_daily' AND state='ready' ORDER BY range_start,shard_key`);c.close();c=null;const have=new Set(),nodata=new Set();let mn=null,mx=null;for(const s of ss){const nm=String(s.logical_name||"");if(!nm||!hasFile(nm))continue;let q=null;try{q=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");for(const r of execRows(q,"SELECT DISTINCT date FROM bars_daily WHERE date>=? AND date<=?",[from,to])){const d=String(r.date);have.add(d);mn=!mn||d<mn?d:mn;mx=!mx||d>mx?d:mx}try{for(const r of execRows(q,"SELECT date FROM web_no_data_dates WHERE dataset='bars_daily' AND date>=? AND date<=?",[from,to]))nodata.add(String(r.date))}catch(_){}q.close()}catch(_){try{if(q)q.close()}catch(__){}}}const miss=days(from,to,true).filter(d=>!have.has(d)&&!nodata.has(d));push("bars_daily","日足",miss.length?"不足候補あり":"PASS",mn,mx,miss,"祝日等はAPI確認後0件日として記録") }finally{try{if(c)c.close()}catch(_){}}}
+  }catch(err){push("bars_daily","日足","監査NG",null,null,[],String(err?.message||err))}
+  const auditSimple=(key,label,dbName,table,dateCol,expected,opts={})=>{if(!hasFile(dbName)){push(key,label,"未構築",null,null,expected,"");return}let q=null;try{q=new p.OpfsSAHPoolDb(dbName.startsWith("/")?dbName:"/"+dbName,"r");const mn=scalarBind(q,`SELECT MIN(${dateCol}) FROM ${table}`,[]),mx=scalarBind(q,`SELECT MAX(${dateCol}) FROM ${table}`,[]);let covered=new Set();const hasCov=Number(scalarBind(q,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='fetch_coverage'",[])||0)>0;if(hasCov)for(const r of execRows(q,"SELECT query_date FROM fetch_coverage WHERE query_date>=? AND query_date<=?",[from,to]))covered.add(String(r.query_date));if(opts.useObserved!==false)for(const r of execRows(q,`SELECT DISTINCT ${dateCol} AS d FROM ${table} WHERE ${dateCol}>=? AND ${dateCol}<=?`,[from,to]))covered.add(String(r.d));if(opts.assumeInterior&&mn&&mx)for(const d of expected)if(d>=String(mn)&&d<=String(mx))covered.add(d);q.close();q=null;let miss;if(hasCov||opts.useObserved!==false||opts.assumeInterior)miss=expected.filter(d=>!covered.has(d));else{miss=[];if(!mn||String(mn)>from)miss.push(...days(from,mn?addDays(String(mn),-1):to,opts.weekdaysOnly));if(mx&&String(mx)<to)miss.push(...days(addDays(String(mx),1),to,opts.weekdaysOnly))}const note=opts.assumeInterior?"旧履歴の収録範囲内は連続取得済みとして継承し、新規取得分は0件日も記録":(hasCov?"取得済み0件日も記録":"旧データは観測日ベース判定");push(key,label,miss.length?"不足候補あり":"PASS",mn?String(mn):null,mx?String(mx):null,[...new Set(miss)].sort(),note)}catch(err){try{if(q)q.close()}catch(_){}push(key,label,"監査NG",null,null,[],String(err?.message||err))}};
+  const wd=days(from,to,true),alld=days(from,to,false);
+  auditSimple("fins_summary","財務サマリー","jq_fins_summary_v1.sqlite","fins_summary","data_date",wd);
+  auditSimple("earnings_date","決算予定日","jq_earnings_date_v2.sqlite","earnings_date","pub_date",alld,{useObserved:false,weekdaysOnly:false,assumeInterior:true});
+  auditSimple("topix","TOPIX","jq_topix_v1.sqlite","topix","data_date",wd);
+  auditSimple("market_calendar","営業日カレンダー","jq_market_calendar_v1.sqlite","market_calendar","data_date",alld);
+  auditSimple("margin_interest","信用取引週末残高","jq_margin_interest_v1.sqlite","margin_interest","data_date",wd.filter(d=>new Date(d+"T00:00:00Z").getUTCDay()===5));
+  auditSimple("margin_alert","日々公表信用","jq_margin_alert_v1.sqlite","margin_alert","data_date",wd);
+  auditSimple("short_ratio","空売り比率","jq_short_ratio_v1.sqlite","short_ratio","data_date",wd);
+  auditSimple("short_sale_report","空売り報告","jq_short_sale_report_v1.sqlite","short_sale_report","data_date",wd);
+  auditSimple("investor_types","投資部門別","jq_investor_types_v1.sqlite","investor_types","data_date",wd);
+  // Master is a point-in-time dataset, not a daily history requirement.
+  if(!hasFile("jq_equities_master_v1.sqlite"))push("equities_master","銘柄マスター","未構築",null,null,[to],"終了日時点スナップショットを取得");else{let q=null;try{q=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");const mx=scalarBind(q,"SELECT MAX(effective_date) FROM equities_master",[]);q.close();push("equities_master","銘柄マスター",mx?"PASS":"不足候補あり",mx?String(mx):null,mx?String(mx):null,mx?[]:[to],"最新スナップショット") }catch(err){try{if(q)q.close()}catch(_){}push("equities_master","銘柄マスター","監査NG",null,null,[],String(err?.message||err))}}
+  self.postMessage({ok:true,type:"result",from,to,datasets,poolFiles:files,elapsedMs:Math.round(performance.now()-t0)});return;
+}
 if(cmd==="pool-diagnostic"){
     const files=poolFileNamesSafe(p);
     const requested=name, base=String(requested||"").replace(/^\/+/,"");

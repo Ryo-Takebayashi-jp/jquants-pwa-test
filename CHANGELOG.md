@@ -1,3 +1,14 @@
+# v7e-beta5 — Settings Simplification / Recovery Diagnostics
+
+- 設定・保守を「データ期間管理 / 取り込み / バックアップ保存」の3機能へ再編。
+- トラブル診断を折りたたみ化し、完全read-onlyの物理OPFS/容量診断を追加。
+- 指定期間のDataLake不足監査と不足分一括取り込み導線を追加。
+- 決算予定日・財務にfetch coverageを追加し、0件取得日を今後の欠損判定に利用。
+- portfolio-trade-listはprivate DB不在時に空DBを自動作成しない。
+- Workerエラー表示でmessageを優先し、実際のSQLiteエラーを隠さない。
+- header / app / Worker / Service Worker cache versionをbeta5へ統一。
+- beta4 Earnings Intelligence機能は維持。
+
 # v7e-beta4 Earnings Intelligence (2026-09-10)
 
 - Web Screening Share now generates `candidate_earnings_history.csv` natively from the canonical Financial Summary, daily-price, and TOPIX DataLake.

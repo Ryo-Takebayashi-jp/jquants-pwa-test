@@ -215,5 +215,10 @@
       "date": "2026-09-10",
       "summary": "Earnings Intelligence: Web-native candidate earnings history and management-guidance summary in Screening Share; guidance confidence remains explicitly versioned WebNativeV1 pending wider parity validation."
     }
-  ]
+  ],
+  "v7e-beta5": {
+    "version": "v7e-beta5",
+    "date": "2026-09-10",
+    "summary": "Settings simplification, read-only OPFS recovery diagnostics, unified data period management."
+  }
 }
