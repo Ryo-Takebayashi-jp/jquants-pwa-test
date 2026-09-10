@@ -1941,6 +1941,108 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }
    self.postMessage({ok:true,type:"result",datasets:out});return;
  }
+
+ if(cmd==="candidate-earnings-history" || cmd==="management-guidance-summary"){
+   const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),codes=(payload.codes||[]).map(v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean),wanted=new Set(codes);
+   const norm=v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   const n=v=>{if(v==null||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)?x:null};
+   const s1=(o,...ks)=>{for(const k of ks){const v=o?.[k];if(v!=null&&String(v).trim())return String(v).trim()}return ""};
+   const num=(o,...ks)=>{for(const k of ks){const v=n(o?.[k]);if(v!=null)return v}return null};
+   const pct=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b!==0?(a/b-1)*100:null;
+   const ratio=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b!==0?a/b*100:null;
+   const med=a=>{const z=a.filter(Number.isFinite).sort((x,y)=>x-y);if(!z.length)return null;const m=Math.floor(z.length/2);return z.length%2?z[m]:(z[m-1]+z[m])/2};
+   const popstd=a=>{const z=a.filter(Number.isFinite);if(z.length<2)return null;const m=z.reduce((x,y)=>x+y,0)/z.length;return Math.sqrt(z.reduce((x,y)=>x+(y-m)*(y-m),0)/z.length)};
+   const dayDiff=(a,b)=>{const x=Date.parse(String(a).slice(0,10)+"T00:00:00Z"),y=Date.parse(String(b).slice(0,10)+"T00:00:00Z");return Number.isFinite(x)&&Number.isFinite(y)?Math.round((x-y)/86400000):null};
+   const company=o=>s1(o,"CoName","CompanyName","CompanyNameJapanese");
+   const actualSales=o=>num(o,"Sales","NCSales"),actualOP=o=>num(o,"OP","NCOP"),actualOrd=o=>num(o,"OdP","NCOdP"),actualNP=o=>num(o,"NP","NCNP"),actualEPS=o=>num(o,"EPS","NCEPS");
+   const fSales=o=>num(o,"FSales","FNCSales"),fOP=o=>num(o,"FOP","FNCOP"),fOrd=o=>num(o,"FOdP","FNCOdP"),fNP=o=>num(o,"FNP","FNCNP"),fEPS=o=>num(o,"FEPS","FNCEPS");
+   const period=o=>s1(o,"CurPerType").toUpperCase(),fyEnd=o=>s1(o,"CurFYEn","CurPerEn").slice(0,10),perEnd=o=>s1(o,"CurPerEn","CurFYEn").slice(0,10),disc=o=>s1(o,"DiscDate","DisclosedDate").slice(0,10),dtm=o=>s1(o,"DiscTime");
+   const targetFY=o=>{const q=period(o);return q==="FY"&&s1(o,"NxtFYEn")?s1(o,"NxtFYEn").slice(0,10):fyEnd(o)};
+   let fdb=null;
+   try{
+     fdb=new p.OpfsSAHPoolDb("/jq_fins_summary_v1.sqlite","r");
+     const raw=execRows(fdb,"SELECT data_date,code,disclosed_date,raw_json FROM fins_summary WHERE disclosed_date<=? ORDER BY disclosed_date,data_date,row_key",[asOf]);fdb.close();fdb=null;
+     const all=[];
+     for(const rr of raw){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){continue}const code=norm(o.Code??rr.code);if(!code||wanted.size&&!wanted.has(code))continue;const dd=disc(o)||String(rr.disclosed_date||"").slice(0,10);if(!dd||dd>asOf)continue;all.push({code,o,dd,dataDate:String(rr.data_date||"").slice(0,10)})}
+     const byCode=new Map();for(const x of all){if(!byCode.has(x.code))byCode.set(x.code,[]);byCode.get(x.code).push(x)}
+     for(const a of byCode.values())a.sort((x,y)=>(x.dd+"|"+dtm(x.o)+"|"+s1(x.o,"DiscNo")).localeCompare(y.dd+"|"+dtm(y.o)+"|"+s1(y.o,"DiscNo")));
+
+     if(cmd==="management-guidance-summary"){
+       const rows=[];
+       for(const [code,h] of byCode){
+         // One canonical actual FY per fiscal year: latest disclosure carrying an actual FY result.
+         const fyActual=new Map();
+         for(const x of h){const o=x.o;if(period(o)!=="FY"||actualOP(o)==null&&actualSales(o)==null)continue;const fy=fyEnd(o);if(!fy)continue;const old=fyActual.get(fy);if(!old||(x.dd+"|"+dtm(o)+"|"+s1(o,"DiscNo"))>(old.dd+"|"+dtm(old.o)+"|"+s1(old.o,"DiscNo")))fyActual.set(fy,x)}
+         let years=[...fyActual.values()].sort((a,b)=>fyEnd(a.o).localeCompare(fyEnd(b.o)));if(years.length>10)years=years.slice(-10);
+         const observed=years.length,metrics=[];
+         for(const a of years){const fy=fyEnd(a.o),actualDate=a.dd,fs=[];for(const x of h){if(x.dd>=actualDate)continue;if(fyEnd(x.o)!==fy)continue;const fv={sales:fSales(x.o),op:fOP(x.o),ord:fOrd(x.o),np:fNP(x.o)};if([fv.sales,fv.op,fv.ord,fv.np].every(v=>v==null))continue;fs.push({...x,fv})}
+           fs.sort((x,y)=>(x.dd+"|"+dtm(x.o)+"|"+s1(x.o,"DiscNo")).localeCompare(y.dd+"|"+dtm(y.o)+"|"+s1(y.o,"DiscNo")));
+           const early=fs[0]||null,late=fs.at(-1)||null,ao=actualOP(a.o),as=actualSales(a.o),eop=early?early.fv.op:null,es=early?early.fv.sales:null,lop=late?late.fv.op:null;
+           const opBias=pct(ao,eop),revDirs=[];let prior=null;
+           for(const z of fs){const v=z.fv.op;if(v==null)continue;if(prior!=null&&prior!==0&&v!==prior){const q=pct(v,prior);if(Number.isFinite(q))revDirs.push(q>0?"Up":"Down")}prior=v}
+           metrics.push({fy,hasEarly:!!early,actualOP:ao,earlyOP:eop,earlySales:es,actualSales:as,opBias,salesBias:pct(as,es),effective:Number.isFinite(ao)&&Number.isFinite(eop)&&eop>0,hadRevision:revDirs.length>0,hadUp:revDirs.includes("Up"),hadDown:revDirs.includes("Down"),postRevisionAbs:late&&Number.isFinite(lop)&&lop!==0&&Number.isFinite(ao)?Math.abs(pct(ao,lop)):null})
+         }
+         const earlyObserved=metrics.filter(x=>x.hasEarly).length,effective=metrics.filter(x=>x.effective),comparable=metrics.filter(x=>Number.isFinite(x.opBias));
+         const opBias=med(effective.map(x=>x.opBias)),revenueBias=med(effective.map(x=>x.salesBias));
+         const beat=comparable.length?comparable.filter(x=>x.opBias>0).length/comparable.length:null,miss=comparable.length?comparable.filter(x=>x.opBias<0).length/comparable.length:null;
+         const largeBeat=effective.length?effective.filter(x=>x.opBias>=10).length/effective.length:null,largeMiss=effective.length?effective.filter(x=>x.opBias<=-10).length/effective.length:null;
+         const revRate=observed?metrics.filter(x=>x.hadRevision).length/observed:null,upRate=observed?metrics.filter(x=>x.hadUp).length/observed:null,downRate=observed?metrics.filter(x=>x.hadDown).length/observed:null;
+         let biasClass="InsufficientData";if(Number.isFinite(opBias)){biasClass=opBias>=10?"Conservative":opBias>=5?"SlightlyConservative":opBias<=-10?"Optimistic":opBias<=-5?"SlightlyOptimistic":"Neutral"}
+         let revisionStyle="Stable";if(Number.isFinite(revRate)&&revRate>0.25){if((upRate??0)>=0.4&&(upRate??0)>(downRate??0))revisionStyle="UpwardProne";else if((downRate??0)>=0.4&&(downRate??0)>(upRate??0))revisionStyle="DownwardProne";else revisionStyle="Mixed"}
+         const coverage=observed?earlyObserved/observed:0,disp=popstd(effective.map(x=>x.opBias)),postAcc=med(metrics.filter(x=>x.hadRevision).map(x=>x.postRevisionAbs));
+         // Web-native confidence: coverage + effective years + dispersion. Kept explicit/versioned rather than fabricating PC parity.
+         const sampleScore=Math.min(60,effective.length*6),coverageScore=coverage*20,stabilityScore=Number.isFinite(disp)?Math.max(0,20-Math.min(20,disp/2)):0;
+         const confScore=Math.max(0,Math.min(100,sampleScore+coverageScore+stabilityScore));const conf=confScore>=75?"High":confScore>=45?"Medium":"Low";
+         rows.push({Code:code,CompanyName:company(h.at(-1)?.o||{}),GuidanceBiasClass:biasClass,GuidanceBiasConfidence:conf,GuidanceBiasConfidenceScore:confScore,RevenueBiasPct:revenueBias,OpProfitBiasPct:opBias,BeatRate:beat,MissRate:miss,LargeBeatRate:largeBeat,LargeMissRate:largeMiss,RevisionRate:revRate,UpwardRevisionRate:upRate,DownwardRevisionRate:downRate,RevisionStyle:revisionStyle,PostRevisionAccuracyPct:postAcc,GuidanceErrorDispersion:disp,EffectiveYears:effective.length,ObservedFiscalYears:observed,EarlyObservedYears:earlyObserved,ObservationCoverage:coverage,GuidanceBiasStatus:observed?"Available":"InsufficientData",GuidanceEngineVersion:"WebNativeV1"})
+       }
+       rows.sort((a,b)=>a.Code.localeCompare(b.Code));self.postMessage({ok:true,type:"result",rows,count:rows.length,asOf,engineVersion:"WebNativeV1"});return;
+     }
+
+     // Candidate earnings history.
+     const statementRows=[];
+     for(const [code,h] of byCode){for(const x of h){const o=x.o,q=period(o),doc=s1(o,"DocType","Type");if(!["1Q","2Q","3Q","FY"].includes(q)||!String(doc).includes("FinancialStatements"))continue;statementRows.push({code,x,o,q,doc})}}
+     // Deduplicate only exact same disclosure event/period; retain later corrections as separate events.
+     const groups=new Map();for(const r of statementRows){const k=[r.code,r.x.dd,dtm(r.o),fyEnd(r.o),perEnd(r.o),r.q,r.doc].join("|");if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)}
+     const events=[];for(const g of groups.values()){g.sort((a,b)=>s1(a.o,"DiscNo").localeCompare(s1(b.o,"DiscNo")));const r=g.at(-1);events.push({...r,duplicateSourceCount:g.length})}
+     events.sort((a,b)=>(a.code+"|"+a.x.dd+"|"+dtm(a.o)+"|"+s1(a.o,"DiscNo")).localeCompare(b.code+"|"+b.x.dd+"|"+dtm(b.o)+"|"+s1(b.o,"DiscNo")));
+     const evByCode=new Map();for(const e of events){if(!evByCode.has(e.code))evByCode.set(e.code,[]);evByCode.get(e.code).push(e)}
+     const selected=[];for(const [code,a] of evByCode){selected.push(...a.slice(-12))}
+     // Load canonical daily prices for selected codes. Year shards first; recent only fallback per year.
+     const priceBy=new Map(),topix=new Map();const selectedCodes=[...new Set(selected.map(e=>e.code))];
+     const addPrice=(code,dt,cl,vol,tv)=>{if(!code||!dt||!Number.isFinite(cl))return;if(!priceBy.has(code))priceBy.set(code,new Map());const m=priceBy.get(code),old=m.get(dt);if(!old)m.set(dt,{date:dt,close:cl,volume:vol,tradingValue:tv})};
+     let minEvent=selected.map(e=>e.x.dd).sort()[0]||asOf;const startDate=(()=>{const z=new Date(minEvent+"T00:00:00Z");z.setUTCDate(z.getUTCDate()-60);return z.toISOString().slice(0,10)})();
+     let cdb=null;try{cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");const cat=execRows(cdb,"SELECT shard_key,logical_name,range_start,range_end FROM shard_catalog WHERE dataset='bars_daily' AND state IN ('ready','pilot-migrated') ORDER BY shard_key");cdb.close();cdb=null;const years=[];for(let y=Number(startDate.slice(0,4));y<=Number(asOf.slice(0,4));y++){const yf=`${y}-01-01`,yt=`${y}-12-31`,segFrom=startDate>yf?startDate:yf,segTo=asOf<yt?asOf:yt;let sh=cat.find(r=>String(r.shard_key)===`bars_${y}`);if(!sh)sh=cat.find(r=>String(r.shard_key)==="bars_recent"&&String(r.range_end||"9999-12-31")>=segFrom&&String(r.range_start||"0000-01-01")<=segTo);if(sh)years.push({segFrom,segTo,...sh})}const jq=selectedCodes.map(c=>c.length===4?c+"0":c);for(const sh of years){let db=null;try{const nm=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");for(let off=0;off<jq.length;off+=300){const chunk=jq.slice(off,off+300),ph=chunk.map(()=>"?").join(",");if(!ph)continue;for(const rr of execRows(db,`SELECT code,date,c,adj_c,volume,turnover_value,raw_json FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[sh.segFrom,sh.segTo,...chunk])){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){}const code=norm(rr.code),cl=num(o,"AdjC","AdjustmentClose","AdjClose","C","Close")??n(rr.adj_c)??n(rr.c),vol=num(o,"AdjVo","AdjustmentVolume","Vo","Volume")??n(rr.volume),tv=num(o,"Va","TurnoverValue","TradingValue","Value")??n(rr.turnover_value);addPrice(code,String(rr.date||"").slice(0,10),cl,vol,tv)}}}finally{try{if(db)db.close()}catch(_){}}}}catch(_){try{if(cdb)cdb.close()}catch(__){}}
+     let tdb=null;try{tdb=new p.OpfsSAHPoolDb("/jq_topix_v1.sqlite","r");for(const rr of execRows(tdb,"SELECT raw_json FROM topix")){let o={};try{o=JSON.parse(String(rr.raw_json||"{}"))}catch(_){}const dt=String(o.Date??o.date??"").slice(0,10),cl=num(o,"AdjC","C","Close","Value");if(dt&&dt>=startDate&&dt<=asOf&&Number.isFinite(cl))topix.set(dt,cl)}tdb.close();tdb=null}catch(_){try{if(tdb)tdb.close()}catch(__){}}
+     const topixArr=[...topix.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+     const rows=[];
+     for(const e of selected){const {code,o,q,doc}=e,ann=e.x.dd,tm=dtm(o),fy=fyEnd(o),pe=perEnd(o),series=[...(priceBy.get(code)?.values()||[])].sort((a,b)=>a.date.localeCompare(b.date));
+       const peers=(evByCode.get(code)||[]).filter(z=>z!==e),samePrior=peers.filter(z=>z.q===q&&z.x.dd<ann&&(()=>{const dd=dayDiff(pe,perEnd(z.o));return dd!=null&&dd>=330&&dd<=400})()).sort((a,b)=>b.x.dd.localeCompare(a.x.dd))[0]||null;
+       const sales=actualSales(o),op=actualOP(o),ord=actualOrd(o),np=actualNP(o),eps=actualEPS(o);
+       const out={Code:code,CompanyName:company(o),AnnouncementDate:ann,AnnouncementTime:tm,FYEnd:fy,PeriodEnd:pe,Quarter:q,DocumentType:doc,DuplicateSourceCount:e.duplicateSourceCount,Sales:sales,SalesYoY:pct(sales,samePrior?actualSales(samePrior.o):null),OperatingProfit:op,OperatingProfitYoY:pct(op,samePrior?actualOP(samePrior.o):null),OrdinaryProfit:ord,OrdinaryProfitYoY:pct(ord,samePrior?actualOrd(samePrior.o):null),NetIncome:np,NetIncomeYoY:pct(np,samePrior?actualNP(samePrior.o):null),EPS:eps,EPSYoY:pct(eps,samePrior?actualEPS(samePrior.o):null),OperatingMargin:ratio(op,sales)};
+       const sameFYEarlier=peers.filter(z=>fyEnd(z.o)===fy&&z.x.dd<ann).sort((a,b)=>a.x.dd.localeCompare(b.x.dd));const repeated=sameFYEarlier.some(z=>z.q===q&&perEnd(z.o)===pe);
+       let prevQ=null;if(q!=="1Q"){const need=q==="2Q"?"1Q":q==="3Q"?"2Q":"3Q";prevQ=sameFYEarlier.filter(z=>z.q===need).at(-1)||null}
+       let stReason="Valid",stValid=true,ss=null,sop=null,sord=null,snp=null;
+       if(repeated){stReason="NotCalculated";stValid=false}else if(q==="1Q"){stReason="Valid1Q";ss=sales;sop=op;sord=ord;snp=np}else if(!prevQ){stReason="MissingPreviousQuarter";stValid=false}else{const sub=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)?a-b:null;ss=sub(sales,actualSales(prevQ.o));sop=sub(op,actualOP(prevQ.o));sord=sub(ord,actualOrd(prevQ.o));snp=sub(np,actualNP(prevQ.o))}
+       Object.assign(out,{StandaloneCalculationValid:stValid,StandaloneCalculationReason:stReason,StandaloneSales:ss,StandaloneOperatingProfit:sop,StandaloneOrdinaryProfit:sord,StandaloneNetIncome:snp,StandaloneOperatingMargin:ratio(sop,ss)});
+       const priorStandalone=(evByCode.get(code)||[]).filter(z=>z.q===q&&z.x.dd<ann&&(()=>{const dd=dayDiff(pe,perEnd(z.o));return dd!=null&&dd>=330&&dd<=400})()).sort((a,b)=>b.x.dd.localeCompare(a.x.dd))[0]||null;
+       if(priorStandalone){let ps=actualSales(priorStandalone.o),po=actualOP(priorStandalone.o);if(q!=="1Q"){const need=q==="2Q"?"1Q":q==="3Q"?"2Q":"3Q",pfy=fyEnd(priorStandalone.o),pq=(evByCode.get(code)||[]).filter(z=>fyEnd(z.o)===pfy&&z.q===need&&z.x.dd<priorStandalone.x.dd).sort((a,b)=>a.x.dd.localeCompare(b.x.dd)).at(-1);if(pq){ps=Number.isFinite(ps)&&Number.isFinite(actualSales(pq.o))?ps-actualSales(pq.o):null;po=Number.isFinite(po)&&Number.isFinite(actualOP(pq.o))?po-actualOP(pq.o):null}else{ps=null;po=null}}out.StandaloneSalesYoY=pct(ss,ps);out.StandaloneOperatingProfitYoY=pct(sop,po)}else{out.StandaloneSalesYoY=null;out.StandaloneOperatingProfitYoY=null}
+       const fs=fSales(o),fo=fOP(o),ford=fOrd(o),fn=fNP(o),fe=fEPS(o);Object.assign(out,{ForecastSales:fs,ForecastOperatingProfit:fo,ForecastOrdinaryProfit:ford,ForecastNetIncome:fn,ForecastEPS:fe});
+       const prog=(a,f)=>{if(a==null||f==null)return [null,"Missing"];const r=ratio(a,f);if(!(f>0))return [r,"NotMeaningfulForecastNonPositive"];if(a<0)return [r,"NotMeaningfulSignMismatch"];return [r,"Meaningful"]};
+       for(const [label,a,f] of [["Sales",sales,fs],["OperatingProfit",op,fo],["OrdinaryProfit",ord,ford],["NetIncome",np,fn]]){const [v,m]=prog(a,f);out[label+"ProgressRate"]=v;out[label+"ProgressMeaningful"]=m}
+       const priorFc=(evByCode.get(code)||[]).filter(z=>fyEnd(z.o)===fy&&z.x.dd<ann&&[fOP(z.o),fSales(z.o),fOrd(z.o),fNP(z.o)].some(v=>v!=null)).sort((a,b)=>a.x.dd.localeCompare(b.x.dd)).at(-1)||null;
+       const metrics=[["OperatingProfit",fo,priorFc?fOP(priorFc.o):null],["Sales",fs,priorFc?fSales(priorFc.o):null],["OrdinaryProfit",ford,priorFc?fOrd(priorFc.o):null],["NetIncome",fn,priorFc?fNP(priorFc.o):null]];let revMetric="",revPct=null;for(const z of metrics){if(z[1]!=null&&z[2]!=null&&z[2]!==0){revMetric=z[0];revPct=pct(z[1],z[2]);break}}let revDir;if(!priorFc)revDir="NoPrior";else if(!revMetric)revDir="NotComparable";else revDir=Math.abs(revPct)<1e-12?"Unchanged":revPct>0?"Up":"Down";Object.assign(out,{ForecastRevisionDirection:revDir,ForecastRevisionPct:revPct,ForecastRevisionMetric:revMetric||null});
+       const closeTime=ann>="2024-11-05"?"15:30:00":"15:00:00",timeValid=/^\d{2}:\d{2}:\d{2}$/.test(tm),timing=timeValid&&tm<closeTime?"Intraday":"AfterClose";const dates=series.map(x=>x.date),idxOn=dates.indexOf(ann),priorIdx=dates.findLastIndex(x=>x<ann),eventIdx=timing==="Intraday"?priorIdx:(idxOn>=0?idxOn:priorIdx),reactionIdx=timing==="Intraday"?idxOn:dates.findIndex(x=>x>ann),firstPostIdx=dates.findIndex(x=>x>ann);const base=eventIdx>=0?series[eventIdx]:null;
+       Object.assign(out,{EventBaseDate:base?.date||null,EventTiming:timing,MarketCloseTime:closeTime,AnnouncementTimeValid:timeValid,ReactionTradingDate:reactionIdx>=0?series[reactionIdx]?.date:null,FirstPostTradingDate:firstPostIdx>=0?series[firstPostIdx]?.date:null});
+       const retAt=i=>base&&i>=0&&series[i]&&base.close?pct(series[i].close,base.close):null;for(const k of [5,10,20])out[`PreReturn${k}D`]=eventIdx-k>=0?retAt(eventIdx-k)*-1/(1+retAt(eventIdx-k)/100):null;
+       out.PostReturn0D=timing==="Intraday"?retAt(idxOn):null;for(const k of [1,3,5,10,20]){const i=dates.findIndex(x=>x>ann);out[`PostReturn${k}D`]=i>=0&&i+k-1<series.length?retAt(i+k-1):null}
+       if(reactionIdx>=0){const prior20=series.slice(Math.max(0,reactionIdx-20),reactionIdx),av=v=>{const a=prior20.map(x=>x[v]).filter(Number.isFinite);return a.length?a.reduce((x,y)=>x+y,0)/a.length:null},rv=series[reactionIdx];out.EarningsVolumeRatio=Number.isFinite(rv.volume)&&av("volume")?rv.volume/av("volume"):null;out.EarningsTradingValueRatio=Number.isFinite(rv.tradingValue)&&av("tradingValue")?rv.tradingValue/av("tradingValue"):null}else{out.EarningsVolumeRatio=null;out.EarningsTradingValueRatio=null}
+       const tidx=topixArr.findIndex(x=>x[0]===base?.date),tbase=tidx>=0?topixArr[tidx][1]:null,tRet=i=>Number.isFinite(tbase)&&tbase!==0&&i>=0&&topixArr[i]?pct(topixArr[i][1],tbase):null;for(const k of [5,10,20]){const v=tidx-k>=0?tRet(tidx-k):null;out[`TOPIXPreReturn${k}D`]=Number.isFinite(v)?-v/(1+v/100):null;out[`PreRelativeToTOPIX${k}D`]=Number.isFinite(out[`PreReturn${k}D`])&&Number.isFinite(out[`TOPIXPreReturn${k}D`])?out[`PreReturn${k}D`]-out[`TOPIXPreReturn${k}D`]:null}
+       const topPostIndex=k=>{const first=topixArr.findIndex(x=>x[0]>ann);return first>=0?first+k-1:-1};out.TOPIXPostReturn0D=timing==="Intraday"&&tidx+1<topixArr.length&&topixArr[tidx+1]?.[0]===ann?tRet(tidx+1):null;for(const k of [1,3,5,10,20])out[`TOPIXPostReturn${k}D`]=tRet(topPostIndex(k));out.PostRelativeToTOPIX0D=Number.isFinite(out.PostReturn0D)&&Number.isFinite(out.TOPIXPostReturn0D)?out.PostReturn0D-out.TOPIXPostReturn0D:null;for(const k of [1,3,5,10,20])out[`PostRelativeToTOPIX${k}D`]=Number.isFinite(out[`PostReturn${k}D`])&&Number.isFinite(out[`TOPIXPostReturn${k}D`])?out[`PostReturn${k}D`]-out[`TOPIXPostReturn${k}D`]:null;
+       rows.push(out)
+     }
+     rows.sort((a,b)=>(a.Code+"|"+a.AnnouncementDate+"|"+(a.AnnouncementTime||"")).localeCompare(b.Code+"|"+b.AnnouncementDate+"|"+(b.AnnouncementTime||"")));self.postMessage({ok:true,type:"result",rows,count:rows.length,codes:new Set(rows.map(x=>x.Code)).size,asOf,engineVersion:"WebNativeV1"});return;
+   }catch(err){try{if(fdb)fdb.close()}catch(_){}throw err}
+ }
  if(cmd==="financial-normalize-latest"){
    let db=null;
    try{

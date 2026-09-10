@@ -1,3 +1,13 @@
+# v7e-beta4 Earnings Intelligence (2026-09-10)
+
+- Web Screening Share now generates `candidate_earnings_history.csv` natively from the canonical Financial Summary, daily-price, and TOPIX DataLake.
+- Reconstructs up to the latest 12 earnings events per Screening candidate with cumulative/standalone quarter metrics, YoY, forecast progress/revision, announcement timing, pre/post returns, volume/trading-value reaction, and TOPIX-relative returns.
+- Web Screening Share now generates `management_guidance_summary.csv` from up to 10 observed fiscal years per candidate.
+- Guidance bias uses earliest available current-fiscal-year guidance versus actual results; bias thresholds and dispersion were checked against PC reference outputs. Confidence is explicitly versioned `WebNativeV1` and is not claimed as byte-for-byte PC parity.
+- Management-guidance fields are merged into `screening_candidates.csv` / `screening_ai.csv` for direct AI consumption.
+- Screening manifest now reports earnings/guidance coverage and engine versions. No destructive DataLake migration.
+- Keeps beta3 canonical earnings-date DataLake, NextEarnings integration, resumable one-time migration, and JST trade-date behavior unchanged.
+
 # v7e-beta3 Daily Completeness (2026-09-10)
 
 - Added canonical `/fins/earnings-date` DataLake (`jq_earnings_date_v2.sqlite`) with stable content identity.

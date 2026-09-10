@@ -209,6 +209,11 @@
       "version": "v7e-beta3",
       "date": "2026-09-10",
       "summary": "Daily Completeness: canonical fins/earnings-date history, resumable migration, NextEarnings integration, and JST trade-date separation."
+    },
+    {
+      "version": "v7e-beta4",
+      "date": "2026-09-10",
+      "summary": "Earnings Intelligence: Web-native candidate earnings history and management-guidance summary in Screening Share; guidance confidence remains explicitly versioned WebNativeV1 pending wider parity validation."
     }
   ]
 }
