@@ -204,6 +204,11 @@
       "version": "v7e-alpha104",
       "date": "2026-09-08",
       "summary": "AI Share Stage 2 DQ: fix J-Quants API v2 market short-ratio field mapping and add value-level fail-closed invariant."
+    },
+    {
+      "version": "v7e-beta3",
+      "date": "2026-09-10",
+      "summary": "Daily Completeness: canonical fins/earnings-date history, resumable migration, NextEarnings integration, and JST trade-date separation."
     }
   ]
 }

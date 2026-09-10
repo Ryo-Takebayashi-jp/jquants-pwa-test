@@ -177,6 +177,18 @@ Safariが複数ダウンロードを止める場合は、下の選択式で1フ�
 
 </section><section class="card app-managed-card" id="simpleOpsCard">
 <h2>J-Quants DataLake</h2>
+<div class="maintenance-sub" id="initialDataBuildBlock"><h3>初期データ構築（新規環境）</h3>
+<p class="desc">新しい環境では、初期データ構築の一部として全銘柄の決算発表予定日履歴もDataLakeへ保存します。既存環境では通常の日次更新で差分だけ更新します。</p>
+<div class="result" id="initialDataBuildStatus">決算予定日履歴: 状態確認前</div>
+</div>
+<div class="maintenance-sub" id="earningsDateMigrationBlock"><h3>今回だけ：決算予定日履歴の移行</h3>
+<p class="desc">beta3移行用の一時機能です。全銘柄の利用可能な決算予定日履歴を公表日ベースで取得し、canonical DataLakeを構築します。完了確認後、この操作UIだけ次版で削除します。</p>
+<label>取得開始日 <input id="earningsDateBackfillFrom" type="date" value="2016-09-10"/></label>
+<label>取得終了日 <input id="earningsDateBackfillTo" type="date"/></label>
+<button id="earningsDateBackfillBtn">決算予定日履歴だけ初期取得</button>
+<button class="secondary" id="earningsDateBackfillResumeBtn">中断地点から再開</button>
+<div class="result" id="earningsDateBackfillResult">未実行</div>
+</div>
 <p><b>普段はここだけ使えばOKです。</b></p>
 <label>J-Quants V2 APIキー（セッションのみ）</label>
 <input autocomplete="off" id="simpleGapToken" placeholder="APIキー" type="password"/>
@@ -205,7 +217,7 @@ Safariが複数ダウンロードを止める場合は、下の選択式で1フ�
 <button class="secondary" id="writeGateBtn">③ 1行だけ書込み経路確認</button>
 <div class="result" id="writeGateResult">未実行</div>
 </section><section class="card production-card app-managed-card" id="bootCard">
-<h2>v7e-beta2 起動確認</h2>
+<h2>v7e-beta3 起動確認</h2>
 <div class="result pass" id="appBootStatus">JavaScript起動: PASS（ボタンが反応すれば正常）</div>
 <div class="result" id="dateEngineStatus">日付エンジン確認中…</div>
 </section></section></div><script>
@@ -216,10 +228,11 @@ Safariが複数ダウンロードを止める場合は、下の選択式で1フ�
     for(const p of document.querySelectorAll('.app-page'))p.classList.toggle('active',p.id==='page-'+name);
     for(const b of nav.querySelectorAll('button[data-page]'))b.classList.toggle('active',b.dataset.page===name);
     try{sessionStorage.setItem('jq-active-page',name)}catch(_){}
+    try{window.dispatchEvent(new CustomEvent('jq:page-activate',{detail:{page:name}}))}catch(_){}
   };
   nav.addEventListener('click',e=>{const b=e.target.closest('button[data-page]');if(b)activate(b.dataset.page)});
   let initial='daily';
   try{const x=sessionStorage.getItem('jq-active-page');if(['daily','stocks','watchlist','settings'].includes(x))initial=x}catch(_){}
   activate(initial);
 })();
-</script><script src="./app.js?v=v7e-beta2-cleanup"></script></body></html>
+</script><script src="./app.js?v=v7e-beta3-daily-completeness"></script></body></html>

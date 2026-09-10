@@ -1,3 +1,14 @@
+# v7e-beta3 Daily Completeness (2026-09-10)
+
+- Added canonical `/fins/earnings-date` DataLake (`jq_earnings_date_v2.sqlite`) with stable content identity.
+- Added resumable one-time migration UI for the existing environment to backfill all available earnings-schedule publication history. The migration UI is temporary; the DataLake is permanent.
+- Initial-data design now treats earnings-date history as a standard initial-build dataset rather than a standalone permanent tool.
+- Daily Pipeline now writes `/fins/earnings-date` instead of the legacy next-business-day `/equities/earnings-calendar`.
+- Added as-of-safe NextEarningsDate resolution (latest publication <= analysis as-of) and Portfolio / Screening enrichment. Existing Watchlist catalyst logic can consume DaysToNextEarnings.
+- Trade-date default is now explicit JST calendar today, independent of market DataLake as-of. Manual historical date edits are preserved while the page remains open.
+- Legacy `jq_earnings_calendar_v1.sqlite` is left untouched for audit but is no longer the canonical source.
+- Beta1 Data Quality canonicalization and beta2 memo/UI cleanup remain unchanged.
+
 # v7e-beta2 cleanup — Legacy UI Dependency Cleanup (2026-09-10)
 
 - Physically removed the legacy test/parity/detail UI markup from the production document instead of hiding it with CSS.

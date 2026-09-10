@@ -1752,6 +1752,26 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){try{if(db)db.close()}catch(_){} throw err}
  }
 
+ if(cmd==="earnings-date-write"){
+   const payload=d.payload||{},rows=payload.rows||[];let db=null;
+   const normDate=v=>{const x=String(v??"").trim();if(/^\d{8}$/.test(x))return `${x.slice(0,4)}-${x.slice(4,6)}-${x.slice(6,8)}`;return x.slice(0,10)};
+   const normCode=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
+   try{
+     db=new p.OpfsSAHPoolDb("/jq_earnings_date_v2.sqlite","c");
+     db.exec(`CREATE TABLE IF NOT EXISTS earnings_date(row_key TEXT PRIMARY KEY,pub_date TEXT NOT NULL,scheduled_date TEXT,code TEXT NOT NULL,fq_name TEXT,fy_end TEXT,company_name TEXT,company_name_en TEXT,raw_json TEXT NOT NULL) WITHOUT ROWID`);
+     db.exec("CREATE INDEX IF NOT EXISTS idx_earnings_date_pub ON earnings_date(pub_date)");db.exec("CREATE INDEX IF NOT EXISTS idx_earnings_date_code ON earnings_date(code)");db.exec("CREATE INDEX IF NOT EXISTS idx_earnings_date_sch ON earnings_date(scheduled_date)");
+     const st=db.prepare("INSERT OR REPLACE INTO earnings_date(row_key,pub_date,scheduled_date,code,fq_name,fy_end,company_name,company_name_en,raw_json) VALUES(?,?,?,?,?,?,?,?,?)");let written=0;
+     db.exec("BEGIN");try{for(const r of rows){const pub=normDate(r.PubDate??r.pub_date??r.Date),sch=normDate(r.SchDate??r.scheduled_date),code=normCode(r.Code??r.code),fq=String(r.FQName??r.fq_name??""),fy=normDate(r.FYE??r.fy_end),cn=String(r.CoName??r.company_name??""),en=String(r.CoNameEn??r.company_name_en??"");if(!pub||!code)continue;const key=[pub,sch,code,fq,fy].join("|");st.bind([key,pub,sch||null,code,fq||null,fy||null,cn||null,en||null,JSON.stringify(r)]).stepReset();written++}db.exec("COMMIT")}catch(e){try{db.exec("ROLLBACK")}catch(_){}throw e}finally{st.finalize()}
+     const out={written,total:Number(scalar(db,"SELECT count(*) FROM earnings_date")||0),minPubDate:scalar(db,"SELECT min(pub_date) FROM earnings_date"),maxPubDate:scalar(db,"SELECT max(pub_date) FROM earnings_date"),codes:Number(scalar(db,"SELECT count(DISTINCT code) FROM earnings_date")||0),quickCheck:scalar(db,"PRAGMA quick_check"),dbName:"/jq_earnings_date_v2.sqlite"};db.close();db=null;self.postMessage({ok:true,type:"result",...out});return;
+   }catch(e){try{if(db)db.close()}catch(_){}throw e}
+ }
+ if(cmd==="earnings-date-status"){
+   let db=null;try{db=new p.OpfsSAHPoolDb("/jq_earnings_date_v2.sqlite","r");const out={total:Number(scalar(db,"SELECT count(*) FROM earnings_date")||0),minPubDate:scalar(db,"SELECT min(pub_date) FROM earnings_date"),maxPubDate:scalar(db,"SELECT max(pub_date) FROM earnings_date"),codes:Number(scalar(db,"SELECT count(DISTINCT code) FROM earnings_date")||0),quickCheck:scalar(db,"PRAGMA quick_check")};db.close();self.postMessage({ok:true,type:"result",...out});return}catch(e){try{if(db)db.close()}catch(_){}self.postMessage({ok:true,type:"result",total:0,codes:0,minPubDate:null,maxPubDate:null,quickCheck:"missing"});return}
+ }
+ if(cmd==="earnings-date-next"){
+   const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10),codes=(payload.codes||[]).map(x=>{let c=String(x??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean),wanted=new Set(codes);let db=null;
+   try{db=new p.OpfsSAHPoolDb("/jq_earnings_date_v2.sqlite","r");const rs=execRows(db,"SELECT pub_date,scheduled_date,code,fq_name,fy_end,company_name FROM earnings_date WHERE pub_date<=? ORDER BY pub_date",[asOf]);db.close();db=null;const latest=new Map();for(const r of rs){if(wanted.size&&!wanted.has(String(r.code)))continue;const ev=[r.code,r.fq_name||"",r.fy_end||""].join("|");latest.set(ev,r)}const byCode=new Map();for(const r of latest.values()){const sch=String(r.scheduled_date||"").slice(0,10);if(!sch||sch<asOf)continue;const old=byCode.get(String(r.code));if(!old||sch<String(old.scheduled_date))byCode.set(String(r.code),r)}const dayDiff=(a,b)=>Math.round((Date.parse(a+"T00:00:00Z")-Date.parse(b+"T00:00:00Z"))/86400000);const rows=[...byCode.values()].map(r=>({Code:String(r.code),NextEarningsDate:String(r.scheduled_date).slice(0,10),DaysToEarnings:dayDiff(String(r.scheduled_date).slice(0,10),asOf),DaysToNextEarnings:dayDiff(String(r.scheduled_date).slice(0,10),asOf),EarningsFQName:r.fq_name||null,EarningsFYEnd:r.fy_end||null,EarningsSchedulePubDate:r.pub_date||null}));self.postMessage({ok:true,type:"result",rows,count:rows.length,asOf});return}catch(e){try{if(db)db.close()}catch(_){}self.postMessage({ok:true,type:"result",rows:[],count:0,asOf,error:String(e?.message||e)});return}
+ }
  if(cmd==="fins-summary-covered-dates"){
    let db=null;try{db=new p.OpfsSAHPoolDb("/jq_fins_summary_v1.sqlite","r");const rows=execRows(db,"SELECT DISTINCT data_date FROM fins_summary ORDER BY data_date");db.close();db=null;self.postMessage({ok:true,type:"result",dates:rows.map(x=>String(x.data_date))});return}catch(e){try{if(db)db.close()}catch(_){}self.postMessage({ok:true,type:"result",dates:[]});return}
  }
