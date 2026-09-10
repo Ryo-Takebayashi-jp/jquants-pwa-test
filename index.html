@@ -3,7 +3,7 @@
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#08111f" name="theme-color"/>
 <link href="./manifest.webmanifest" rel="manifest"/>
-<title>J-Quants Local-first PWA v7e-beta5</title>
+<title>J-Quants Local-first PWA v7e-beta6</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -28,7 +28,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 .watch-import-box{border:1px solid #dbeafe;background:#eff6ff;border-radius:12px;padding:12px;margin:10px 0 12px}.watch-import-box label{font-weight:700}.price-date{font-size:11px;color:#6b7280;margin-top:3px}
 .trade-form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;row-gap:7px;align-items:start}.trade-form-grid>label{margin:0!important;padding:0!important;min-width:0;display:flex;flex-direction:column;justify-content:flex-start;gap:3px;line-height:1.2}.trade-form-grid input,.trade-form-grid select{box-sizing:border-box;max-width:100%;margin:0!important}.watch-badges{display:flex;gap:5px;flex-wrap:wrap;margin:5px 0}.watch-badge{display:inline-block;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:800;background:#e5e7eb}.watch-badge.active{background:#dcfce7;color:#166534}.watch-badge.inactive{background:#f3f4f6;color:#6b7280}.watch-badge.status{background:#dbeafe;color:#1e40af}
 </style>
-</head><body><header><h1>J-Quants Local-first PWA v7e-beta5</h1><p>Web-first日常運用・保有管理・Watchlist・バックアップを1つに統合したLocal-first投資アプリ。</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
+</head><body><header><h1>J-Quants Local-first PWA v7e-beta6</h1><p>Web-first日常運用・保有管理・Watchlist・バックアップを1つに統合したLocal-first投資アプリ。</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
 <button class="active" data-page="daily" type="button">日々分析</button>
 <button data-page="stocks" type="button">銘柄・売買</button>
 <button data-page="watchlist" type="button">ウォッチリスト</button>
@@ -132,9 +132,9 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <div class="maintenance-sub" id="watchlistDailyAlertOps"><h3>日次再評価アラート</h3><p class="desc">日次運用で作成したWatchlist再評価Previewをここに表示します。内容確認後、必要なら判定を確定します。</p><button disabled="" id="watchlistAlertCommitBtn">この再評価判定を確定・保存</button><pre class="result" id="watchlistAlertResult">日次運用後に表示されます</pre><div id="watchlistAlertTable"></div></div><p class="desc">CLOSEはActive/ReviewDueのWatchlistを終了します。Discovery Episode履歴は削除しません。TRACK_ONLYにはWatchlistがないためCLOSE対象外です。誤操作防止のため必ずPreview → Commitの2段階です。</p>
 </section></section><section class="app-page" id="page-settings"><h2 class="page-title">設定・保守</h2><p class="page-lead">通常は「データ期間管理」「取り込み」「バックアップ保存」の3つだけ使います。異常時だけ下部のトラブル診断を開いてください。</p>
 <section class="card app-managed-card" id="dataPeriodCard">
-<h2>データ期間管理</h2>
-<p class="desc">初期構築と欠損補完を同じ画面で行います。指定期間を読み取り専用で確認し、不足しているデータだけを一括取得します。</p>
-<label>J-Quants V2 APIキー（セッションのみ）</label><input autocomplete="off" id="simpleGapToken" placeholder="APIキー" type="password"/>
+<h2>① データ構築・補完</h2>
+<p class="desc">初期構築と欠損補完をここに統合します。開始日・終了日を指定し、不足チェック後に不足分だけ一括取得します。</p>
+<label>J-Quants V2 APIキー（全機能共通・セッションのみ）</label><input autocomplete="off" id="simpleGapToken" placeholder="APIキー" type="password"/><div class="result" id="dataPeriodTokenStatus">未入力</div>
 <div style="display:flex;gap:10px;flex-wrap:wrap"><div><label>取得開始日</label><input id="dataPeriodFrom" type="date" value="2021-09-10"/></div><div><label>取得終了日</label><input id="dataPeriodTo" type="date"/></div></div>
 <button id="dataPeriodCheckBtn">① 不足チェック</button>
 <div class="result" id="dataPeriodCheckResult">未実行</div>
@@ -143,7 +143,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <p class="desc">日足・財務・決算予定日・TOPIX・営業日カレンダー・需給5種・銘柄マスターを同じ期間管理の対象として扱います。取得済み範囲は可能な限り再取得しません。</p>
 </section>
 <section class="card app-managed-card" id="importCard">
-<h2>取り込み</h2>
+<h2>② データ取り込み</h2>
 <h3>ユーザーデータZIP</h3><p class="desc">Portfolio / Watchlist / Discovery / Investment Tracking / 売買履歴・VOID履歴などを引き継ぎます。</p>
 <label>ユーザーデータZIP <input accept=".zip,application/zip" id="userRestoreZipFile" type="file"/></label>
 <button class="secondary" id="userRestoreZipBtn">内容を確認して取り込む</button><div class="result" id="userRestoreResult">未実行</div>
@@ -153,7 +153,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <button class="secondary" id="shardRestoreAuditBtn">取り込み後の全DBを監査</button><div class="result" id="shardRestoreAuditResult">未実行</div>
 </section>
 <section class="card app-managed-card" id="backupCard">
-<h2>バックアップ保存</h2>
+<h2>③ バックアップ保存</h2>
 <div class="notice"><b>おすすめ:</b> 普段はユーザーデータZIP、端末移行・災害対策ではフルDataLakeバックアップも保存します。APIキーは含みません。</div>
 <h3>ユーザーデータ</h3><div class="backup-actions"><button id="userBackupZipBtn">ユーザーデータZIPを作成</button><button class="secondary" disabled="" id="userBackupDownloadBtn">生成済みZIPをダウンロード</button></div><div class="result" id="userBackupResult">未実行</div>
 <div class="maintenance-sub"><h3>フルDataLake</h3></div><p class="desc">SAH Pool内だけのコピーではなく、iPhoneのFilesなどブラウザ外へ保存する正式バックアップです。</p>
@@ -162,7 +162,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <button disabled="" id="shardBackupAllBtn">③ 全DBを順番に外部保存</button><div class="result" id="shardBackupAllResult">未実行</div>
 <select id="shardBackupSelect" style="width:100%;padding:10px;margin:8px 0"></select><button disabled="" id="shardBackupOneBtn">選択DBを1ファイル保存</button><div class="result" id="shardBackupOneResult">未実行</div>
 </section>
-<details class="card app-managed-card" id="troubleDiagnosticCard"><summary><strong>トラブル診断（異常時のみ）</strong></summary>
+<details class="card app-managed-card" id="troubleDiagnosticCard"><summary><strong>④ トラブル診断（異常時のみ）</strong></summary>
 <p class="desc">先に完全read-only診断を行います。DBの作成・修復・削除は行いません。容量不足、論理SAH Poolと物理OPFSの不一致、Storage identity異常を切り分けます。</p>
 <div class="result" id="storageIdentity">Storage identity: origin=<span id="storageOriginText"></span> / pool=jq-sahpool / directory=.jq-sahpool-v7c-r5</div>
 <button id="opfsPhysicalDiagBtn">① 物理OPFS・容量をread-only確認</button><div class="result" id="opfsPhysicalDiagResult">未実行</div><br/>
@@ -186,4 +186,4 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   try{const x=sessionStorage.getItem('jq-active-page');if(['daily','stocks','watchlist','settings'].includes(x))initial=x}catch(_){}
   activate(initial);
 })();
-</script><script src="./app.js?v=v7e-beta5"></script></body></html>
+</script><script src="./app.js?v=v7e-beta6"></script></body></html>

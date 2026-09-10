@@ -1,3 +1,11 @@
+# v7e-beta6 — Settings token canonicalization / preflight
+
+- J-Quants APIキーをセッション内で1本のcanonical値へ統一。日々分析と設定・保守の2つの可視入力は双方向同期し、旧/非表示入力はcanonicalからのミラー専用に変更。
+- 古いhidden tokenが新しい入力より優先される経路を廃止。
+- 「不足分を一括取り込み」は書き込み開始前に、入力中の同じAPIキーでJ-Quants V2へ軽量preflightを実施。401/403は本処理開始前に明示停止。
+- 設定・保守を ①データ構築・補完 → ②データ取り込み → ③バックアップ保存 → ④トラブル診断 の順に整理。
+- ヘッダー / app / Worker query / Service Worker cacheを v7e-beta6 に統一。
+
 # v7e-beta5 — Settings Simplification / Recovery Diagnostics
 
 - 設定・保守を「データ期間管理 / 取り込み / バックアップ保存」の3機能へ再編。

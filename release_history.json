@@ -220,5 +220,10 @@
     "version": "v7e-beta5",
     "date": "2026-09-10",
     "summary": "Settings simplification, read-only OPFS recovery diagnostics, unified data period management."
+  },
+  "v7e-beta6": {
+    "version": "v7e-beta6",
+    "date": "2026-09-10",
+    "summary": "Canonical single-session J-Quants token, preflight auth validation, and ordered Settings/Maintenance UI."
   }
 }
