@@ -1,4 +1,4 @@
-# v7e-beta7 — Fresh install builder / collapsible Settings
+# v7e-beta8 — Fresh install builder / collapsible Settings
 
 - DataLakeが存在しない完全初期状態でも、期間管理から年別日足Shardを直接作成できるよう修正。
 - 日足0件日を年別Shardの `web_no_data_dates` に記録し、再監査で同じ休場日を不足扱いし続けない。
