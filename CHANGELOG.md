@@ -1,4 +1,4 @@
-# v7e-beta8 — Fresh install builder / collapsible Settings
+# v7e-beta9 — Fresh install builder / collapsible Settings
 
 - DataLakeが存在しない完全初期状態でも、期間管理から年別日足Shardを直接作成できるよう修正。
 - 日足0件日を年別Shardの `web_no_data_dates` に記録し、再監査で同じ休場日を不足扱いし続けない。
@@ -445,3 +445,9 @@
 - Fixed legacy/test/detail UI still rendering outside the production app shell on all tabs.
 - Direct body legacy cards/details/notices/main blocks are now hidden before JavaScript runs; production cards are relocated into their intended tabs and remain visible.
 - No DataLake, canonicalization, portfolio/trade memo semantics, Screening, or private DB logic changed.
+
+## v7e-beta9 — Full Reset + Data Glossary
+- ④トラブル診断にデータ種別の簡潔な説明を追加。
+- 「完全初期化」と入力＋最終confirmの二重確認で、ローカルデータ完全初期化を追加。
+- 完全初期化対象: OPFS/SAH Pool, IndexedDB, Cache Storage, local/session settings。ユーザーデータは事前バックアップ必須。
+- 初期化後は容量再診断→バックアップ復元→quick_check→不足チェックの災害復旧フローを想定。
