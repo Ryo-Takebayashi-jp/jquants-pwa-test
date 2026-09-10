@@ -451,3 +451,9 @@
 - 「完全初期化」と入力＋最終confirmの二重確認で、ローカルデータ完全初期化を追加。
 - 完全初期化対象: OPFS/SAH Pool, IndexedDB, Cache Storage, local/session settings。ユーザーデータは事前バックアップ必須。
 - 初期化後は容量再診断→バックアップ復元→quick_check→不足チェックの災害復旧フローを想定。
+
+## v7e-beta10
+- 完全初期化のOPFS削除をトップレベル一括削除から、子要素を先に消すbottom-up再帰削除へ変更。
+- SQLite Worker終了後にSafariのSyncAccessHandle解放待ちを追加し、削除を複数回retry。
+- 初期化直後にOPFSトップレベルを再列挙し、残存0件でなければPASSにしない。
+- 配布ZIPから開発用 `*work` ディレクトリを除外。

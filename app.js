@@ -3715,19 +3715,30 @@ ${idbLines}\
 };
 
 
-// v7e-beta9: destructive local reset, guarded by exact confirmation phrase.
+// v7e-beta10: destructive local reset with bottom-up OPFS deletion and physical verification.
+async function jqRemoveDirectoryContents(handle,path=""){
+  const deleted=[],failed=[]; const entries=[];
+  try{for await(const [name,h] of handle.entries())entries.push([name,h])}
+  catch(e){if(typeof handle.values==="function")for await(const h of handle.values())entries.push([h.name,h]);else throw e}
+  for(const [name,h] of entries){const pth=path?`${path}/${name}`:name;
+    if(h.kind==="directory"){
+      try{const r=await jqRemoveDirectoryContents(h,pth);deleted.push(...r.deleted);failed.push(...r.failed)}catch(e){failed.push({name:pth,error:String(e?.message||e)})}
+    }
+    let ok=false,last="";
+    for(let attempt=0;attempt<4&&!ok;attempt++){
+      try{await handle.removeEntry(name,{recursive:true});deleted.push(pth);ok=true}
+      catch(e){last=String(e?.message||e);await new Promise(r=>setTimeout(r,250*(attempt+1)))}
+    }
+    if(!ok)failed.push({name:pth,error:last||"remove failed"});
+  }
+  return {deleted,failed};
+}
 async function jqDeleteAllOpfsEntries(){
-  if(!navigator.storage?.getDirectory)return {supported:false,deleted:[],failed:[]};
-  const root=await navigator.storage.getDirectory(), deleted=[], failed=[];
-  const names=[];
-  try{for await(const [name] of root.entries())names.push(name)}catch(e){
-    if(typeof root.values==='function')for await(const h of root.values())names.push(h.name);
-    else throw e;
-  }
-  for(const name of names){
-    try{await root.removeEntry(name,{recursive:true});deleted.push(name)}catch(e){failed.push({name,error:String(e?.message||e)})}
-  }
-  return {supported:true,deleted,failed};
+  if(!navigator.storage?.getDirectory)return {supported:false,deleted:[],failed:[],remaining:[]};
+  const root=await navigator.storage.getDirectory();
+  const r=await jqRemoveDirectoryContents(root,"");
+  const remaining=[];try{for await(const [name] of root.entries())remaining.push(name)}catch(_){ }
+  return {supported:true,...r,remaining};
 }
 async function jqDeleteAllIndexedDb(){
   const out={deleted:[],failed:[],supported:!!indexedDB};
@@ -3751,14 +3762,19 @@ if($("fullLocalResetBtn")) $("fullLocalResetBtn").onclick=async()=>{
     try{jqWorker?.terminate?.()}catch(_){ }
     jqWorker=null;
     const before=await navigator.storage?.estimate?.()||{};
+    // Give Safari a moment to release OPFS SyncAccessHandles after terminating the SQLite worker.
+    await new Promise(r=>setTimeout(r,800));
     const opfs=await jqDeleteAllOpfsEntries();
     const idb=await jqDeleteAllIndexedDb();
     const cache=await jqDeleteAllCaches();
     try{localStorage.clear()}catch(_){ }
     try{sessionStorage.clear()}catch(_){ }
+    await new Promise(r=>setTimeout(r,700));
     const after=await navigator.storage?.estimate?.()||{};
+    const remaining=opfs.remaining||[];
     const failures=[...(opfs.failed||[]),...(idb.failed||[]),...(cache.failed||[])];
-    box(id,failures.length?"fail":"pass",`${failures.length?"WARN":"PASS"}\nローカルデータ完全初期化が完了しました。\nOPFS削除: ${opfs.deleted?.length||0}件 / 失敗 ${opfs.failed?.length||0}件\nIndexedDB削除: ${idb.deleted?.length||0}件 / 失敗 ${idb.failed?.length||0}件\nCache削除: ${cache.deleted?.length||0}件 / 失敗 ${cache.failed?.length||0}件\nOrigin使用量: ${jqFmtBytes(before.usage||0)} → ${jqFmtBytes(after.usage||0)}\n\n次にページを再読み込みし、④診断で容量を確認してから②データ取り込みでバックアップを復元してください。${failures.length?"\n\n削除失敗があるため、再読み込み後に④診断結果を確認してください。":""}`);
+    const physicalOk=remaining.length===0;
+    box(id,(!physicalOk||failures.length)?"fail":"pass",`${physicalOk&&!failures.length?"PASS":"WARN"}\nローカルデータ完全初期化を実行しました。\nOPFS削除: ${opfs.deleted?.length||0}件 / 失敗 ${opfs.failed?.length||0}件\nOPFS残存トップレベル: ${remaining.length}${remaining.length?` (${remaining.join(", ")})`:""}\nIndexedDB削除: ${idb.deleted?.length||0}件 / 失敗 ${idb.failed?.length||0}件\nCache削除: ${cache.deleted?.length||0}件 / 失敗 ${cache.failed?.length||0}件\nOrigin使用量: ${jqFmtBytes(before.usage||0)} → ${jqFmtBytes(after.usage||0)}\n\n${physicalOk?"OPFSは空になりました。":"OPFSに残存があります。PASS扱いにしていません。"}\nページを再読み込みし、④の物理OPFS診断で .jq-sahpool-v7c-r5 が NOT FOUND になったことを確認してください。`);
     $("fullResetConfirmText").value="";
   }catch(e){box(id,"fail","完全初期化 FAIL\n"+(e?.message||e)+"\n\n追加の削除操作はせず、④診断結果を確認してください。")}
   finally{btn.disabled=false}
