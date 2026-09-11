@@ -1,3 +1,9 @@
+# v8-beta3 (2026-09-12)
+- Two-row navigation: Daily / Trades / Screening / Watchlist; Settings / Manual / Development History.
+- Added read-only Canonical Screening condition visualization; no screening scoring or selection semantics changed.
+- Added in-app manual and release-history viewer.
+- Watchlist ATTENTION badge moved first and rendered red as 「⚠ 要注意」.
+
 # v8-beta2 — Recovery-tested Web-first baseline (2026-09-11)
 
 - v7e-beta10 から v8 系へ昇格。ヘッダー / app / Worker query / Service Worker cache / manifest / release metadata を v8-beta2 に統一。

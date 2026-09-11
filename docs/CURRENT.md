@@ -1,9 +1,8 @@
 # Current Web/PWA Release
 
-- Version: `v7e-beta2`
-- Role: Beta 1 — Data Quality Canonicalization
-- Canonical baseline: Web-first local DataLake + Portfolio/Watchlist/AI Share
-- Promotion source: `v7e-alpha114` final alpha gate PASS on 2026-09-09.
-- Beta1 scope: Portfolio master-field repair, canonical price shard resolution, history duplicate suppression at export, stable raw row identity, and AI Share DQ audit counts.
-- No destructive DataLake migration.
-- Daily-use UI: 日々分析 / 銘柄・売買 / ウォッチリスト / 設定・保守.
+- Version: `v8-beta3`
+- Role: UI/navigation organization + read-only Screening visibility.
+- Canonical Screening calculation semantics: unchanged from v8-beta2.
+- Main navigation: top row Daily / Trades / Screening / Watchlist; second row Settings / Manual / Development History.
+- Watchlist ATTENTION is shown first as a red `⚠ 要注意` badge; it remains a re-evaluation trigger, not an automatic buy/sell signal.
+- Settings/Maintenance recovery, backup, full reset and diagnostics remain available.

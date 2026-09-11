@@ -3,7 +3,7 @@
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#08111f" name="theme-color"/>
 <link href="./manifest.webmanifest" rel="manifest"/>
-<title>J-Quants Local-first PWA v8-beta2</title>
+<title>J-Quants Local-first PWA v8-beta3</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -19,7 +19,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 .inv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:9px;margin-top:10px}.inv-item{border:1px solid #e5e7eb;border-radius:12px;padding:11px;background:#fafafa}.inv-title{font-weight:800;font-size:14px;margin-bottom:6px}.inv-meta{font-size:12px;line-height:1.55;color:#374151}.inv-actions{margin-top:8px;display:flex;gap:6px}.inv-actions button{width:auto;padding:7px 12px;font-size:12px}.portfolio-row{border:1px solid #e5e7eb;border-radius:12px;padding:11px;margin-top:8px;background:#fafafa}.portfolio-title{font-weight:800}.portfolio-meta{font-size:12px;color:#374151;line-height:1.55;margin-top:4px}
 
 /* alpha105 production navigation */
-.app-nav{position:sticky;top:0;z-index:50;display:flex;gap:6px;overflow-x:auto;padding:9px 10px;background:rgba(8,17,31,.96);-webkit-overflow-scrolling:touch}.app-nav button{width:auto;min-width:max-content;padding:9px 12px;border-radius:10px;background:#1f2937;font-size:13px}.app-nav button.active{background:#fff;color:#08111f}.app-shell{max-width:850px;margin:auto;padding:14px 16px 28px}.app-page{display:none}.app-page.active{display:block}.page-title{margin:3px 2px 12px;font-size:20px}.page-lead{font-size:13px;color:#4b5563;line-height:1.6;margin:-5px 2px 14px}.legacy-ui-hidden{display:none!important}.compact-note{font-size:12px;color:#6b7280;line-height:1.55}.backup-actions{display:grid;grid-template-columns:1fr;gap:8px;margin:10px 0 14px}.pf-void-inline{margin:7px 0 4px;padding:9px;border:1px solid #f59e0b;border-radius:10px;background:#fffbeb;min-width:230px}.pf-void-inline .row{display:flex;gap:6px;margin-top:7px}.pf-void-inline button{width:auto;padding:7px 10px;font-size:12px}.maintenance-sub{border-top:1px solid #e5e7eb;margin-top:16px;padding-top:14px}@media(min-width:700px){.backup-actions{grid-template-columns:1fr 1fr}}
+ .app-nav{position:sticky;top:0;z-index:50;padding:8px 10px;background:rgba(8,17,31,.96)}.app-nav-row{display:grid;gap:6px}.app-nav-row.primary{grid-template-columns:repeat(4,minmax(0,1fr))}.app-nav-row.secondary-row{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:6px}.app-nav button{width:100%;min-width:0;padding:9px 5px;border-radius:10px;background:#1f2937;font-size:12px;white-space:nowrap}.app-nav button.active{background:#fff;color:#08111f}@media(min-width:700px){.app-nav button{font-size:13px;padding:9px 10px}}.app-shell{max-width:850px;margin:auto;padding:14px 16px 28px}.app-page{display:none}.app-page.active{display:block}.page-title{margin:3px 2px 12px;font-size:20px}.page-lead{font-size:13px;color:#4b5563;line-height:1.6;margin:-5px 2px 14px}.legacy-ui-hidden{display:none!important}.compact-note{font-size:12px;color:#6b7280;line-height:1.55}.backup-actions{display:grid;grid-template-columns:1fr;gap:8px;margin:10px 0 14px}.pf-void-inline{margin:7px 0 4px;padding:9px;border:1px solid #f59e0b;border-radius:10px;background:#fffbeb;min-width:230px}.pf-void-inline .row{display:flex;gap:6px;margin-top:7px}.pf-void-inline button{width:auto;padding:7px 10px;font-size:12px}.maintenance-sub{border-top:1px solid #e5e7eb;margin-top:16px;padding-top:14px}@media(min-width:700px){.backup-actions{grid-template-columns:1fr 1fr}}
 
 /* alpha109 beta-candidate hotfix refinement */
 .trade-identity-row{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;align-items:start}.trade-identity-row label{margin:0!important;padding:0!important;min-width:0;display:flex;flex-direction:column;gap:3px;line-height:1.2}.trade-identity-row input,.trade-identity-row select{box-sizing:border-box;width:100%;margin:0!important}.trade-name-check{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;margin-top:7px}.trade-name-check .name-result{margin:0;text-align:left;min-height:14px;overflow-wrap:anywhere}.compact-btn{width:auto!important;margin-top:0!important;padding:9px 10px!important;font-size:12px!important;white-space:nowrap}.name-result{display:block;font-size:12px;font-weight:700;color:#374151}.qty-x100{display:flex;gap:7px;align-items:center}.qty-x100 input{width:64px!important;flex:none}.qty-x100 b{font-size:13px;white-space:nowrap}.portfolio-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0}.summary-cell{border:1px solid #e5e7eb;border-radius:12px;padding:10px;background:#fafafa}.summary-label{font-size:11px;color:#6b7280}.summary-value{font-size:16px;font-weight:800;margin-top:3px}.account-tabs{display:flex;gap:6px;overflow-x:auto;margin:10px 0 4px}.account-tabs button{width:auto;min-width:max-content;padding:8px 11px;font-size:12px;background:#e5e7eb;color:#111827}.account-tabs button.active{background:#08111f;color:#fff}.portfolio-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:8px}.portfolio-row .portfolio-numbers{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;font-size:12px;margin-top:7px}.pnl-plus{color:#b91c1c;font-weight:800}.pnl-minus{color:#1d4ed8;font-weight:800}.watch-remove{background:#991b1b!important;color:#fff!important}.trade-memo-label{grid-column:1/-1}.portfolio-memo{margin-top:9px}.portfolio-memo label{font-size:11px;color:#6b7280}.portfolio-memo-row{display:flex;gap:6px;align-items:center;margin-top:4px}.portfolio-memo-row input{flex:1;min-width:0;margin:0!important}.portfolio-memo-row button{width:auto;margin:0!important;padding:8px 10px;font-size:12px}@media(min-width:700px){.portfolio-summary{grid-template-columns:repeat(4,1fr)}}
@@ -27,12 +27,21 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 .watch-import-box{border:1px solid #dbeafe;background:#eff6ff;border-radius:12px;padding:12px;margin:10px 0 12px}.watch-import-box label{font-weight:700}.price-date{font-size:11px;color:#6b7280;margin-top:3px}
 .trade-form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;row-gap:7px;align-items:start}.trade-form-grid>label{margin:0!important;padding:0!important;min-width:0;display:flex;flex-direction:column;justify-content:flex-start;gap:3px;line-height:1.2}.trade-form-grid input,.trade-form-grid select{box-sizing:border-box;max-width:100%;margin:0!important}.watch-badges{display:flex;gap:5px;flex-wrap:wrap;margin:5px 0}.watch-badge{display:inline-block;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:800;background:#e5e7eb}.watch-badge.active{background:#dcfce7;color:#166534}.watch-badge.inactive{background:#f3f4f6;color:#6b7280}.watch-badge.status{background:#dbeafe;color:#1e40af}
+
+.screen-config-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}.screen-config-table th,.screen-config-table td{border-bottom:1px solid #e5e7eb;padding:8px 6px;text-align:left;vertical-align:top}.screen-config-table th{background:#f9fafb;font-size:11px;color:#4b5563}.screen-readonly{border:1px solid #dbeafe;background:#f8fbff}.attention-badge{background:#fee2e2!important;color:#991b1b!important;border:1px solid #fecaca}.manual-step{border-left:3px solid #d1d5db;padding-left:10px;margin:10px 0}.history-list{display:grid;gap:8px}.history-item{border:1px solid #e5e7eb;border-radius:12px;padding:10px;background:#fafafa}.history-version{font-weight:800}.history-date{font-size:11px;color:#6b7280;margin-left:6px}
 </style>
-</head><body><header><h1>J-Quants Local-first PWA v8-beta2</h1><p>Web-first日常運用・保有管理・Watchlist・バックアップを1つに統合したLocal-first投資アプリ。</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
+</head><body><header><h1>J-Quants Local-first PWA v8-beta3</h1><p>Web-first日常運用・保有管理・Watchlist・バックアップを1つに統合したLocal-first投資アプリ。</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
+<div class="app-nav-row primary">
 <button class="active" data-page="daily" type="button">日々分析</button>
 <button data-page="stocks" type="button">銘柄・売買</button>
+<button data-page="screening" type="button">スクリーニング</button>
 <button data-page="watchlist" type="button">ウォッチリスト</button>
+</div>
+<div class="app-nav-row secondary-row">
 <button data-page="settings" type="button">設定・保守</button>
+<button data-page="manual" type="button">マニュアル</button>
+<button data-page="history" type="button">開発履歴</button>
+</div>
 </nav><div class="app-shell" id="appShell"><section class="app-page active" id="page-daily"><h2 class="page-title">日々分析</h2><p class="page-lead">通常はここだけで日次更新からAI共有まで完結します。</p><section class="card app-managed-card" id="apiKeyCard">
 <h2>J-Quants APIキー</h2>
 <p>このページ内のJ-Quants取得処理すべてで共通利用します。セッション中だけ保持し、SQLite/localStorageには保存しません。</p>
@@ -85,6 +94,12 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <div id="pfTradePositions"></div>
 <details style="margin-top:10px"><summary>最近の売買履歴</summary><div id="pfTradeHistory"></div></details>
 <p class="desc">既存保有は現在の平均取得単価を起点に継続管理します。縮小時の実現損益はWeb上の平均取得単価を基準に計算します。税・手数料は含みません。誤入力は最近の売買履歴から「入力取消」→確認→確定できます。同一銘柄・口座は新しい入力から順に取消し、取消済み記録は監査用に残します。</p>
+</section></section><section class="app-page" id="page-screening"><h2 class="page-title">スクリーニング</h2><p class="page-lead">現在のCanonical Screening条件を読み取り専用で表示します。この画面から計算条件は変更しません。</p>
+<section class="card screen-readonly"><h2>Canonical Screening（read-only）</h2><p class="desc"><b>表示専用。</b> 日次運用・Screening Shareで実際に使われている条件を見える化しています。ここを開いてもScreening結果には影響しません。</p></section>
+<section class="card"><h2>共通母集団</h2><table class="screen-config-table"><tr><th>項目</th><th>現在の条件</th></tr><tr><td>市場・銘柄種別</td><td>Market対象 + 普通株（ProdCat=011）</td></tr><tr><td>20日平均売買代金</td><td>5,000万円以上</td></tr><tr><td>株価</td><td>100円以上</td></tr><tr><td>価格履歴</td><td>60営業日以上</td></tr><tr><td>テクニカル計算</td><td>lookback 320日</td></tr><tr><td>各戦略の選抜</td><td>上位20銘柄。EarningsReactionPending / 財務欠損は通常戦略から除外</td></tr></table></section>
+<section class="card"><h2>5戦略</h2><table class="screen-config-table"><tr><th>戦略</th><th>現在の主な構成</th></tr><tr><td><b>FundamentalPriceGap</b></td><td>FundamentalScore − PriceRecognitionScoreを基礎にGap percentile 65% + ReRating 35% − ChasePenalty</td></tr><tr><td><b>FundamentalMomentum</b></td><td>FundamentalScore 55% + ReRatingScore 45% − ChasePenalty</td></tr><tr><td><b>PostEarningsDrift</b></td><td>決算後3〜20営業日。Fundamental 35% + 決算後5日反応30% + Follow-through20% + Volume15%</td></tr><tr><td><b>GrowthAcceleration</b></td><td>FundamentalScoreを成長加速候補の主スコアとして使用</td></tr><tr><td><b>QualityValueReRating</b></td><td>Quality 36% + Value 28% + ReRating 36% − CrowdingPenalty − QualityMismatchPenalty − ChasePenalty</td></tr></table><p class="compact-note">別枠：EarningsReactionPendingは通常5戦略とは分け、FundamentalScore順で最大20銘柄をReview候補として保持します。</p></section>
+<section class="card"><h2>主要スコアの重み</h2><table class="screen-config-table"><tr><th>スコア</th><th>現在の重み</th></tr><tr><td>FundamentalScore</td><td>売上成長25% / 利益成長30% / 利益率品質20% / Guidance15% / CFO品質10%</td></tr><tr><td>PriceRecognitionScore</td><td>TOPIX相対20日20% / 60日30% / 120日25% / 75日線乖離15% / 60日高値位置10%</td></tr><tr><td>ReRatingScore</td><td>短期モメンタム35% / 出来高増加30% / 25日線位置35%</td></tr><tr><td>QVR Value</td><td>同業Forecast PER 45% / PBR 30% / 予想配当利回り25%</td></tr><tr><td>QVR Quality</td><td>ROE25% / 営業利益率20% / 利益率改善20% / CF20% / 自己資本比率15%</td></tr></table></section>
+<section class="card"><h2>Screening共有</h2><p class="desc">生成操作は従来どおり「日々分析」にあります。このタブは現行条件を確認するためのread-only画面です。</p></section>
 </section></section><section class="app-page" id="page-watchlist"><h2 class="page-title">ウォッチリスト</h2><p class="page-lead">追跡対象の登録・一覧確認・追跡終了をここで行います。<br><b>Watchlist</b> ＝ 日々の監視対象<br><b>Discovery</b> ＝ 発掘後の経過を追跡する対象</p><section class="card app-managed-card" id="quickInvestmentManageCard">
 <h2>ウォッチリストを登録・管理</h2>
 <p><b>通常は発掘アイが出力する <code>watchlist_conditions_input_v2.csv</code> を読み込みます。</b> 発掘アイは価格条件・根拠・投資仮説を入力し、最新終値・距離・決算日・Trigger / AttentionはPWAがDataLakeから自動計算します。履歴は削除せず監査用に保持します。</p>
@@ -184,6 +199,12 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <button id="temporaryStorageAuditBtn">ストレージ詳細をread-only分析</button><div class="result" id="temporaryStorageAuditResult">未実行</div>
 </details>
 
+</section><section class="app-page" id="page-manual"><h2 class="page-title">マニュアル</h2><p class="page-lead">通常運用・初期設定・バックアップまで、このPWAの基本的な使い方をまとめています。</p>
+<section class="card"><h2>毎日の使い方</h2><div class="manual-step"><b>1. 日々分析</b><br>J-Quants APIキーを入力し、「日次運用を実行」。完了後、必要に応じてPortfolio AI Share / Screening Shareを生成します。</div><div class="manual-step"><b>2. 銘柄・売買</b><br>保有ポジションや売買を登録・確認します。売買日の自動値はJST当日です。</div><div class="manual-step"><b>3. スクリーニング</b><br>現在使われているCanonical Screening条件を確認します。現版はread-onlyで、条件変更は行いません。</div><div class="manual-step"><b>4. ウォッチリスト</b><br>発掘アイの9列CSVを取り込み、押し目・上抜け条件を追跡します。赤い「⚠ 要注意」が出た銘柄は再評価対象です。価格到達だけで自動的に買い判定にはなりません。</div></section>
+<section class="card"><h2>初期構築・復旧</h2><p class="desc"><b>設定・保守 → ①データ構築・補完</b>で取得期間を指定し、不足チェック → 不足分の一括取り込みを行います。既存バックアップがある場合は②データ取り込みから先に復元できます。</p><p class="desc">バックアップは③バックアップ保存からDB整合性を確認し、一覧から必要DBを1ファイルずつ外部保存します。</p></section>
+<section class="card"><h2>データの意味</h2><table class="screen-config-table"><tr><th>名称</th><th>意味</th></tr><tr><td>DataLake</td><td>株価・財務・決算予定・需給など再取得可能な市場分析データ</td></tr><tr><td>ユーザーデータ</td><td>保有・売買履歴・Watchlist・Discovery・メモ等。外部バックアップ推奨</td></tr><tr><td>SAH Pool / OPFS</td><td>SQLite DBを端末内に保存するブラウザ領域。通常は直接操作しません</td></tr><tr><td>完全初期化</td><td>この端末のPWAローカルデータを初期状態へ戻す強い操作。バックアップ確認後のみ使用</td></tr></table></section>
+<section class="card"><h2>困ったとき</h2><p class="desc">まず④トラブル診断のread-only確認を利用します。DataLake再構築や完全初期化を行う前に、ユーザーデータとDataLakeの外部バックアップを確認してください。</p></section>
+</section><section class="app-page" id="page-history"><h2 class="page-title">開発履歴</h2><p class="page-lead">新しいバージョンから順に、主な変更点を表示します。</p><section class="card"><div class="history-list" id="releaseHistoryView"><p class="desc">開発履歴を読み込み中…</p></div></section></section>
 </section></div><script>
 (function(){
   const nav=document.getElementById('appNav');
@@ -196,7 +217,14 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   };
   nav.addEventListener('click',e=>{const b=e.target.closest('button[data-page]');if(b)activate(b.dataset.page)});
   let initial='daily';
-  try{const x=sessionStorage.getItem('jq-active-page');if(['daily','stocks','watchlist','settings'].includes(x))initial=x}catch(_){}
+  try{const x=sessionStorage.getItem('jq-active-page');if(['daily','stocks','screening','watchlist','settings','manual','history'].includes(x))initial=x}catch(_){}
+
+  async function loadReleaseHistory(){
+    const host=document.getElementById('releaseHistoryView');if(!host)return;
+    try{const r=await fetch('./release_history.json',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();const rows=(j.history||[]).slice(0,40);host.innerHTML=rows.map(x=>`<div class="history-item"><span class="history-version">${String(x.version||x.release||'-')}</span><span class="history-date">${String(x.date||'')}</span><div class="compact-note" style="margin-top:5px">${String(x.summary||x.note||'')}</div></div>`).join('')||'<p class="desc">履歴はありません。</p>'}catch(e){host.innerHTML='<p class="desc">開発履歴を読み込めませんでした。</p>'}
+  }
+  window.addEventListener('jq:page-activate',e=>{if(e.detail?.page==='history')loadReleaseHistory()});
+
   activate(initial);
 })();
-</script><script src="./app.js?v=v8-beta2"></script></body></html>
+</script><script src="./app.js?v=v8-beta3"></script></body></html>

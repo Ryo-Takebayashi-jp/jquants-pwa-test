@@ -1,6 +1,11 @@
 {
-  "current_release": "v8-beta2",
+  "current_release": "v8-beta3",
   "history": [
+    {
+      "version": "v8-beta3",
+      "date": "2026-09-12",
+      "summary": "Navigation/UI organization: fixed two-row 4+3 tabs, read-only Canonical Screening conditions page, in-app manual and development history, and red top-priority Watchlist attention badge; screening calculation semantics unchanged."
+    },
     {
       "version": "v8-beta2",
       "date": "2026-09-11",
