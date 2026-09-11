@@ -1,3 +1,12 @@
+# v8-beta2 — Recovery-tested Web-first baseline (2026-09-11)
+
+- v7e-beta10 から v8 系へ昇格。ヘッダー / app / Worker query / Service Worker cache / manifest / release metadata を v8-beta2 に統一。
+- 設定・保守の取得開始日と取得終了日は、起動時にどちらもJSTの当日を初期値にする。過去期間の初期構築時のみ手動で開始日を戻す。
+- DataLake復元後の監査ボタン名を「取り込み後の全DBを監査」に統一。
+- フルDataLakeバックアップは「対象確認 → Manifest → リストから選択DBを1ファイル保存」を正式フローとし、モバイルで失敗しやすい連続ポップアップ保存は採用しない。
+- ①〜⑤の設定・保守分類、完全初期化、read-only診断、一時診断を維持。
+- DataLakeの破壊的移行なし。
+
 # v7e-beta9 — Fresh install builder / collapsible Settings
 
 - DataLakeが存在しない完全初期状態でも、期間管理から年別日足Shardを直接作成できるよう修正。

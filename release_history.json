@@ -1,6 +1,16 @@
 {
-  "current_release": "v7e-beta2",
+  "current_release": "v8-beta2",
   "history": [
+    {
+      "version": "v8-beta2",
+      "date": "2026-09-11",
+      "summary": "Watchlist Price Conditions v2: strict 9-column Discovery-AI input, automatic DataLake enrichment and attention triggers, Screening Share completed-condition CSV, active-list cleanup with latest 20 closed-history records, and status-synchronized Discovery/Watch lifecycle."
+    },
+    {
+      "version": "v8-beta1",
+      "date": "2026-09-11",
+      "summary": "v8 baseline: version identity unified; Settings/Maintenance recovery flow retained; acquisition-date defaults and restored-DataLake audit wording stabilized; explicit one-file backup download retained for mobile reliability."
+    },
     {
       "version": "v7e-beta2",
       "date": "2026-09-09",

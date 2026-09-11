@@ -3,7 +3,7 @@
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#08111f" name="theme-color"/>
 <link href="./manifest.webmanifest" rel="manifest"/>
-<title>J-Quants Local-first PWA v7e-beta10</title>
+<title>J-Quants Local-first PWA v8-beta2</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -28,7 +28,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 .watch-import-box{border:1px solid #dbeafe;background:#eff6ff;border-radius:12px;padding:12px;margin:10px 0 12px}.watch-import-box label{font-weight:700}.price-date{font-size:11px;color:#6b7280;margin-top:3px}
 .trade-form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;row-gap:7px;align-items:start}.trade-form-grid>label{margin:0!important;padding:0!important;min-width:0;display:flex;flex-direction:column;justify-content:flex-start;gap:3px;line-height:1.2}.trade-form-grid input,.trade-form-grid select{box-sizing:border-box;max-width:100%;margin:0!important}.watch-badges{display:flex;gap:5px;flex-wrap:wrap;margin:5px 0}.watch-badge{display:inline-block;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:800;background:#e5e7eb}.watch-badge.active{background:#dcfce7;color:#166534}.watch-badge.inactive{background:#f3f4f6;color:#6b7280}.watch-badge.status{background:#dbeafe;color:#1e40af}
 </style>
-</head><body><header><h1>J-Quants Local-first PWA v7e-beta10</h1><p>Web-first日常運用・保有管理・Watchlist・バックアップを1つに統合したLocal-first投資アプリ。</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
+</head><body><header><h1>J-Quants Local-first PWA v8-beta2</h1><p>Web-first日常運用・保有管理・Watchlist・バックアップを1つに統合したLocal-first投資アプリ。</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
 <button class="active" data-page="daily" type="button">日々分析</button>
 <button data-page="stocks" type="button">銘柄・売買</button>
 <button data-page="watchlist" type="button">ウォッチリスト</button>
@@ -87,9 +87,9 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <p class="desc">既存保有は現在の平均取得単価を起点に継続管理します。縮小時の実現損益はWeb上の平均取得単価を基準に計算します。税・手数料は含みません。誤入力は最近の売買履歴から「入力取消」→確認→確定できます。同一銘柄・口座は新しい入力から順に取消し、取消済み記録は監査用に残します。</p>
 </section></section><section class="app-page" id="page-watchlist"><h2 class="page-title">ウォッチリスト</h2><p class="page-lead">追跡対象の登録・一覧確認・追跡終了をここで行います。<br><b>Watchlist</b> ＝ 日々の監視対象<br><b>Discovery</b> ＝ 発掘後の経過を追跡する対象</p><section class="card app-managed-card" id="quickInvestmentManageCard">
 <h2>ウォッチリストを登録・管理</h2>
-<p><b>通常は発掘アイが出力する <code>investment_tracking_input.csv</code> を読み込みます。</b> CSVのStatusに従ってDiscovery / Watchlistへ自動振り分けし、履歴は削除せず監査用に保持します。</p>
+<p><b>通常は発掘アイが出力する <code>watchlist_conditions_input_v2.csv</code> を読み込みます。</b> 発掘アイは価格条件・根拠・投資仮説を入力し、最新終値・距離・決算日・Trigger / AttentionはPWAがDataLakeから自動計算します。履歴は削除せず監査用に保持します。</p>
 <div class="watch-import-box">
-<label>発掘アイCSV <input accept=".csv,text/csv" id="quickInvImportFile" type="file"/></label>
+<label>発掘アイCSV（v2・9列） <input accept=".csv,text/csv" id="quickInvImportFile" type="file"/></label><p class="desc">必須列: Code / InvestmentStatus / BuyOnDipPrice / BuyOnDipBasis / BreakoutPrice / BreakoutBasis / DiscoveryEpisodeId / InvestmentThesisMemo / ConditionUpdatedAt</p>
 <button id="quickInvImportPreviewBtn">CSVを検証・適用プレビュー</button>
 <button disabled="" id="quickInvImportCommitBtn">このCSVを一括確定・保存</button>
 <pre class="result" id="quickInvImportResult">未実行</pre>
@@ -128,13 +128,13 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 </details>
 <button class="secondary" id="quickInvRefreshBtn">現在の登録一覧を更新</button>
 <pre class="result" id="quickInvResult">未実行</pre>
-<div id="quickInvTable"></div>
+<div id="quickInvTable"></div><details class="maintenance-sub" id="quickInvClosedHistory"><summary><strong>終了履歴（直近20件）</strong></summary><p class="desc">DiscoveryとWatchの両方が終了した銘柄は通常一覧から外し、履歴だけここに最大20件表示します。履歴データ自体は削除しません。</p><div id="quickInvClosedTable"></div></details>
 <div class="maintenance-sub" id="watchlistDailyAlertOps"><h3>日次再評価アラート</h3><p class="desc">日次運用で作成したWatchlist再評価Previewをここに表示します。内容確認後、必要なら判定を確定します。</p><button disabled="" id="watchlistAlertCommitBtn">この再評価判定を確定・保存</button><pre class="result" id="watchlistAlertResult">日次運用後に表示されます</pre><div id="watchlistAlertTable"></div></div><p class="desc">CLOSEはActive/ReviewDueのWatchlistを終了します。Discovery Episode履歴は削除しません。TRACK_ONLYにはWatchlistがないためCLOSE対象外です。誤操作防止のため必ずPreview → Commitの2段階です。</p>
 </section></section><section class="app-page" id="page-settings"><h2 class="page-title">設定・保守</h2><p class="page-lead">必要な項目だけ開いて使います。①〜⑤はすべて初期状態で閉じています。</p>
 <details class="card app-managed-card" id="dataPeriodCard"><summary><strong>① データ構築・補完</strong></summary>
 <p class="desc">初期構築と欠損補完をここに統合します。開始日・終了日を指定し、不足チェック後に不足分だけ一括取得します。</p>
 <label>J-Quants V2 APIキー（全機能共通・セッションのみ）</label><input autocomplete="off" id="simpleGapToken" placeholder="APIキー" type="password"/><div class="result" id="dataPeriodTokenStatus">未入力</div>
-<div style="display:flex;gap:10px;flex-wrap:wrap"><div><label>取得開始日</label><input id="dataPeriodFrom" type="date" value="2021-09-10"/></div><div><label>取得終了日</label><input id="dataPeriodTo" type="date"/></div></div>
+<div style="display:flex;gap:10px;flex-wrap:wrap"><div><label>取得開始日</label><input id="dataPeriodFrom" type="date"/></div><div><label>取得終了日</label><input id="dataPeriodTo" type="date"/></div></div>
 <button id="dataPeriodCheckBtn">① 不足チェック</button>
 <div class="result" id="dataPeriodCheckResult">未実行</div>
 <button disabled="" id="dataPeriodImportBtn">② 不足分を一括取り込み</button>
@@ -199,4 +199,4 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
   try{const x=sessionStorage.getItem('jq-active-page');if(['daily','stocks','watchlist','settings'].includes(x))initial=x}catch(_){}
   activate(initial);
 })();
-</script><script src="./app.js?v=v7e-beta10"></script></body></html>
+</script><script src="./app.js?v=v8-beta2"></script></body></html>
