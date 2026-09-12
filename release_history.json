@@ -1,71 +1,90 @@
 {
-  "current_release": "v8-beta3",
+  "current_release": "v8-beta4",
   "history": [
+    {
+      "version": "v8-beta4",
+      "date": "2026-09-12",
+      "summary": "Manual/navigation polish: 3+4 navigation, Stocks renamed, Japanese last-20 development history, first-use workflow manual, and downloadable Watchlist/Discovery 9-column template.",
+      "summary_ja": "ナビを3＋4配置へ変更し「銘柄登録」に改称。開発履歴を日本語・新しい順・直近20件に整理。初回セットアップから発掘・Watchlistまでのマニュアル導線と9列CSV雛形ダウンロードを追加。"
+    },
     {
       "version": "v8-beta3",
       "date": "2026-09-12",
-      "summary": "Navigation/UI organization: fixed two-row 4+3 tabs, read-only Canonical Screening conditions page, in-app manual and development history, and red top-priority Watchlist attention badge; screening calculation semantics unchanged."
+      "summary": "Navigation/UI organization: fixed two-row 4+3 tabs, read-only Canonical Screening conditions page, in-app manual and development history, and red top-priority Watchlist attention badge; screening calculation semantics unchanged.",
+      "summary_ja": "7タブ構成を追加し、スクリーニング条件のread-only表示、マニュアル、開発履歴、Watchlist要注意表示を追加。スクリーニング計算ロジックは変更なし。"
     },
     {
       "version": "v8-beta2",
       "date": "2026-09-11",
-      "summary": "Watchlist Price Conditions v2: strict 9-column Discovery-AI input, automatic DataLake enrichment and attention triggers, Screening Share completed-condition CSV, active-list cleanup with latest 20 closed-history records, and status-synchronized Discovery/Watch lifecycle."
+      "summary": "Watchlist Price Conditions v2: strict 9-column Discovery-AI input, automatic DataLake enrichment and attention triggers, Screening Share completed-condition CSV, active-list cleanup with latest 20 closed-history records, and status-synchronized Discovery/Watch lifecycle.",
+      "summary_ja": "Watchlist価格条件v2を導入。9列CSV取り込み、DataLakeによる価格補完、要注意判定、終了履歴20件、Discovery/Watch状態同期を整備。"
     },
     {
       "version": "v8-beta1",
       "date": "2026-09-11",
-      "summary": "v8 baseline: version identity unified; Settings/Maintenance recovery flow retained; acquisition-date defaults and restored-DataLake audit wording stabilized; explicit one-file backup download retained for mobile reliability."
+      "summary": "v8 baseline: version identity unified; Settings/Maintenance recovery flow retained; acquisition-date defaults and restored-DataLake audit wording stabilized; explicit one-file backup download retained for mobile reliability.",
+      "summary_ja": "v8基準版。設定・保守の復旧導線、取得日初期値、復元後監査表示、モバイル向け1ファイル単位バックアップを安定化。"
     },
     {
       "version": "v7e-beta2",
       "date": "2026-09-09",
-      "summary": "Persistent security/account trade memo with inline holding-card edit/save; legacy test/detail UI stays out of production tabs while hidden diagnostics remain available for rollback safety."
+      "summary": "Persistent security/account trade memo with inline holding-card edit/save; legacy test/detail UI stays out of production tabs while hidden diagnostics remain available for rollback safety.",
+      "summary_ja": "保有カード上でのメモ編集・保存を追加し、旧テストUIを通常画面から分離。"
     },
     {
       "version": "v7e-beta1",
       "date": "2026-09-09",
-      "summary": "First beta / data-quality canonicalization: Portfolio master schema mapping fix, canonical price-history shard selection, export duplicate suppression with DQ counts, and stable content-based raw row identity; no destructive DataLake migration."
+      "summary": "First beta / data-quality canonicalization: Portfolio master schema mapping fix, canonical price-history shard selection, export duplicate suppression with DQ counts, and stable content-based raw row identity; no destructive DataLake migration.",
+      "summary_ja": "初回β版。Portfolioマスター、価格履歴Shard、重複抑制、行IDなどデータ品質を正規化。破壊的なDataLake移行はなし。"
     },
     {
       "version": "v7e-alpha114",
       "date": "2026-09-09",
-      "summary": "Final mobile trade-form polish: name lookup/result row spans full form width so long security names can use available horizontal space; no calculation semantics changed."
+      "summary": "Final mobile trade-form polish: name lookup/result row spans full form width so long security names can use available horizontal space; no calculation semantics changed.",
+      "summary_ja": "β移行前の最終UI調整。モバイル売買フォームと銘柄名表示、Watchlist/Discovery説明を整理。"
     },
     {
       "version": "v7e-alpha114",
       "date": "2026-09-08",
-      "summary": "Beta gate final polish: mobile trade identity-row alignment and concise Watchlist/Discovery role legend; no calculation semantics changed."
+      "summary": "Beta gate final polish: mobile trade identity-row alignment and concise Watchlist/Discovery role legend; no calculation semantics changed.",
+      "summary_ja": "β移行前の最終UI調整。モバイル売買フォームと銘柄名表示、Watchlist/Discovery説明を整理。"
     },
     {
       "version": "v7e-alpha110",
       "date": "2026-09-08",
-      "summary": "Beta gate UI finalization: balanced mobile trade form, explicit Discovery/Watch states, Discovery reference-price display, and audit-preserving independent tracking close actions."
+      "summary": "Beta gate UI finalization: balanced mobile trade form, explicit Discovery/Watch states, Discovery reference-price display, and audit-preserving independent tracking close actions.",
+      "summary_ja": "β移行前のUI・監視安定化。最新終値評価、Watchlist監視カード、Discovery/Watch状態、売買フォームを改善。"
     },
     {
       "version": "v7e-alpha110",
       "date": "2026-09-08",
-      "summary": "Beta gate stabilization: canonical latest-close portfolio valuation, Watchlist monitoring cards with reference/latest prices, Japanese CSV outcome summary, and mobile trade-form spacing refinement."
+      "summary": "Beta gate stabilization: canonical latest-close portfolio valuation, Watchlist monitoring cards with reference/latest prices, Japanese CSV outcome summary, and mobile trade-form spacing refinement.",
+      "summary_ja": "β移行前のUI・監視安定化。最新終値評価、Watchlist監視カード、Discovery/Watch状態、売買フォームを改善。"
     },
     {
       "version": "v7e-alpha101",
       "date": "2026-09-08",
-      "summary": "AI Share Stage 2 data-quality hotfix: price-history shard/code fix; market-level short-ratio/investor-flow semantics; canonical large-short aggregation; EPS semantic split; header-safe/fail-closed exports."
+      "summary": "AI Share Stage 2 data-quality hotfix: price-history shard/code fix; market-level short-ratio/investor-flow semantics; canonical large-short aggregation; EPS semantic split; header-safe/fail-closed exports.",
+      "summary_ja": "AI Shareのデータ品質修正。価格履歴、空売り・投資部門別、EPS意味論、出力安全性を改善。"
     },
     {
       "version": "v7e-alpha99",
       "date": "2026-09-07",
-      "summary": "ReactionPending parity + Web screening filename separation + safe Portfolio trade input VOID/correction."
+      "summary": "ReactionPending parity + Web screening filename separation + safe Portfolio trade input VOID/correction.",
+      "summary_ja": "ReactionPending整合、Webスクリーニング出力名分離、売買入力のVOID/訂正を安全化。"
     },
     {
       "version": "v7e-alpha97",
       "date": "2026-09-07",
-      "summary": "Daily Screening PED JOIN regression fix and Portfolio AI-share margin resolver/coverage correction."
+      "summary": "Daily Screening PED JOIN regression fix and Portfolio AI-share margin resolver/coverage correction.",
+      "summary_ja": "日次ScreeningのPED JOIN回帰不具合とPortfolio AI Shareの信用データ解決・収録範囲を修正。"
     },
     {
       "version": "v7e-alpha96",
       "date": "2026-09-07",
       "summary": "Analyze UI names/mobile cards + Web-only Portfolio/Trade Manager",
-      "status": "candidate"
+      "status": "candidate",
+      "summary_ja": "分析画面名称とモバイルカードを整理し、Web専用Portfolio/売買管理を追加。"
     },
     {
       "release": "v7e-alpha70",

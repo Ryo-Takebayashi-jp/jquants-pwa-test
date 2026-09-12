@@ -1,3 +1,9 @@
+# v8-beta4 (2026-09-12)
+- ナビを上段3・下段4へ再編し、銘柄・売買を銘柄登録へ改称。
+- 開発履歴を日本語表示・新しい順・直近20件へ変更。
+- マニュアルの文字サイズと初回利用導線を整理。
+- Screening Share→発掘アイ→9列CSV→Watchlist監視の流れを明記し、CSV雛形を同梱。
+
 # v8-beta3 (2026-09-12)
 - Two-row navigation: Daily / Trades / Screening / Watchlist; Settings / Manual / Development History.
 - Added read-only Canonical Screening condition visualization; no screening scoring or selection semantics changed.
