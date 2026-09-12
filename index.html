@@ -3,7 +3,7 @@
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#08111f" name="theme-color"/>
 <link href="./manifest.webmanifest" rel="manifest"/>
-<title>J-Quants Local-first PWA v8-beta4</title>
+<title>J-Quants Invest v9.0</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -30,7 +30,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 .screen-config-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}.screen-config-table th,.screen-config-table td{border-bottom:1px solid #e5e7eb;padding:8px 6px;text-align:left;vertical-align:top}.screen-config-table th{background:#f9fafb;font-size:11px;color:#4b5563}.screen-readonly{border:1px solid #dbeafe;background:#f8fbff}.attention-badge{background:#fee2e2!important;color:#991b1b!important;border:1px solid #fecaca}.manual-step{border-left:3px solid #d1d5db;padding-left:10px;margin:12px 0;font-size:15px;line-height:1.65}.manual-step b{font-size:16px}.manual-card p,.manual-card li,.manual-card td{font-size:15px;line-height:1.7}.manual-card h2{font-size:19px}.history-list{display:grid;gap:8px}.history-item{border:1px solid #e5e7eb;border-radius:12px;padding:10px;background:#fafafa}.history-version{font-weight:800}.history-date{font-size:11px;color:#6b7280;margin-left:6px}
 </style>
-</head><body><header><h1>J-Quants Local-first PWA v8-beta4</h1><p>Web-first日常運用・保有管理・Watchlist・バックアップを1つに統合したLocal-first投資アプリ。</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
+</head><body><header><h1>J-Quants Invest v9.0</h1><p>J-Quants × AI 投資分析・運用プラットフォーム</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
 <div class="app-nav-row primary">
 <button class="active" data-page="daily" type="button">日々分析</button>
 <button data-page="stocks" type="button">銘柄登録</button>
@@ -56,10 +56,10 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 <pre class="result" id="dailyPipelineResult">未実行</pre>
 </section><section class="card app-managed-card" id="aiShareCard">
-<h2>ChatGPT共有ZIPを作成（Web-only）</h2>
+<h2>AI共有ZIPを作成（Web-only）</h2>
 <p><b>PC版を起動せず、Web private DBの登録銘柄と最新DataLakeから共有用ZIPを生成します。</b></p>
 <p class="desc">Portfolio / Master / Price / Technical / TOPIX相対 / Financial / Supply-demand を統合します。Stage 2として価格・財務・需給・市場フロー・Web売買履歴まで同梱します。</p>
-<button id="aiShareZipBtn">ChatGPT共有ZIPを生成</button>
+<button id="aiShareZipBtn">AI共有ZIPを生成</button>
 <button class="secondary" disabled="" id="aiShareDownloadBtn">生成済みZIPをダウンロード</button>
 <pre class="result" id="aiShareZipResult">未実行</pre>
 </section><section class="card app-managed-card" id="screeningShareCard">
@@ -102,9 +102,9 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <section class="card"><h2>Screening共有</h2><p class="desc">生成操作は従来どおり「日々分析」にあります。このタブは現行条件を確認するためのread-only画面です。</p></section>
 </section></section><section class="app-page" id="page-watchlist"><h2 class="page-title">ウォッチリスト</h2><p class="page-lead">追跡対象の登録・一覧確認・追跡終了をここで行います。<br><b>Watchlist</b> ＝ 日々の監視対象<br><b>Discovery</b> ＝ 発掘後の経過を追跡する対象</p><section class="card app-managed-card" id="quickInvestmentManageCard">
 <h2>ウォッチリストを登録・管理</h2>
-<p><b>通常は発掘アイが出力する <code>watchlist_conditions_input_v2.csv</code> を読み込みます。</b> 発掘アイは価格条件・根拠・投資仮説を入力し、最新終値・距離・決算日・Trigger / AttentionはPWAがDataLakeから自動計算します。履歴は削除せず監査用に保持します。</p>
+<p><b>通常はAIで作成したDiscovery登録CSVを読み込みます。</b> AIで価格条件・根拠・投資仮説を設定し、最新終値・距離・決算日・Trigger / AttentionはPWAがDataLakeから自動計算します。履歴は削除せず監査用に保持します。</p>
 <div class="watch-import-box">
-<label>発掘アイCSV（v2・9列） <input accept=".csv,text/csv" id="quickInvImportFile" type="file"/></label><p class="desc">必須列: Code / InvestmentStatus / BuyOnDipPrice / BuyOnDipBasis / BreakoutPrice / BreakoutBasis / DiscoveryEpisodeId / InvestmentThesisMemo / ConditionUpdatedAt</p>
+<label>Discovery登録CSV  <input accept=".csv,text/csv" id="quickInvImportFile" type="file"/></label><p class="desc">必須列: Code / InvestmentStatus / BuyOnDipPrice / BuyOnDipBasis / BreakoutPrice / BreakoutBasis / DiscoveryEpisodeId / InvestmentThesisMemo / ConditionUpdatedAt</p>
 <button id="quickInvImportPreviewBtn">CSVを検証・適用プレビュー</button>
 <button disabled="" id="quickInvImportCommitBtn">このCSVを一括確定・保存</button>
 <pre class="result" id="quickInvImportResult">未実行</pre>
@@ -199,14 +199,14 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <button id="temporaryStorageAuditBtn">ストレージ詳細をread-only分析</button><div class="result" id="temporaryStorageAuditResult">未実行</div>
 </details>
 
-</section><section class="app-page" id="page-manual"><h2 class="page-title">マニュアル</h2><p class="page-lead">初回セットアップから日々運用、発掘・監視、バックアップまでを実際の利用順にまとめています。</p>
-<section class="card manual-card"><h2>初めて使うとき</h2><div class="manual-step"><b>1. J-Quants APIキーを用意</b><br>日々分析または設定・保守でAPIキーを入力します。キーはセッション中だけ使用し、SQLiteやlocalStorageには保存しません。</div><div class="manual-step"><b>2. DataLakeを構築</b><br>設定・保守 → ①データ構築・補完で取得期間を指定し、不足チェック → 不足分の一括取り込みを実行します。</div><div class="manual-step"><b>3. 銘柄登録</b><br>銘柄登録タブで保有銘柄・口座区分・数量などを登録します。以後のPortfolio AI Shareや保有管理に利用します。</div><div class="manual-step"><b>4. 初期状態を確認</b><br>日々分析を一度実行し、DataLake更新・Screening・Discovery等が正常完了することを確認します。</div></section>
-<section class="card manual-card"><h2>毎日の使い方</h2><div class="manual-step"><b>1. 日々分析</b><br>「日次運用を実行」でDataLake更新からScreening、Discovery、Watchlist Alert Previewまで進めます。</div><div class="manual-step"><b>2. 銘柄登録</b><br>売買や保有状況に変更があった日に登録・確認します。売買日の自動値はJST当日です。</div><div class="manual-step"><b>3. AI共有</b><br>必要に応じてPortfolio AI Share / Screening Shareを生成し、ChatGPTで分析します。</div></section>
-<section class="card manual-card"><h2>スクリーニング → ChatGPT → ウォッチリスト</h2><div class="manual-step"><b>1. Screeningを実行</b><br>日々分析でScreeningを完了させ、Screening Shareを生成します。スクリーニングタブでは現在のCanonical条件をread-onlyで確認できます。</div><div class="manual-step"><b>2. ChatGPTの発掘アイで分析</b><br>Screening Shareを発掘アイへ渡し、有力候補・押し目条件・上抜け条件・投資仮説を分析します。</div><div class="manual-step"><b>3. 9列CSVを作成</b><br>下の雛形を発掘アイへ渡し、Watchlist / Discovery登録用CSVを作成します。</div><div class="manual-step"><b>4. PWAへ取り込み</b><br>ウォッチリストタブからCSVを取り込みます。PWAが最新株価を補完して条件を追跡し、赤い「⚠ 要注意」はChatGPTでの再評価対象です。価格到達だけで自動的な買い判定にはなりません。</div><p><a href="./templates/watchlist_conditions_input_template_v2.csv" download>Watchlist / Discovery 9列CSV雛形をダウンロード</a></p></section>
-<section class="card manual-card"><h2>バックアップ・復旧</h2><p><b>バックアップ：</b>設定・保守 → ③バックアップ保存でDB整合性を確認し、一覧から必要DBを1ファイルずつ外部保存します。</p><p><b>復旧：</b>既存バックアップがある場合は②データ取り込みから復元し、その後に不足チェックを行います。</p></section>
-<section class="card manual-card"><h2>データの意味</h2><table class="screen-config-table"><tr><th>名称</th><th>意味</th></tr><tr><td>DataLake</td><td>株価・財務・決算予定・需給など、原則APIから再取得できる市場分析データ</td></tr><tr><td>ユーザーデータ</td><td>保有・売買履歴・Watchlist・Discovery・メモ等。外部バックアップが重要です</td></tr><tr><td>SAH Pool / OPFS</td><td>SQLite DBを端末内に保存するブラウザ領域。通常は直接操作しません</td></tr><tr><td>完全初期化</td><td>この端末のPWAローカルデータを初期状態へ戻す強い操作。バックアップ確認後のみ使用します</td></tr></table></section>
-<section class="card manual-card"><h2>困ったとき</h2><p>まず設定・保守 → ④トラブル診断のread-only確認を利用します。DataLake再構築や完全初期化の前に、ユーザーデータとDataLakeの外部バックアップを確認してください。</p></section>
-</section><section class="app-page" id="page-history"><h2 class="page-title">開発履歴</h2><p class="page-lead">新しいバージョンから順に、主な変更点を表示します。</p><section class="card"><div class="history-list" id="releaseHistoryView"><p class="desc">開発履歴を読み込み中…</p></div></section></section>
+</section><section class="app-page" id="page-manual"><h2 class="page-title">マニュアル</h2><p class="page-lead">初回セットアップから日々の運用、AI分析、バックアップまで、このPWAの基本的な使い方をまとめています。</p>
+<section class="card manual-card"><h2>初めて使うとき</h2><div class="manual-step"><b>1. J-Quants APIキーを設定</b><br>設定・保守でJ-Quants V2 APIキーを入力します。</div><div class="manual-step"><b>2. DataLakeを構築</b><br>取得期間を指定して市場データを構築します。初回はデータ量に応じて時間がかかります。</div><div class="manual-step"><b>3. 銘柄・保有情報を登録</b><br>銘柄登録タブから保有ポジションや必要な売買情報を登録します。</div><div class="manual-step"><b>4. バックアップを確認</b><br>初期構築後は設定・保守からユーザーデータとDataLakeを外部保存しておくと、端末変更や復旧時に利用できます。</div></section>
+<section class="card manual-card"><h2>毎日の使い方</h2><div class="manual-step"><b>1. 日々分析</b><br>「日次運用を実行」でDataLake更新からScreening、Discovery、Watchlist Alert Previewまで進めます。</div><div class="manual-step"><b>2. 銘柄登録</b><br>売買や保有状況に変更があった日に登録・確認します。売買日の自動値はJST当日です。</div><div class="manual-step"><b>3. AI分析</b><br>必要に応じてPortfolio AI Share / Screening Shareを生成し、AIで分析します。</div></section>
+<section class="card manual-card"><h2>スクリーニング → AI分析 → ウォッチリスト</h2><div class="manual-step"><b>1. Screeningを実行</b><br>日々分析でScreeningを完了させ、Screening Shareを生成します。スクリーニングタブでは現在のCanonical条件をread-onlyで確認できます。</div><div class="manual-step"><b>2. AIで候補を分析</b><br>Screening ShareをAIに渡し、有力候補・押し目条件・上抜け条件・投資仮説を分析します。</div><div class="manual-step"><b>3. Discovery登録CSVを作成</b><br>分析結果から、追跡する候補銘柄のDiscovery登録CSVを作成します。<br><b>作成にあたっては、以下のフォーマットを使用してください。</b><br><a href="./templates/discovery_registration_template.csv" download>Discovery登録CSV 雛形をダウンロード</a></div><div class="manual-step"><b>4. PWAへ取り込み</b><br>AIで作成したDiscovery登録CSVをウォッチリストタブから取り込みます。PWAが最新株価・価格条件までの距離・決算予定日・要注意判定などを補完します。赤い「⚠ 要注意」はAIでの再評価対象で、価格到達だけで自動的な買い判定にはなりません。</div></section>
+<section class="card manual-card"><h2>バックアップ・復元</h2><p>設定・保守からユーザーデータとDataLakeを外部保存できます。ユーザーデータには保有・売買履歴・Watchlist・Discovery・メモ等が含まれるため、定期的なバックアップを推奨します。復元時は設定・保守の案内に沿って取り込み・監査を行います。</p></section>
+<section class="card manual-card"><h2>データの意味</h2><table class="screen-config-table"><tr><th>名称</th><th>意味</th></tr><tr><td>DataLake</td><td>株価・財務・決算予定・需給など、原則APIから再取得できる市場分析データ</td></tr><tr><td>ユーザーデータ</td><td>保有・売買履歴・Watchlist・Discovery・メモ等。外部バックアップが重要です</td></tr><tr><td>SAH Pool / OPFS</td><td>SQLite DBを端末内に保存するブラウザ領域。通常は直接操作しません</td></tr></table></section>
+<section class="card manual-card"><h2>困ったとき</h2><p>まず設定・保守 → ④トラブル診断のread-only確認を利用します。復旧操作を行う前に、ユーザーデータとDataLakeの外部バックアップを確認してください。</p></section>
+</section><section class="app-page" id="page-history"><h2 class="page-title">開発履歴</h2><p class="page-lead">このソフトの主な更新内容を、新しいバージョンから順に直近20件掲載しています。</p><section class="card"><div class="history-list" id="releaseHistoryView"><p class="desc">開発履歴を読み込み中…</p></div></section></section>
 </section></div><script>
 (function(){
   const nav=document.getElementById('appNav');
@@ -223,10 +223,10 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
   async function loadReleaseHistory(){
     const host=document.getElementById('releaseHistoryView');if(!host)return;
-    try{const r=await fetch('./release_history.json',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();const rank=v=>{const m=String(v||'').match(/v(\d+)(?:e)?-(alpha|beta)(\d+)/i);return m?[+m[1],m[2].toLowerCase()==='beta'?2:1,+m[3]]:[0,0,0]};const rows=[...(j.history||[])].sort((a,b)=>{const d=String(b.date||'').localeCompare(String(a.date||''));if(d)return d;const A=rank(a.version||a.release),B=rank(b.version||b.release);return B[0]-A[0]||B[1]-A[1]||B[2]-A[2]}).slice(0,20);host.innerHTML=rows.map(x=>`<div class="history-item"><span class="history-version">${String(x.version||x.release||'-')}</span><span class="history-date">${String(x.date||'')}</span><div class="compact-note" style="margin-top:5px">${String(x.summary_ja||'内部改善・安定化。詳細はCHANGELOGに記録しています。')}</div></div>`).join('')||'<p class="desc">履歴はありません。</p>'}catch(e){host.innerHTML='<p class="desc">開発履歴を読み込めませんでした。</p>'}
+    try{const r=await fetch('./release_history.json',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();const rank=v=>{const m=String(v||'').match(/v(\d+)(?:e)?-(alpha|beta)(\d+)/i);return m?[+m[1],m[2].toLowerCase()==='beta'?2:1,+m[3]]:[0,0,0]};const rows=[...(j.history||[])].sort((a,b)=>{const d=String(b.date||'').localeCompare(String(a.date||''));if(d)return d;const A=rank(a.version||a.release),B=rank(b.version||b.release);return B[0]-A[0]||B[1]-A[1]||B[2]-A[2]}).slice(0,20);host.innerHTML=rows.map(x=>`<div class="history-item"><span class="history-version">${String(x.version||x.release||'-')}</span><span class="history-date">${String(x.date||'')}</span><div class="compact-note" style="margin-top:5px">${String(x.summary_ja||'内部改善・安定化。')}</div></div>`).join('')||'<p class="desc">履歴はありません。</p>'}catch(e){host.innerHTML='<p class="desc">開発履歴を読み込めませんでした。</p>'}
   }
-  window.addEventListener('jq:page-activate',e=>{if(e.detail?.page==='history')loadReleaseHistory()});
+  window.addEventListener('jq:page-activate',e=>{if(e.detail?.page==='history')loadReleaseHistory();if(e.detail?.page==='watchlist'&&typeof window.quickInvRefresh==='function')window.quickInvRefresh();});
 
   activate(initial);
 })();
-</script><script src="./app.js?v=v8-beta4"></script></body></html>
+</script><script src="./app.js?v=v9.0"></script></body></html>

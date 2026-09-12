@@ -1,3 +1,13 @@
+# v9.0 — 2026-09-12
+
+- Official product name: J-Quants Invest.
+- Stable release identity; beta label removed.
+- Manual generalized from ChatGPT-specific wording to AI-neutral workflow.
+- Discovery registration CSV template placed directly in the screening-to-watch workflow.
+- Watchlist list auto-loads when its tab is opened; manual refresh remains available.
+- Development history UI states that the latest 20 updates are shown.
+- Canonical Screening calculation semantics unchanged.
+
 # v8-beta4 (2026-09-12)
 - ナビを上段3・下段4へ再編し、銘柄・売買を銘柄登録へ改称。
 - 開発履歴を日本語表示・新しい順・直近20件へ変更。

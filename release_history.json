@@ -1,6 +1,12 @@
 {
-  "current_release": "v8-beta4",
+  "current_release": "v9.0",
   "history": [
+    {
+      "version": "v9.0",
+      "date": "2026-09-12",
+      "summary": "First stable J-Quants Invest release: official product identity, generalized AI workflow/manual, Discovery CSV template placement, last-20 development history wording, and automatic Watchlist list loading.",
+      "summary_ja": "正式名称を「J-Quants Invest」に統一し、v9.0正式版へ移行。AIサービス非依存のマニュアル、Discovery登録CSV雛形、開発履歴の直近20件表示案内、Watchlist一覧の自動読込を整備。"
+    },
     {
       "version": "v8-beta4",
       "date": "2026-09-12",
