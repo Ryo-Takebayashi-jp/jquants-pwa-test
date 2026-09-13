@@ -1,5 +1,5 @@
 {
-  "current_release": "v9.1",
+  "current_release": "v9.2",
   "history": [
     {
       "version": "v9.1",
@@ -276,5 +276,12 @@
     "version": "v7e-beta9",
     "date": "2026-09-10",
     "summary": "Fresh-install DataLake builder and fully collapsible Settings/Maintenance sections."
-  }
+  },
+  "releases": [
+    {
+      "version": "v9.2",
+      "date": "2026-09-13",
+      "summary": "Screening設定を対象範囲＋5探索戦略のシンプル構成へ再設計。標準の品質条件は固定表示し、戦略はON/OFFと弱め・標準・強めで調整可能。"
+    }
+  ]
 }

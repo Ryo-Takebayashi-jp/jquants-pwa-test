@@ -3,7 +3,7 @@
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#08111f" name="theme-color"/>
 <link href="./manifest.webmanifest" rel="manifest"/>
-<title>J-Quants Invest v9.1</title>
+<title>J-Quants Invest v9.2</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -29,8 +29,10 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 .trade-form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;row-gap:7px;align-items:start}.trade-form-grid>label{margin:0!important;padding:0!important;min-width:0;display:flex;flex-direction:column;justify-content:flex-start;gap:3px;line-height:1.2}.trade-form-grid input,.trade-form-grid select{box-sizing:border-box;max-width:100%;margin:0!important}.watch-badges{display:flex;gap:5px;flex-wrap:wrap;margin:5px 0}.watch-badge{display:inline-block;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:800;background:#e5e7eb}.watch-badge.active{background:#dcfce7;color:#166534}.watch-badge.inactive{background:#f3f4f6;color:#6b7280}.watch-badge.status{background:#dbeafe;color:#1e40af}
 
 .screen-config-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}.screen-config-table th,.screen-config-table td{border-bottom:1px solid #e5e7eb;padding:8px 6px;text-align:left;vertical-align:top}.screen-config-table th{background:#f9fafb;font-size:11px;color:#4b5563}.screen-readonly{border:1px solid #dbeafe;background:#f8fbff}.attention-badge{background:#fee2e2!important;color:#991b1b!important;border:1px solid #fecaca}.manual-step{border-left:3px solid #d1d5db;padding-left:10px;margin:12px 0;font-size:15px;line-height:1.65}.manual-step b{font-size:16px}.manual-card p,.manual-card li,.manual-card td{font-size:15px;line-height:1.7}.manual-card h2{font-size:19px}.history-list{display:grid;gap:8px}.history-item{border:1px solid #e5e7eb;border-radius:12px;padding:10px;background:#fafafa}.history-version{font-weight:800}.history-date{font-size:11px;color:#6b7280;margin-left:6px}
+
+.screen-strategy-grid{display:grid;gap:10px}.screen-strategy-card{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:12px;border:1px solid #d9dee7;border-radius:14px;background:#fff}.screen-strategy-card .desc{margin:4px 0 0}.screen-strategy-card select{min-width:88px}@media(max-width:640px){.screen-strategy-card{grid-template-columns:1fr auto}.screen-strategy-card select{grid-column:1/-1;width:100%}}
 </style>
-</head><body><header><h1>J-Quants Invest v9.1</h1><p>J-Quants × AI 投資分析・運用プラットフォーム</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
+</head><body><header><h1>J-Quants Invest v9.2</h1><p>J-Quants × AI 投資分析・運用プラットフォーム</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
 <div class="app-nav-row primary">
 <button class="active" data-page="daily" type="button">日々分析</button>
 <button data-page="stocks" type="button">銘柄登録</button>
@@ -94,20 +96,22 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <div id="pfTradePositions"></div>
 <details style="margin-top:10px"><summary>最近の売買履歴</summary><div id="pfTradeHistory"></div></details>
 <p class="desc">既存保有は現在の平均取得単価を起点に継続管理します。縮小時の実現損益はWeb上の平均取得単価を基準に計算します。税・手数料は含みません。誤入力は最近の売買履歴から「入力取消」→確認→確定できます。同一銘柄・口座は新しい入力から順に取消し、取消済み記録は監査用に残します。</p>
-</section></section><section class="app-page" id="page-screening"><h2 class="page-title">スクリーニング</h2><p class="page-lead">DataLakeから抽出する対象銘柄の条件を設定します。初期値はこれまで使用してきた標準設定です。</p>
-<section class="card"><h2>対象銘柄の条件</h2><p class="desc"><b>標準設定：</b>全市場・全セクター / 普通株（011） / 20日平均売買代金5,000万円以上 / 株価100円以上 / 価格履歴60営業日以上。設定を変更すると、次回Screening時にDataLakeから母集団を作り直します。</p>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
-<label>最低20日平均売買代金（万円）<input id="screenCfgTradingValueMan" type="number" min="0" step="100" value="5000"></label>
-<label>最低株価（円）<input id="screenCfgMinPrice" type="number" min="0" step="10" value="100"></label>
-<label>最低価格履歴（営業日）<input id="screenCfgHistoryDays" type="number" min="1" step="1" value="60"></label>
-<label>業種分類<select id="screenCfgSectorMode"><option value="17">17業種（標準）</option><option value="33">33業種（詳細）</option></select></label>
-</div>
+</section></section><section class="app-page" id="page-screening"><h2 class="page-title">スクリーニング</h2><p class="page-lead">標準設定を基準に、探したい対象範囲と5つの探索戦略だけを調整できます。迷ったら「標準設定に戻す」で、これまでのスクリーニング条件へ戻せます。</p>
+<section class="card"><h2>現在の設定</h2><pre class="result" id="screenCfgResult">標準設定</pre><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button id="screenCfgSaveBtn">現在設定を保存</button><button class="secondary" id="screenCfgResetBtn">標準設定に戻す</button></div></section>
+<section class="card"><h2>① 対象範囲</h2><p class="desc">ここでは「どの銘柄群から探すか」だけを設定します。標準は全市場・全セクターです。</p>
 <h3>対象市場</h3><div id="screenCfgMarkets" class="screen-choice-grid"><label><input type="checkbox" value="プライム" checked> プライム</label><label><input type="checkbox" value="スタンダード" checked> スタンダード</label><label><input type="checkbox" value="グロース" checked> グロース</label></div>
-<h3>対象セクター</h3><label><input id="screenCfgAllSectors" type="checkbox" checked> 全セクター</label><div id="screenCfgSectorList" class="screen-choice-grid"><span class="desc">業種一覧を読み込み中…</span></div>
-<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button id="screenCfgSaveBtn">現在設定を保存</button><button class="secondary" id="screenCfgResetBtn">標準設定に戻す</button></div><pre class="result" id="screenCfgResult">標準設定</pre></section>
-<section class="card"><h2>現在の評価ロジック</h2><p class="desc">評価ロジックは従来どおり5戦略を使用します。v9.1ではまず母集団条件を安全に変更できるようにし、戦略の重み変更は行いません。</p><table class="screen-config-table"><tr><th>戦略</th><th>現在の主な構成</th></tr><tr><td><b>FundamentalPriceGap</b></td><td>Gap percentile 65% + ReRating 35% − ChasePenalty</td></tr><tr><td><b>FundamentalMomentum</b></td><td>FundamentalScore 55% + ReRatingScore 45% − ChasePenalty</td></tr><tr><td><b>PostEarningsDrift</b></td><td>決算後3〜20営業日。Fundamental 35% + 決算後5日反応30% + Follow-through20% + Volume15%</td></tr><tr><td><b>GrowthAcceleration</b></td><td>FundamentalScoreを主スコアとして使用</td></tr><tr><td><b>QualityValueReRating</b></td><td>Quality 36% + Value 28% + ReRating 36% −各Penalty</td></tr></table></section>
-<section class="card"><h2>Screening共有</h2><p class="desc">Screeningの実行と共有ZIP生成は従来どおり「日々分析」から行います。保存した母集団条件は次回Screeningから適用されます。</p></section>
-</section></section><section class="app-page" id="page-watchlist"><h2 class="page-title">ウォッチリスト</h2><p class="page-lead">追跡対象の登録・一覧確認・追跡終了をここで行います。<br><b>Watchlist</b> ＝ 日々の監視対象<br><b>Discovery</b> ＝ 発掘後の経過を追跡する対象</p><section class="card app-managed-card" id="quickInvestmentManageCard">
+<h3>対象セクター</h3><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label><input id="screenCfgAllSectors" type="checkbox" checked> 全セクター</label><label>業種分類 <select id="screenCfgSectorMode"><option value="17">17業種（標準）</option><option value="33">33業種（詳細）</option></select></label></div><div id="screenCfgSectorList" class="screen-choice-grid" style="margin-top:8px"><span class="desc">業種一覧を読み込み中…</span></div></section>
+<section class="card"><h2>② 探索戦略</h2><p class="desc">各戦略を使うかどうかと、候補への反映度を設定します。反映度はスコア式を変更せず、各戦略から候補として採用する件数を調整します。弱め＝上位10、標準＝上位20、強め＝上位30です。</p>
+<div id="screenCfgStrategies" class="screen-strategy-grid">
+<div class="screen-strategy-card" data-strategy="FundamentalPriceGap"><div><b>出遅れ再評価</b><p class="desc">業績に対して株価評価が追いついていない銘柄を探します。</p></div><label><input class="screen-strategy-enabled" type="checkbox" checked> 使用</label><select class="screen-strategy-strength"><option value="weak">弱め</option><option value="standard" selected>標準</option><option value="strong">強め</option></select></div>
+<div class="screen-strategy-card" data-strategy="FundamentalMomentum"><div><b>業績モメンタム</b><p class="desc">業績の強さと株価の再評価が同時に進む銘柄を探します。</p></div><label><input class="screen-strategy-enabled" type="checkbox" checked> 使用</label><select class="screen-strategy-strength"><option value="weak">弱め</option><option value="standard" selected>標準</option><option value="strong">強め</option></select></div>
+<div class="screen-strategy-card" data-strategy="PostEarningsDrift"><div><b>決算後</b><p class="desc">決算通過後も反応が継続している銘柄を探します。</p></div><label><input class="screen-strategy-enabled" type="checkbox" checked> 使用</label><select class="screen-strategy-strength"><option value="weak">弱め</option><option value="standard" selected>標準</option><option value="strong">強め</option></select></div>
+<div class="screen-strategy-card" data-strategy="GrowthAcceleration"><div><b>業績加速</b><p class="desc">売上・利益成長や利益率改善が強い銘柄を探します。</p></div><label><input class="screen-strategy-enabled" type="checkbox" checked> 使用</label><select class="screen-strategy-strength"><option value="weak">弱め</option><option value="standard" selected>標準</option><option value="strong">強め</option></select></div>
+<div class="screen-strategy-card" data-strategy="QualityValueReRating"><div><b>割安・リレーティング</b><p class="desc">品質・割安性・再評価余地を組み合わせて探します。</p></div><label><input class="screen-strategy-enabled" type="checkbox" checked> 使用</label><select class="screen-strategy-strength"><option value="weak">弱め</option><option value="standard" selected>標準</option><option value="strong">強め</option></select></div>
+</div></section>
+<section class="card"><h2>③ 標準の基礎条件</h2><p class="desc">以下は候補品質を守るための共通条件です。通常は変更しません。</p><table class="screen-config-table"><tr><th>項目</th><th>標準条件</th></tr><tr><td>銘柄種別</td><td>普通株（011）</td></tr><tr><td>20日平均売買代金</td><td>5,000万円以上</td></tr><tr><td>株価</td><td>100円以上</td></tr><tr><td>価格履歴</td><td>60営業日以上</td></tr></table></section>
+<section class="card"><h2>Screening共有</h2><p class="desc">Screeningの実行と共有ZIP生成は「日々分析」から行います。保存した設定は次回Screeningから適用され、screening_profile.csvにも実行時設定を記録します。</p></section>
+</section></section></section><section class="app-page" id="page-watchlist"><h2 class="page-title">ウォッチリスト</h2><p class="page-lead">追跡対象の登録・一覧確認・追跡終了をここで行います。<br><b>Watchlist</b> ＝ 日々の監視対象<br><b>Discovery</b> ＝ 発掘後の経過を追跡する対象</p><section class="card app-managed-card" id="quickInvestmentManageCard">
 <h2>ウォッチリストを登録・管理</h2>
 <p><b>通常はAIで作成したDiscovery登録CSVを読み込みます。</b> AIで価格条件・根拠・投資仮説を設定し、最新終値・距離・決算日・Trigger / AttentionはPWAがDataLakeから自動計算します。履歴は削除せず監査用に保持します。</p>
 <div class="watch-import-box">
@@ -232,4 +236,4 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
   activate(initial);
 })();
-</script><script src="./app.js?v=v9.1"></script></body></html>
+</script><script src="./app.js?v=v9.2"></script></body></html>

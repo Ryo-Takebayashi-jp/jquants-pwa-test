@@ -1,7 +1,7 @@
 # Current Web/PWA Release
 
 - Product: `J-Quants Invest`
-- Version: `v9.1`
+- Version: `v9.2`
 - Status: stable release.
 - Role: J-Quants × AI investment analysis and operations platform.
 - Canonical Screening calculation semantics: unchanged from v8-beta4.
