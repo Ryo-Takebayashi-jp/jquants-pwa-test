@@ -1,3 +1,12 @@
+# v9.8 Screening設定UI安定化
+
+- 17業種と16評価軸をHTMLへ静的描画し、JavaScript初期化失敗時でも設定UIが欠落しない構造へ変更。
+- 「標準設定」を保存設定リストへ初期表示し、ユーザー設定3件とは別の固定プロファイルとして維持。
+- Screening設定UIをDOMContentLoaded / pageshowで再同期。
+- app.jsを物理バージョン名 app-v9.8.js へ分離し、index.htmlとJavaScriptの世代不一致キャッシュを防止。
+- Service Workerをv9.8へ更新し、同一Origin資産をnetwork-first + no-storeで更新確認。
+- 評価軸の弱/中/強は 0.6x / 1.0x / 1.4x の相対重み。全軸「中」で従来標準式を再現。
+
 # v9.7 Screening評価軸カスタマイズ
 
 - 5つの探索戦略を、内部ロジックに対応する主要評価軸ごとの「弱・中・強」で調整できるUIへ変更。
