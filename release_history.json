@@ -1,6 +1,12 @@
 {
-  "current_release": "v9.0",
+  "current_release": "v9.1",
   "history": [
+    {
+      "version": "v9.1",
+      "date": "2026-09-13",
+      "summary": "Configurable screening universe: markets, Sector17/Sector33, liquidity, price and history filters, one-tap reset to standard settings, and run-profile snapshot in Screening Share.",
+      "summary_ja": "スクリーニング母集団のカスタム設定を追加。市場、17/33業種、流動性、株価、価格履歴を変更でき、標準設定へワンタップで復元可能。Screening Shareに実行時設定も記録。"
+    },
     {
       "version": "v9.0",
       "date": "2026-09-12",

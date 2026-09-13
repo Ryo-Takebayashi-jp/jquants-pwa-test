@@ -2345,6 +2345,10 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }
  }
 
+ if(cmd==="screening-master-options"){
+   let mdb=null;try{mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");const rows=execRows(mdb,"SELECT DISTINCT sector17_name AS sector17, sector33_name AS sector33 FROM equities_master WHERE product_category='011'");mdb.close();mdb=null;const sector17=[...new Set(rows.map(x=>String(x.sector17||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));const sector33=[...new Set(rows.map(x=>String(x.sector33||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));self.postMessage({ok:true,type:'result',sector17,sector33});return}catch(e){try{if(mdb)mdb.close()}catch(_){}throw e}
+ }
+
  if(cmd==="screening-base-snapshot"){
    const payload=d.payload||{}, techRows=payload.techRows||[], finRows=payload.finRows||[];
    const norm=v=>{let c=String(v??"").trim();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c};
@@ -2370,14 +2374,22 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      ForecastDividendYieldPct:(t.close!=null&&f.ForecastAnnualDividend!=null)?f.ForecastAnnualDividend/t.close*100:null,
      FinancialHistoryCount:f.FinancialHistoryCount??0,ComparablePriorFound:!!f.ComparablePriorFound
    }});
-   const filtered=rows.filter(r=>["プライム","スタンダード","グロース"].includes(String(r.Market||""))&&String(r.ProductCategory||"")==="011"&&Number(r.AverageTradingValue20D)>=50000000&&Number(r.Close)>=100&&Number(r.PriceHistoryDays)>=60);
+   const cfg=payload.screeningConfig||{};
+   const markets=Array.isArray(cfg.markets)&&cfg.markets.length?new Set(cfg.markets.map(String)):new Set(["プライム","スタンダード","グロース"]);
+   const minTradingValue=Number.isFinite(Number(cfg.minTradingValue))?Math.max(0,Number(cfg.minTradingValue)):50000000;
+   const minPrice=Number.isFinite(Number(cfg.minPrice))?Math.max(0,Number(cfg.minPrice)):100;
+   const minHistoryDays=Number.isFinite(Number(cfg.minHistoryDays))?Math.max(1,Number(cfg.minHistoryDays)):60;
+   const sectorMode=String(cfg.sectorMode)==="33"?"33":"17";
+   const sectors=Array.isArray(cfg.sectors)&&cfg.sectors.length?new Set(cfg.sectors.map(String)):null;
+   const fixedEligible=rows.filter(r=>markets.has(String(r.Market||""))&&String(r.ProductCategory||"")==="011");
+   const filtered=fixedEligible.filter(r=>Number(r.AverageTradingValue20D)>=minTradingValue&&Number(r.Close)>=minPrice&&Number(r.PriceHistoryDays)>=minHistoryDays&&(!sectors||sectors.has(String(sectorMode==="33"?r.Sector33:r.Sector17||""))));
    const postCoverage={
      technical:filtered.filter(r=>r.Close!=null).length,
      master:filtered.filter(r=>r.CompanyName!=null&&r.Market!=null).length,
      financial:filtered.filter(r=>r.LatestDisclosureDate!=null||r.DiscDate!=null).length,
      forecast:filtered.filter(r=>r.ForecastEPS!=null||r.ForecastSales!=null||r.ForecastOperatingProfit!=null||r.ForecastOrdinaryProfit!=null||r.ForecastNetProfit!=null).length
    };
-   self.postMessage({ok:true,type:"result",rows:filtered,count:filtered.length,coverage:{preFilter:rows.length,screened:filtered.length,...postCoverage}});return;
+   self.postMessage({ok:true,type:"result",rows:filtered,count:filtered.length,coverage:{preFilter:rows.length,fixedEligible:fixedEligible.length,screened:filtered.length,...postCoverage},appliedConfig:{markets:[...markets],minTradingValue,minPrice,minHistoryDays,sectorMode,sectors:sectors?[...sectors]:[]}});return;
  }
 
  if(cmd==="portfolio-integrated-snapshot"){

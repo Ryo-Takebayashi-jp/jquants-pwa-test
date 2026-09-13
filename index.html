@@ -3,7 +3,7 @@
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#08111f" name="theme-color"/>
 <link href="./manifest.webmanifest" rel="manifest"/>
-<title>J-Quants Invest v9.0</title>
+<title>J-Quants Invest v9.1</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -30,7 +30,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
 .screen-config-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}.screen-config-table th,.screen-config-table td{border-bottom:1px solid #e5e7eb;padding:8px 6px;text-align:left;vertical-align:top}.screen-config-table th{background:#f9fafb;font-size:11px;color:#4b5563}.screen-readonly{border:1px solid #dbeafe;background:#f8fbff}.attention-badge{background:#fee2e2!important;color:#991b1b!important;border:1px solid #fecaca}.manual-step{border-left:3px solid #d1d5db;padding-left:10px;margin:12px 0;font-size:15px;line-height:1.65}.manual-step b{font-size:16px}.manual-card p,.manual-card li,.manual-card td{font-size:15px;line-height:1.7}.manual-card h2{font-size:19px}.history-list{display:grid;gap:8px}.history-item{border:1px solid #e5e7eb;border-radius:12px;padding:10px;background:#fafafa}.history-version{font-weight:800}.history-date{font-size:11px;color:#6b7280;margin-left:6px}
 </style>
-</head><body><header><h1>J-Quants Invest v9.0</h1><p>J-Quants × AI 投資分析・運用プラットフォーム</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
+</head><body><header><h1>J-Quants Invest v9.1</h1><p>J-Quants × AI 投資分析・運用プラットフォーム</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
 <div class="app-nav-row primary">
 <button class="active" data-page="daily" type="button">日々分析</button>
 <button data-page="stocks" type="button">銘柄登録</button>
@@ -94,12 +94,19 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <div id="pfTradePositions"></div>
 <details style="margin-top:10px"><summary>最近の売買履歴</summary><div id="pfTradeHistory"></div></details>
 <p class="desc">既存保有は現在の平均取得単価を起点に継続管理します。縮小時の実現損益はWeb上の平均取得単価を基準に計算します。税・手数料は含みません。誤入力は最近の売買履歴から「入力取消」→確認→確定できます。同一銘柄・口座は新しい入力から順に取消し、取消済み記録は監査用に残します。</p>
-</section></section><section class="app-page" id="page-screening"><h2 class="page-title">スクリーニング</h2><p class="page-lead">現在のCanonical Screening条件を読み取り専用で表示します。この画面から計算条件は変更しません。</p>
-<section class="card screen-readonly"><h2>Canonical Screening（read-only）</h2><p class="desc"><b>表示専用。</b> 日次運用・Screening Shareで実際に使われている条件を見える化しています。ここを開いてもScreening結果には影響しません。</p></section>
-<section class="card"><h2>共通母集団</h2><table class="screen-config-table"><tr><th>項目</th><th>現在の条件</th></tr><tr><td>市場・銘柄種別</td><td>Market対象 + 普通株（ProdCat=011）</td></tr><tr><td>20日平均売買代金</td><td>5,000万円以上</td></tr><tr><td>株価</td><td>100円以上</td></tr><tr><td>価格履歴</td><td>60営業日以上</td></tr><tr><td>テクニカル計算</td><td>lookback 320日</td></tr><tr><td>各戦略の選抜</td><td>上位20銘柄。EarningsReactionPending / 財務欠損は通常戦略から除外</td></tr></table></section>
-<section class="card"><h2>5戦略</h2><table class="screen-config-table"><tr><th>戦略</th><th>現在の主な構成</th></tr><tr><td><b>FundamentalPriceGap</b></td><td>FundamentalScore − PriceRecognitionScoreを基礎にGap percentile 65% + ReRating 35% − ChasePenalty</td></tr><tr><td><b>FundamentalMomentum</b></td><td>FundamentalScore 55% + ReRatingScore 45% − ChasePenalty</td></tr><tr><td><b>PostEarningsDrift</b></td><td>決算後3〜20営業日。Fundamental 35% + 決算後5日反応30% + Follow-through20% + Volume15%</td></tr><tr><td><b>GrowthAcceleration</b></td><td>FundamentalScoreを成長加速候補の主スコアとして使用</td></tr><tr><td><b>QualityValueReRating</b></td><td>Quality 36% + Value 28% + ReRating 36% − CrowdingPenalty − QualityMismatchPenalty − ChasePenalty</td></tr></table><p class="compact-note">別枠：EarningsReactionPendingは通常5戦略とは分け、FundamentalScore順で最大20銘柄をReview候補として保持します。</p></section>
-<section class="card"><h2>主要スコアの重み</h2><table class="screen-config-table"><tr><th>スコア</th><th>現在の重み</th></tr><tr><td>FundamentalScore</td><td>売上成長25% / 利益成長30% / 利益率品質20% / Guidance15% / CFO品質10%</td></tr><tr><td>PriceRecognitionScore</td><td>TOPIX相対20日20% / 60日30% / 120日25% / 75日線乖離15% / 60日高値位置10%</td></tr><tr><td>ReRatingScore</td><td>短期モメンタム35% / 出来高増加30% / 25日線位置35%</td></tr><tr><td>QVR Value</td><td>同業Forecast PER 45% / PBR 30% / 予想配当利回り25%</td></tr><tr><td>QVR Quality</td><td>ROE25% / 営業利益率20% / 利益率改善20% / CF20% / 自己資本比率15%</td></tr></table></section>
-<section class="card"><h2>Screening共有</h2><p class="desc">生成操作は従来どおり「日々分析」にあります。このタブは現行条件を確認するためのread-only画面です。</p></section>
+</section></section><section class="app-page" id="page-screening"><h2 class="page-title">スクリーニング</h2><p class="page-lead">DataLakeから抽出する対象銘柄の条件を設定します。初期値はこれまで使用してきた標準設定です。</p>
+<section class="card"><h2>対象銘柄の条件</h2><p class="desc"><b>標準設定：</b>全市場・全セクター / 普通株（011） / 20日平均売買代金5,000万円以上 / 株価100円以上 / 価格履歴60営業日以上。設定を変更すると、次回Screening時にDataLakeから母集団を作り直します。</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
+<label>最低20日平均売買代金（万円）<input id="screenCfgTradingValueMan" type="number" min="0" step="100" value="5000"></label>
+<label>最低株価（円）<input id="screenCfgMinPrice" type="number" min="0" step="10" value="100"></label>
+<label>最低価格履歴（営業日）<input id="screenCfgHistoryDays" type="number" min="1" step="1" value="60"></label>
+<label>業種分類<select id="screenCfgSectorMode"><option value="17">17業種（標準）</option><option value="33">33業種（詳細）</option></select></label>
+</div>
+<h3>対象市場</h3><div id="screenCfgMarkets" class="screen-choice-grid"><label><input type="checkbox" value="プライム" checked> プライム</label><label><input type="checkbox" value="スタンダード" checked> スタンダード</label><label><input type="checkbox" value="グロース" checked> グロース</label></div>
+<h3>対象セクター</h3><label><input id="screenCfgAllSectors" type="checkbox" checked> 全セクター</label><div id="screenCfgSectorList" class="screen-choice-grid"><span class="desc">業種一覧を読み込み中…</span></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button id="screenCfgSaveBtn">現在設定を保存</button><button class="secondary" id="screenCfgResetBtn">標準設定に戻す</button></div><pre class="result" id="screenCfgResult">標準設定</pre></section>
+<section class="card"><h2>現在の評価ロジック</h2><p class="desc">評価ロジックは従来どおり5戦略を使用します。v9.1ではまず母集団条件を安全に変更できるようにし、戦略の重み変更は行いません。</p><table class="screen-config-table"><tr><th>戦略</th><th>現在の主な構成</th></tr><tr><td><b>FundamentalPriceGap</b></td><td>Gap percentile 65% + ReRating 35% − ChasePenalty</td></tr><tr><td><b>FundamentalMomentum</b></td><td>FundamentalScore 55% + ReRatingScore 45% − ChasePenalty</td></tr><tr><td><b>PostEarningsDrift</b></td><td>決算後3〜20営業日。Fundamental 35% + 決算後5日反応30% + Follow-through20% + Volume15%</td></tr><tr><td><b>GrowthAcceleration</b></td><td>FundamentalScoreを主スコアとして使用</td></tr><tr><td><b>QualityValueReRating</b></td><td>Quality 36% + Value 28% + ReRating 36% −各Penalty</td></tr></table></section>
+<section class="card"><h2>Screening共有</h2><p class="desc">Screeningの実行と共有ZIP生成は従来どおり「日々分析」から行います。保存した母集団条件は次回Screeningから適用されます。</p></section>
 </section></section><section class="app-page" id="page-watchlist"><h2 class="page-title">ウォッチリスト</h2><p class="page-lead">追跡対象の登録・一覧確認・追跡終了をここで行います。<br><b>Watchlist</b> ＝ 日々の監視対象<br><b>Discovery</b> ＝ 発掘後の経過を追跡する対象</p><section class="card app-managed-card" id="quickInvestmentManageCard">
 <h2>ウォッチリストを登録・管理</h2>
 <p><b>通常はAIで作成したDiscovery登録CSVを読み込みます。</b> AIで価格条件・根拠・投資仮説を設定し、最新終値・距離・決算日・Trigger / AttentionはPWAがDataLakeから自動計算します。履歴は削除せず監査用に保持します。</p>
@@ -193,16 +200,12 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <button class="secondary" id="fullLocalResetBtn">ローカルデータを完全初期化</button><div class="result" id="fullLocalResetResult">未実行</div>
 <hr/><h3>アプリ情報</h3><div class="result pass" id="appBootStatus">JavaScript起動: PASS</div><div class="result" id="dateEngineStatus">日付エンジン確認中…</div>
 </details>
-<details class="card app-managed-card" id="temporaryDiagnosticCard"><summary><strong>⑤ 一時診断（開発用）</strong></summary>
-<div class="notice"><b>一時機能:</b> 原因調査が終わったらセクションごと削除します。すべてread-onlyで、DB・OPFS・Cache・IndexedDBの削除や修復は行いません。</div>
-<h3>Originストレージ詳細棚卸し</h3><p class="desc">Origin全体の使用量と、OPFSのディレクトリ/ファイル階層、Cache Storage、IndexedDB一覧を可能な範囲で分解します。巨大ファイルの中身は読み込みません。</p>
-<button id="temporaryStorageAuditBtn">ストレージ詳細をread-only分析</button><div class="result" id="temporaryStorageAuditResult">未実行</div>
-</details>
+
 
 </section><section class="app-page" id="page-manual"><h2 class="page-title">マニュアル</h2><p class="page-lead">初回セットアップから日々の運用、AI分析、バックアップまで、このPWAの基本的な使い方をまとめています。</p>
 <section class="card manual-card"><h2>初めて使うとき</h2><div class="manual-step"><b>1. J-Quants APIキーを設定</b><br>設定・保守でJ-Quants V2 APIキーを入力します。</div><div class="manual-step"><b>2. DataLakeを構築</b><br>取得期間を指定して市場データを構築します。初回はデータ量に応じて時間がかかります。</div><div class="manual-step"><b>3. 銘柄・保有情報を登録</b><br>銘柄登録タブから保有ポジションや必要な売買情報を登録します。</div><div class="manual-step"><b>4. バックアップを確認</b><br>初期構築後は設定・保守からユーザーデータとDataLakeを外部保存しておくと、端末変更や復旧時に利用できます。</div></section>
 <section class="card manual-card"><h2>毎日の使い方</h2><div class="manual-step"><b>1. 日々分析</b><br>「日次運用を実行」でDataLake更新からScreening、Discovery、Watchlist Alert Previewまで進めます。</div><div class="manual-step"><b>2. 銘柄登録</b><br>売買や保有状況に変更があった日に登録・確認します。売買日の自動値はJST当日です。</div><div class="manual-step"><b>3. AI分析</b><br>必要に応じてPortfolio AI Share / Screening Shareを生成し、AIで分析します。</div></section>
-<section class="card manual-card"><h2>スクリーニング → AI分析 → ウォッチリスト</h2><div class="manual-step"><b>1. Screeningを実行</b><br>日々分析でScreeningを完了させ、Screening Shareを生成します。スクリーニングタブでは現在のCanonical条件をread-onlyで確認できます。</div><div class="manual-step"><b>2. AIで候補を分析</b><br>Screening ShareをAIに渡し、有力候補・押し目条件・上抜け条件・投資仮説を分析します。</div><div class="manual-step"><b>3. Discovery登録CSVを作成</b><br>分析結果から、追跡する候補銘柄のDiscovery登録CSVを作成します。<br><b>作成にあたっては、以下のフォーマットを使用してください。</b><br><a href="./templates/discovery_registration_template.csv" download>Discovery登録CSV 雛形をダウンロード</a></div><div class="manual-step"><b>4. PWAへ取り込み</b><br>AIで作成したDiscovery登録CSVをウォッチリストタブから取り込みます。PWAが最新株価・価格条件までの距離・決算予定日・要注意判定などを補完します。赤い「⚠ 要注意」はAIでの再評価対象で、価格到達だけで自動的な買い判定にはなりません。</div></section>
+<section class="card manual-card"><h2>スクリーニング → AI分析 → ウォッチリスト</h2><div class="manual-step"><b>1. Screeningを実行</b><br>日々分析でScreeningを完了させ、Screening Shareを生成します。スクリーニングタブでは対象市場・セクター・流動性・株価・価格履歴を設定できます。初期値は従来の標準設定で、「標準設定に戻す」からいつでも復元できます。</div><div class="manual-step"><b>2. AIで候補を分析</b><br>Screening ShareをAIに渡し、有力候補・押し目条件・上抜け条件・投資仮説を分析します。</div><div class="manual-step"><b>3. Discovery登録CSVを作成</b><br>分析結果から、追跡する候補銘柄のDiscovery登録CSVを作成します。<br><b>作成にあたっては、以下のフォーマットを使用してください。</b><br><a href="./templates/discovery_registration_template.csv" download>Discovery登録CSV 雛形をダウンロード</a></div><div class="manual-step"><b>4. PWAへ取り込み</b><br>AIで作成したDiscovery登録CSVをウォッチリストタブから取り込みます。PWAが最新株価・価格条件までの距離・決算予定日・要注意判定などを補完します。赤い「⚠ 要注意」はAIでの再評価対象で、価格到達だけで自動的な買い判定にはなりません。</div></section>
 <section class="card manual-card"><h2>バックアップ・復元</h2><p>設定・保守からユーザーデータとDataLakeを外部保存できます。ユーザーデータには保有・売買履歴・Watchlist・Discovery・メモ等が含まれるため、定期的なバックアップを推奨します。復元時は設定・保守の案内に沿って取り込み・監査を行います。</p></section>
 <section class="card manual-card"><h2>データの意味</h2><table class="screen-config-table"><tr><th>名称</th><th>意味</th></tr><tr><td>DataLake</td><td>株価・財務・決算予定・需給など、原則APIから再取得できる市場分析データ</td></tr><tr><td>ユーザーデータ</td><td>保有・売買履歴・Watchlist・Discovery・メモ等。外部バックアップが重要です</td></tr><tr><td>SAH Pool / OPFS</td><td>SQLite DBを端末内に保存するブラウザ領域。通常は直接操作しません</td></tr></table></section>
 <section class="card manual-card"><h2>困ったとき</h2><p>まず設定・保守 → ④トラブル診断のread-only確認を利用します。復旧操作を行う前に、ユーザーデータとDataLakeの外部バックアップを確認してください。</p></section>
@@ -229,4 +232,4 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
   activate(initial);
 })();
-</script><script src="./app.js?v=v9.0"></script></body></html>
+</script><script src="./app.js?v=v9.1"></script></body></html>
