@@ -2346,7 +2346,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
  if(cmd==="screening-master-options"){
-   let mdb=null;try{mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");const rows=execRows(mdb,"SELECT DISTINCT sector17_name AS sector17, sector33_name AS sector33 FROM equities_master WHERE product_category='011'");mdb.close();mdb=null;const sector17=[...new Set(rows.map(x=>String(x.sector17||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));const sector33=[...new Set(rows.map(x=>String(x.sector33||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));self.postMessage({ok:true,type:'result',sector17,sector33});return}catch(e){try{if(mdb)mdb.close()}catch(_){}throw e}
+   let mdb=null;try{mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");const rows=execRows(mdb,"SELECT DISTINCT sector17_name AS sector17, sector33_name AS sector33 FROM equities_master WHERE COALESCE(TRIM(sector17_name),'')<>'' OR COALESCE(TRIM(sector33_name),'')<>''");mdb.close();mdb=null;const sector17=[...new Set(rows.map(x=>String(x.sector17||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));const sector33=[...new Set(rows.map(x=>String(x.sector33||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));self.postMessage({ok:true,type:'result',sector17,sector33});return}catch(e){try{if(mdb)mdb.close()}catch(_){}throw e}
  }
 
  if(cmd==="screening-base-snapshot"){
