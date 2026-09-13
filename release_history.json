@@ -1,6 +1,12 @@
 {
-  "current_release": "v9.3",
+  "current_release": "v9.4",
   "history": [
+    {
+      "version": "v9.4",
+      "date": "2026-09-13",
+      "summary": "Screening settings redesign: explicit per-strategy thresholds, independent candidate counts, three named profiles, and always-available sector checkboxes.",
+      "summary_ja": "スクリーニング設定を再設計。弱/標準/強の曖昧な調整を廃止し、各戦略の実指標しきい値と候補数を分離。名前付き設定3枠と、常時利用できる17/33業種チェックボックスを追加。"
+    },
     {
       "version": "v9.1",
       "date": "2026-09-13",
@@ -284,9 +290,9 @@
       "summary": "Screening設定を対象範囲＋5探索戦略のシンプル構成へ再設計。標準の品質条件は固定表示し、戦略はON/OFFと弱め・標準・強めで調整可能。"
     },
     {
-      "version": "v9.3",
+      "version": "v9.4",
       "date": "2026-09-13",
-      "summary": "Screening sector selection reliability + checkbox/radio strategy UI."
+      "summary": "Per-strategy threshold filters, candidate counts, three named screening profiles, static sector fallback."
     }
   ]
 }
