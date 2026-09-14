@@ -1,6 +1,12 @@
 {
-  "current_release": "v9.8",
+  "current_release": "v9.9",
   "history": [
+    {
+      "version": "v9.9",
+      "date": "2026-09-14",
+      "summary": "Screening weight visibility and profile persistence hardening.",
+      "summary_ja": "探索戦略を○弱・○中・○強のラジオ表示に変更し、0.6×/1.0×/1.4×、標準Weight、再正規化後の現在Weightを可視化。保存設定のイベントをDOM初期化後に結び直し、標準設定を固定・削除不可のまま保持。冗長な現在設定サマリーを削除。"
+    },
     {
       "version": "v9.4",
       "date": "2026-09-13",

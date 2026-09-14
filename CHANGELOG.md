@@ -1,3 +1,9 @@
+# v9.9 — 2026-09-14
+
+- Screening axes use compact radio controls and show multiplier, standard weight, and normalized current weight.
+- Named profile handlers are bound after DOM initialization; Standard Settings stays fixed/undeletable.
+- Redundant persistent current-setting summary removed; reset and action messages remain.
+
 # v9.8 Screening設定UI安定化
 
 - 17業種と16評価軸をHTMLへ静的描画し、JavaScript初期化失敗時でも設定UIが欠落しない構造へ変更。
