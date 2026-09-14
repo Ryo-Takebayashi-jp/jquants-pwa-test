@@ -1,4 +1,7 @@
-# v9.9 — 2026-09-14
+# v9.10 — 2026-09-14
+- Screening named-profile save path hardened: the full save handler is now guarded, current UI config is normalized before persistence, localStorage write is round-trip verified, and the saved profile must appear/select immediately after render.
+- No screening calculation logic, sector logic, or standard-profile semantics changed in this patch.
+
 
 - Screening axes use compact radio controls and show multiplier, standard weight, and normalized current weight.
 - Named profile handlers are bound after DOM initialization; Standard Settings stays fixed/undeletable.
