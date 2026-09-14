@@ -1,3 +1,7 @@
+# v10.1
+- Screening実行ボタンを押すたび、現在保存されている設定を読み込み、母集団から5戦略まで必ず再計算するよう修正。
+- 前回のin-memory母集団・候補を再利用しない。ページ更新なしで条件変更を反映。
+
 # v10.0 — 2026-09-14
 
 - 日次運用を再実行した際、DataLake/API取得済みcheckpointは再利用しつつ、Screening・Discovery・Factor/Seasonality・Watchlist Alert Previewは毎回再計算するよう変更。
