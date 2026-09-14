@@ -291,6 +291,11 @@
   },
   "releases": [
     {
+      "version": "v9.11",
+      "date": "2026-09-14",
+      "summary": "Screening名前付き設定保存時のescapeHtml未定義エラーを修正。"
+    },
+    {
       "version": "v9.8",
       "date": "2026-09-13",
       "summary": "Screening設定UIの描画・保存プロファイル・資産世代同期を安定化。17業種と評価軸を静的表示し、キャッシュ世代不一致を防止。"

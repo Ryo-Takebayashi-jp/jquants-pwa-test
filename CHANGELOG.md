@@ -1,3 +1,8 @@
+# v9.11
+
+- Screening 保存設定で `escapeHtml` が未定義だったため保存後の一覧再描画が停止する不具合を修正。
+- 保存・読込ロジックやScreening計算条件には変更なし。
+
 # v9.10 — 2026-09-14
 - Screening named-profile save path hardened: the full save handler is now guarded, current UI config is normalized before persistence, localStorage write is round-trip verified, and the saved profile must appear/select immediately after render.
 - No screening calculation logic, sector logic, or standard-profile semantics changed in this patch.
