@@ -1,6 +1,12 @@
 {
-  "current_release": "v9.10",
+  "current_release": "v10.0",
   "history": [
+    {
+      "version": "v10.0",
+      "date": "2026-09-14",
+      "summary": "Fresh daily analysis rerun and Screening save guidance.",
+      "summary_ja": "日次運用の再実行時はDataLake取得済みcheckpointのみ再利用し、Screening以降を現在の保存設定から毎回再計算。Screening設定画面に、新しい設定を使用するには保存が必要である旨を明記。"
+    },
     {
       "version": "v9.10",
       "date": "2026-09-14",

@@ -1,3 +1,10 @@
+# v10.0 — 2026-09-14
+
+- 日次運用を再実行した際、DataLake/API取得済みcheckpointは再利用しつつ、Screening・Discovery・Factor/Seasonality・Watchlist Alert Previewは毎回再計算するよう変更。
+- Screening再計算前に派生Screening cacheを破棄し、現在保存されているScreening設定から母集団・5戦略・ランキングを再構築。
+- 「保存した設定」に「新しい設定を使用する場合は、設定を保存してください。」の案内を追加。
+- v9.11までのScreening標準条件・保存設定・17業種・戦略Weightロジックは変更なし。
+
 # v9.11
 
 - Screening 保存設定で `escapeHtml` が未定義だったため保存後の一覧再描画が停止する不具合を修正。
