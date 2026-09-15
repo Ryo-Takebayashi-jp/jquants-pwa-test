@@ -2566,7 +2566,7 @@ function renderScreeningNamedProfiles(selectValue=null){const sel=$("screenProfi
 function bindScreeningConfigControls(){
  const sel=$("screenProfileSelect"),save=$("screenProfileSave"),load=$("screenProfileLoad"),del=$("screenProfileDelete"),allSec=$("screenCfgAllSectors"),reset=$("screenCfgResetBtn");
  if(sel)sel.onchange=()=>{if(del)del.disabled=sel.value==="default"};
- if(save)save.onclick=()=>{try{const name=String($("screenProfileName")?.value||"").trim();if(!name){box("screenCfgResult","warn","保存する設定名を入力してください。");return}if(name==="標準設定"){box("screenCfgResult","warn","「標準設定」は固定のため上書きできません。");return}const ps=loadNamedScreeningProfiles(),hit=ps.findIndex(p=>p.name===name),config=normalizeScreeningConfig(readScreeningConfigUi()),item={name,config};let idx=hit;if(hit>=0){ps[hit]=item;idx=hit}else if(ps.length<3){ps.push(item);idx=ps.length-1}else{box("screenCfgResult","warn","保存できる設定は3件までです。不要な設定を削除してから保存してください。");return}saveNamedScreeningProfiles(ps);const verify=loadNamedScreeningProfiles();const verifiedIndex=verify.findIndex(p=>p.name===name);if(verifiedIndex<0)throw new Error("保存後の読み戻しに失敗しました");idx=verifiedIndex;/* v10.2: 保存した設定を同時に現在のScreening設定として適用する。 */localStorage.setItem(SCREENING_CONFIG_KEY,JSON.stringify(config));const active=loadScreeningConfig();if(screeningConfigSig(active)!==screeningConfigSig(config))throw new Error("現在設定への適用確認に失敗しました");latestScreeningBaseRows=[];latestScreeningBaseAsOf="";latestScreeningBaseProfileSig="";latestScreeningCandidates=[];latestScreeningScoredRows=[];latestFactorBaseRows=[];applyScreeningConfigUi(active);renderScreeningNamedProfiles(`user:${idx}`);const selected=$("screenProfileSelect")?.value;if(selected!==`user:${idx}`)throw new Error("保存済み設定一覧への反映に失敗しました");if($("screenProfileName"))$("screenProfileName").value="";box("screenCfgResult","pass",`「${name}」を保存し、現在のScreening設定として適用しました。`)}catch(e){console.error("screening-profile-save",e);box("screenCfgResult","fail","設定を保存できませんでした。\n"+(e?.message||e))}};
+ if(save)save.onclick=()=>{try{const name=String($("screenProfileName")?.value||"").trim();if(!name){box("screenCfgResult","warn","保存する設定名を入力してください。");return}if(name==="標準設定"){box("screenCfgResult","warn","「標準設定」は固定のため上書きできません。");return}const ps=loadNamedScreeningProfiles(),hit=ps.findIndex(p=>p.name===name),config=normalizeScreeningConfig(readScreeningConfigUi()),item={name,config};let idx=hit;if(hit>=0){ps[hit]=item;idx=hit}else if(ps.length<3){ps.push(item);idx=ps.length-1}else{box("screenCfgResult","warn","保存できる設定は3件までです。不要な設定を削除してから保存してください。");return}saveNamedScreeningProfiles(ps);const verify=loadNamedScreeningProfiles();const verifiedIndex=verify.findIndex(p=>p.name===name);if(verifiedIndex<0)throw new Error("保存後の読み戻しに失敗しました");idx=verifiedIndex;renderScreeningNamedProfiles(`user:${idx}`);const selected=$("screenProfileSelect")?.value;if(selected!==`user:${idx}`)throw new Error("保存済み設定一覧への反映に失敗しました");if($("screenProfileName"))$("screenProfileName").value="";box("screenCfgResult","pass",`「${name}」を保存しました。保存済み設定へ反映済みです。`)}catch(e){console.error("screening-profile-save",e);box("screenCfgResult","fail","設定を保存できませんでした。\n"+(e?.message||e))}};
  if(load)load.onclick=()=>{const v=sel?.value||"default";if(v==="default"){const c=normalizeScreeningConfig(SCREENING_DEFAULT_CONFIG);localStorage.setItem(SCREENING_CONFIG_KEY,JSON.stringify(c));applyScreeningConfigUi(c);renderScreeningNamedProfiles("default");box("screenCfgResult","pass","標準設定を読み込みました。");return}const i=Number(v.split(':')[1]),p=loadNamedScreeningProfiles()[i];if(!p){box("screenCfgResult","warn","保存設定を読み込めませんでした。");return}localStorage.setItem(SCREENING_CONFIG_KEY,JSON.stringify(p.config));latestScreeningBaseRows=[];latestScreeningBaseAsOf="";latestScreeningBaseProfileSig="";applyScreeningConfigUi(p.config);renderScreeningNamedProfiles(v);box("screenCfgResult","pass",`「${p.name}」を読み込みました。`)};
  if(del)del.onclick=()=>{const v=sel?.value||"default";if(v==="default"){box("screenCfgResult","warn","標準設定は削除できません。");return}const i=Number(v.split(':')[1]),ps=loadNamedScreeningProfiles();if(!Number.isInteger(i)||!ps[i])return;const name=ps[i].name;ps.splice(i,1);saveNamedScreeningProfiles(ps);renderScreeningNamedProfiles("default");box("screenCfgResult","pass",`「${name}」を削除しました。`)};
  if(allSec)allSec.onchange=()=>{document.querySelectorAll('#screenCfgSectorList input[type="checkbox"]').forEach(x=>x.checked=allSec.checked)};
@@ -2729,7 +2729,7 @@ if($("screeningStrategyBtn")) $("screeningStrategyBtn").onclick=async()=>{
  const btn=$("screeningStrategyBtn");btn.disabled=true;
  try{
    const asOf=$("screeningBaseAsOf")?.value||todayIsoLocal();
-   // v10.2: every Screening press is a fresh analysis using the currently saved config.
+   // v10.1: every Screening press is a fresh analysis using the currently saved config.
    // Do not reuse the previous in-memory universe/candidates after settings change.
    latestScreeningBaseRows=[]; latestScreeningBaseAsOf=""; latestScreeningBaseProfileSig="";
    latestScreeningCandidates=[]; latestScreeningScoredRows=[]; latestFactorBaseRows=[];
@@ -3897,3 +3897,12 @@ if($("fullLocalResetBtn")) $("fullLocalResetBtn").onclick=async()=>{
   }catch(e){box(id,"fail","完全初期化 FAIL\n"+(e?.message||e)+"\n\n追加の削除操作はせず、④診断結果を確認してください。")}
   finally{btn.disabled=false}
 };
+
+// v10.2: alphanumeric security-code input normalization.
+for (const id of ["pfTradeCode","quickInvCode"]) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("input", () => {
+    const normalized = String(el.value || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+    if (el.value !== normalized) el.value = normalized;
+  });
+}
