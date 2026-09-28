@@ -574,3 +574,10 @@
 - Added TOPIX-relative outcome columns and Episode-level policy/version/provenance fields.
 - Phase 1A intentionally labels MFE/MAE as `CloseObservation_PROVISIONAL`; intraday High/Low MFE/MAE is not claimed until adjustment-parity audit is completed.
 - Feedback failure is non-blocking for the existing Screening Share pipeline.
+
+## Feedback Phase 1C (2026-09-28)
+- Discovery CREATE時にScreening設定と発掘時特徴量のSnapshotをEpisodeへ凍結保存。
+- Snapshot: PER/PBR/RSI、MA25/75/200乖離、VolumeRatio、EarningsDays、Sector/Market、選抜戦略/順位、Factor state、Screening config/hash、SelectionPolicyVersion、AppVersion。
+- 既存Episode更新時は既存Snapshotを保持し、現在値で過去Snapshotを上書きしない。
+- Screening runtimeが無い登録はPARTIALとして保存し、look-ahead補完を行わない。
+- discovery_episode_outcomes.csv にSnapshot列を露出。
