@@ -1,3 +1,8 @@
+## v10.2.1 Feedback Phase 2G (2026-09-28)
+- 日次Screening候補を日付・Codeごとに初回観測で固定保存し、CSV/画面登録時に優先利用。保存済み候補がない当日は再構築して固定し、日付とCode一致時だけEXACT Snapshotを保存。CompanyName、主戦略、選定戦略もEpisodeへ保存。
+- 既存PARTIALのうち、登録日が今日のEpisodeのみ同日Screening候補から修復。元のEXACTや過去Episodeは変更しない。再構築由来はWebScreeningSameDayRecomputedと明記。
+- ConditionVersionは価格・判定定義・既知のInvestmentStatusの変更のみ進め、根拠文と投資メモだけの編集では増やさない。既存履歴を巻き戻さない。
+
 ## v10.2.1 Feedback Phase 2F (2026-09-28)
 - Condition成果のDip/Breakout別にTriggerOriginを追加。基準日成立済みと、その後に観測上初めて跨いだ条件を区別。基準日の株価が欠損する場合はUNKNOWN_FIRST_OBSERVATION。
 - Condition Performanceは従来のALL集計に加え、成立起点別の到達後成績を出力。事後抽出群の到達率・機会損失率は空欄。5/10/20営業日の未成熟な成績は引き続き空欄。
