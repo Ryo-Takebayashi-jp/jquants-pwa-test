@@ -1,3 +1,9 @@
+## v10.2.1 Feedback Phase 2F (2026-09-28)
+- Condition成果のDip/Breakout別にTriggerOriginを追加。基準日成立済みと、その後に観測上初めて跨いだ条件を区別。基準日の株価が欠損する場合はUNKNOWN_FIRST_OBSERVATION。
+- Condition Performanceは従来のALL集計に加え、成立起点別の到達後成績を出力。事後抽出群の到達率・機会損失率は空欄。5/10/20営業日の未成熟な成績は引き続き空欄。
+- Condition OutcomesのCompanyNameを保存済みHistory、Episode master、現行Watchlist条件の順で補完。
+- CSV列追加のため発掘アイへスキーマ変更を連絡する。
+
 ## 2026-09-28 — Feedback Phase 2E (Condition Baseline)
 - 当日canonical基準日のScreening Share生成時に、現存する条件を初回BaselineとしてEpisode別に凍結。初回のみ保存し、再実行は冪等。
 - 過去のConditionUpdatedAtを有効開始日に流用せず、初回観測日から成績を追跡。既存履歴があるEpisodeは変更しない。
