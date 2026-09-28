@@ -567,3 +567,10 @@
 - SQLite Worker終了後にSafariのSyncAccessHandle解放待ちを追加し、削除を複数回retry。
 - 初期化直後にOPFSトップレベルを再列挙し、残存0件でなければPASSにしない。
 - 配布ZIPから開発用 `*work` ディレクトリを除外。
+## v10.2.1-feedback-phase1a (2026-09-28)
+- Added independent `discovery-feedback-outcomes` aggregation from frozen Discovery Daily history.
+- Added `discovery_episode_outcomes.csv` to Screening Share ZIP.
+- Fixed horizons: 5/10/20/40/60 trading observations via `DaysFromStart`; immature horizons remain blank and carry explicit `IsMature*D=0`.
+- Added TOPIX-relative outcome columns and Episode-level policy/version/provenance fields.
+- Phase 1A intentionally labels MFE/MAE as `CloseObservation_PROVISIONAL`; intraday High/Low MFE/MAE is not claimed until adjustment-parity audit is completed.
+- Feedback failure is non-blocking for the existing Screening Share pipeline.

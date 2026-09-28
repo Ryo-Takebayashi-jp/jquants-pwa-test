@@ -1647,6 +1647,33 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    }catch(err){try{if(pdb)pdb.close()}catch(_){}try{if(cdb)cdb.close()}catch(_){}try{if(tdb)tdb.close()}catch(_){}try{if(mdb)mdb.close()}catch(_){}throw new Error(`[discovery-daily:${stage}] ${err?.message||err}`)}
  }
 
+
+ // Feedback Phase 1A: build reproducible Episode outcomes from the frozen Discovery Daily ledger.
+ // Returns / TOPIX-relative returns use exact trading-day indices (DaysFromStart).
+ // MFE/MAE are deliberately marked CloseObservation in this alpha; intraday High/Low parity
+ // is not claimed until the historical bar adjustment audit is complete.
+ if(cmd==="discovery-feedback-outcomes"){
+   let pdb=null;let stage="01-input";
+   try{
+     const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10);
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+     stage="02-private";pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","r");
+     const hasM=Number(scalar(pdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='discovery_episode_master'")||0)>0;
+     const hasD=Number(scalar(pdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='discovery_episode_daily_web'")||0)>0;
+     if(!hasM||!hasD)throw new Error("Discovery master / daily が未準備です");
+     const parse=x=>{try{return JSON.parse(String(x||"{}"))}catch(_){return {}}},num=v=>{if(v==null||String(v).trim()==="")return null;const n=Number(v);return Number.isFinite(n)?n:null},r6=v=>Number.isFinite(v)?Math.round((v+Number.EPSILON)*1e6)/1e6:"";
+     const masters=execRows(pdb,"SELECT event_id,code,episode_start_date,row_json FROM discovery_episode_master ORDER BY episode_start_date,event_id");
+     const daily=execRows(pdb,"SELECT event_id,date,row_json FROM discovery_episode_daily_web WHERE date<=? ORDER BY event_id,date",[asOf]);
+     const dm=new Map();for(const x of daily){const r=parse(x.row_json),id=String(x.event_id||r.EventID||"");if(!id)continue;if(!dm.has(id))dm.set(id,[]);dm.get(id).push(r)}
+     const horizons=[5,10,20,40,60],out=[];
+     for(const x of masters){const m=parse(x.row_json),id=String(x.event_id||m.EventID||""),rows=(dm.get(id)||[]).slice().sort((a,b)=>Number(a.DaysFromStart??999999)-Number(b.DaysFromStart??999999)||String(a.Date||"").localeCompare(String(b.Date||"")));if(!id)continue;
+       const byDay=new Map(rows.map(r=>[Number(r.DaysFromStart),r])),base={DiscoveryEpisodeId:id,Code:String(m.Code||x.code||""),CompanyName:m.CompanyName||"",DiscoveryDate:String(m.DiscoveryDate||m.EpisodeStartDate||x.episode_start_date||"").slice(0,10),DiscoveryEndDate:String(m.PerfEpisodeEndDate||"").slice(0,10),ReferencePrice:m.InitialPrice??"",PrimaryStrategy:m.PrimaryStrategy||"",SelectedByStrategies:m.SelectedByStrategies||"",SelectionPolicyVersion:m.SelectionPolicyVersion||(String(m.DiscoveryDate||m.EpisodeStartDate||x.episode_start_date||"").slice(0,10)<"2026-09-15"?"pre_20260915":"v20260915"),ScreeningProfileHash:m.ScreeningProfileHash||"",StrategyConfigHash:m.StrategyConfigHash||"",AppVersion:m.AppVersion||"legacy",SnapshotQuality:m.SnapshotQuality||"PARTIAL",FinalStatus:m.PerfEpisodeStatus||"",ExitReason:m.PerfEpisodeEndReason||"",DataAsOf:asOf,OutcomeCalculatedAt:new Date().toISOString(),OutcomeEngineVersion:"FeedbackPhase1A_v1",MfeMaeBasis:"CloseObservation_PROVISIONAL"};
+       for(const h of horizons){const rr=byDay.get(h),mature=!!rr;base[`IsMature${h}D`]=mature?1:0;base[`Return${h}D`]=mature?(num(rr.ReturnFromStart)??""):"";base[`TOPIXRelative${h}D`]=mature?(num(rr.RelativeTOPIX)??""):"";if(mature){const win=rows.filter(z=>Number(z.DaysFromStart)>=0&&Number(z.DaysFromStart)<=h),vals=win.map(z=>num(z.ReturnFromStart)).filter(v=>v!=null);base[`MFE${h}D`]=vals.length?r6(Math.max(...vals)):"";base[`MAE${h}D`]=vals.length?r6(Math.min(...vals)):""}else{base[`MFE${h}D`]="";base[`MAE${h}D`]=""}}
+       out.push(base)}
+     pdb.close();pdb=null;self.postMessage({ok:true,type:"result",asOf,count:out.length,rows:out,engineVersion:"FeedbackPhase1A_v1",mfeMaeBasis:"CloseObservation_PROVISIONAL",elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw new Error(`[discovery-feedback:${stage}] ${err?.message||err}`)}
+ }
+
  if(cmd==="equities-master-write"){
    const payload=d.payload||{}, rows=payload.rows||[], requestedDate=String(payload.date||"");
    const dbName="/jq_equities_master_v1.sqlite"; let mdb=null;
