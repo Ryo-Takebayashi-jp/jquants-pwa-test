@@ -1,3 +1,14 @@
+## 2026-09-28 — Feedback Phase 2D fix2 (実機診断)
+- 実機のScreening ShareでFeedback Engineの0件回帰が続いたため、READMEとmanifestに実行ビルド識別子と例外内容を記録。
+- 更新キャッシュとJS/Worker URLを刷新し、旧タブ・旧Workerの影響を切り分けられるようにした。
+- Feedbackが失敗しても既存Screening Share生成は継続。エラー内容を出力へ残す。
+
+## 2026-09-28 — Feedback Phase 2D fix1 (Episode Outcomes regression)
+- Condition用の未定義変数 `window` がEpisode Outcomes経路へ混入した箇所を除去。39件の生成を復旧。
+- ConditionのHigh/Low調整では、既に調整済みの価格を再度倍率補正しないよう修正。
+- 2026-09-25のPhase 2C出力と39 Episodeの5/10/20/40/60D成熟・Return・TOPIXRelativeをローカルで突合。Condition履歴0件の仕様、および新規履歴の計算経路を検証。
+- 実機のOPFS/DataLakeでの最終確認と新規Snapshot/Condition履歴の実地確認は継続課題。
+
 
 ## 2026-09-28 — Feedback Phase 2D (Condition performance completion)
 - Condition outcomeに到達までの営業日数、到達後5/10/20DのTOPIX相対、High/LowベースMFE/MAEを追加。
