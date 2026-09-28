@@ -1,3 +1,10 @@
+
+## 2026-09-28 — Feedback Phase 2D (Condition performance completion)
+- Condition outcomeに到達までの営業日数、到達後5/10/20DのTOPIX相対、High/LowベースMFE/MAEを追加。
+- Condition performanceに平均到達営業日、Missed Opportunity Rate、Immediate Adverse Rateを追加。
+- Missed Opportunityは「条件未到達かつ有効期間開始終値から最大終値+10%以上」、Immediate Adverseは「条件到達後5D MAE<=-5%」として定義をCSVに明記。
+- discovery_feedback_summary.csv のEntryCondition行へTOPIX相対/MFE/MAE中央値を連携。
+- 既存Screening/Discovery/Watchlistは非依存。Condition履歴が0件でもヘッダー付きCSVを維持。
 # Feedback Phase 2C — 2026-09-28
 
 - Condition Feedback CSV の空集合仕様を固定。履歴が0件でも `discovery_condition_history.csv` / `discovery_condition_outcomes.csv` / `discovery_condition_performance.csv` は正式ヘッダーを必ず出力する。
