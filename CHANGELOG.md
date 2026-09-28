@@ -1,3 +1,12 @@
+## 2026-09-28 — Feedback Phase 2E (Condition Baseline)
+- 当日canonical基準日のScreening Share生成時に、現存する条件を初回BaselineとしてEpisode別に凍結。初回のみ保存し、再実行は冪等。
+- 過去のConditionUpdatedAtを有効開始日に流用せず、初回観測日から成績を追跡。既存履歴があるEpisodeは変更しない。
+- 以後の条件変更もimport実行日からVersionを追加し、過去日への逆行を拒否。
+- 履歴にCaptureSource / ObservedAt / OriginalConditionUpdatedAt / HistoryQualityを明示し、Condition Performanceは観測後の履歴だけを対象にする。
+- 新規Discovery SnapshotはEpisode開始日とScreening実行日が一致した場合のみEXACT。既存Episodeは補完しない。
+- 当日TOPIX欠損件数をScreening Shareに表示し、未観測は空欄のまま保持。
+- 画面ヘッダーにFeedback Phase 2Eを表示。実機での初回Baseline確認は未完了。
+
 ## 2026-09-28 — Feedback Phase 2D fix2 (実機診断)
 - 実機のScreening ShareでFeedback Engineの0件回帰が続いたため、READMEとmanifestに実行ビルド識別子と例外内容を記録。
 - 更新キャッシュとJS/Worker URLを刷新し、旧タブ・旧Workerの影響を切り分けられるようにした。
