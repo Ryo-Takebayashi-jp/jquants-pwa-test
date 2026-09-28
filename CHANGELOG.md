@@ -1,3 +1,11 @@
+# Feedback Phase 2B (2026-09-28)
+- Watchlistの押し目/上抜け条件をEpisode単位のimmutable Condition Historyとして保存。
+- 条件変更はConditionVersionとして追加し、過去Versionを上書きしない。
+- Trigger定義は既存Watchlistと同じ DAILY_ADJUSTED_CLOSE に固定。
+- 過去の履歴が証明できないLegacy EpisodeはCondition Performanceから除外し、現在条件を遡及適用しない。
+- Screening Shareへ discovery_condition_history / outcomes / performance を追加。
+- EntryCondition集計を discovery_feedback_summary.csv に参考情報として追加（自動重み変更なし）。
+
 # v10.2.1
 - v10.2で発生した版表示のv10.0化と「銘柄名を表示」無反応を修正。
 - v10.1の正常動作版を基準に再作成し、既存イベント処理を維持。
