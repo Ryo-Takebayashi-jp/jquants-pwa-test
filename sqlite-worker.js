@@ -1648,30 +1648,40 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
  }
 
 
- // Feedback Phase 1A: build reproducible Episode outcomes from the frozen Discovery Daily ledger.
- // Returns / TOPIX-relative returns use exact trading-day indices (DaysFromStart).
- // MFE/MAE are deliberately marked CloseObservation in this alpha; intraday High/Low parity
- // is not claimed until the historical bar adjustment audit is complete.
+ // Feedback Phase 1B: reproducible Episode outcomes with intraday High/Low MFE/MAE.
+ // Returns / TOPIX-relative returns continue to come from the frozen Discovery Daily ledger.
+ // Intraday extrema are reconstructed on the SAME adjusted-close basis as Discovery Daily:
+ // adjusted H/L = raw H/L * (selected adjusted Close / raw Close).  This avoids applying
+ // AdjFactor twice while remaining exactly comparable with InitialPrice / ReturnFromStart.
  if(cmd==="discovery-feedback-outcomes"){
-   let pdb=null;let stage="01-input";
+   let pdb=null,cdb=null;let stage="01-input";
    try{
      const payload=d.payload||{},asOf=String(payload.asOf||"").slice(0,10);
      if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
+     const parse=x=>{try{return JSON.parse(String(x||"{}"))}catch(_){return {}}},num=v=>{if(v==null||String(v).trim()==="")return null;const n=Number(v);return Number.isFinite(n)?n:null},r6=v=>Number.isFinite(v)?Math.round((v+Number.EPSILON)*1e6)/1e6:"",norm=c=>{c=String(c||"").trim().toUpperCase();return c.length===5&&c.endsWith("0")?c.slice(0,4):c};
      stage="02-private";pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","r");
      const hasM=Number(scalar(pdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='discovery_episode_master'")||0)>0;
      const hasD=Number(scalar(pdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='discovery_episode_daily_web'")||0)>0;
      if(!hasM||!hasD)throw new Error("Discovery master / daily が未準備です");
-     const parse=x=>{try{return JSON.parse(String(x||"{}"))}catch(_){return {}}},num=v=>{if(v==null||String(v).trim()==="")return null;const n=Number(v);return Number.isFinite(n)?n:null},r6=v=>Number.isFinite(v)?Math.round((v+Number.EPSILON)*1e6)/1e6:"";
      const masters=execRows(pdb,"SELECT event_id,code,episode_start_date,row_json FROM discovery_episode_master ORDER BY episode_start_date,event_id");
      const daily=execRows(pdb,"SELECT event_id,date,row_json FROM discovery_episode_daily_web WHERE date<=? ORDER BY event_id,date",[asOf]);
      const dm=new Map();for(const x of daily){const r=parse(x.row_json),id=String(x.event_id||r.EventID||"");if(!id)continue;if(!dm.has(id))dm.set(id,[]);dm.get(id).push(r)}
-     const horizons=[5,10,20,40,60],out=[];
-     for(const x of masters){const m=parse(x.row_json),id=String(x.event_id||m.EventID||""),rows=(dm.get(id)||[]).slice().sort((a,b)=>Number(a.DaysFromStart??999999)-Number(b.DaysFromStart??999999)||String(a.Date||"").localeCompare(String(b.Date||"")));if(!id)continue;
-       const byDay=new Map(rows.map(r=>[Number(r.DaysFromStart),r])),base={DiscoveryEpisodeId:id,Code:String(m.Code||x.code||""),CompanyName:m.CompanyName||"",DiscoveryDate:String(m.DiscoveryDate||m.EpisodeStartDate||x.episode_start_date||"").slice(0,10),DiscoveryEndDate:String(m.PerfEpisodeEndDate||"").slice(0,10),ReferencePrice:m.InitialPrice??"",PrimaryStrategy:m.PrimaryStrategy||"",SelectedByStrategies:m.SelectedByStrategies||"",SelectionPolicyVersion:m.SelectionPolicyVersion||(String(m.DiscoveryDate||m.EpisodeStartDate||x.episode_start_date||"").slice(0,10)<"2026-09-15"?"pre_20260915":"v20260915"),ScreeningProfileHash:m.ScreeningProfileHash||"",StrategyConfigHash:m.StrategyConfigHash||"",AppVersion:m.AppVersion||"legacy",SnapshotQuality:m.SnapshotQuality||"PARTIAL",FinalStatus:m.PerfEpisodeStatus||"",ExitReason:m.PerfEpisodeEndReason||"",DataAsOf:asOf,OutcomeCalculatedAt:new Date().toISOString(),OutcomeEngineVersion:"FeedbackPhase1A_v1",MfeMaeBasis:"CloseObservation_PROVISIONAL"};
-       for(const h of horizons){const rr=byDay.get(h),mature=!!rr;base[`IsMature${h}D`]=mature?1:0;base[`Return${h}D`]=mature?(num(rr.ReturnFromStart)??""):"";base[`TOPIXRelative${h}D`]=mature?(num(rr.RelativeTOPIX)??""):"";if(mature){const win=rows.filter(z=>Number(z.DaysFromStart)>=0&&Number(z.DaysFromStart)<=h),vals=win.map(z=>num(z.ReturnFromStart)).filter(v=>v!=null);base[`MFE${h}D`]=vals.length?r6(Math.max(...vals)):"";base[`MAE${h}D`]=vals.length?r6(Math.min(...vals)):""}else{base[`MFE${h}D`]="";base[`MAE${h}D`]=""}}
+
+     // Load only the Episode codes/dates required for intraday extrema.
+     stage="03-bars";const codes=[...new Set(masters.map(x=>norm(parse(x.row_json).Code||x.code)).filter(Boolean))],jq=codes.map(c=>c.length===4?c+"0":c);
+     const starts=masters.map(x=>String(parse(x.row_json).DiscoveryDate||parse(x.row_json).EpisodeStartDate||x.episode_start_date||"").slice(0,10)).filter(Boolean).sort(),from=starts[0]||asOf;
+     const bars=new Map();
+     cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");let cats=execRows(cdb,`SELECT shard_key,logical_name,range_start,range_end FROM shard_catalog WHERE dataset='bars_daily' AND state='ready' ORDER BY shard_key`);cdb.close();cdb=null;
+     cats=cats.filter(x=>String(x.range_end||"")>=from&&String(x.range_start||"")<=asOf).sort((a,b)=>{const pa=String(a.shard_key)==="bars_recent"?2:1,pb=String(b.shard_key)==="bars_recent"?2:1;return pa-pb||String(a.shard_key).localeCompare(String(b.shard_key))});
+     for(const sh of cats){let db=null;try{const nm=String(sh.logical_name||"");db=new p.OpfsSAHPoolDb(nm.startsWith("/")?nm:"/"+nm,"r");for(let off=0;off<jq.length;off+=400){const chunk=jq.slice(off,off+400),ph=chunk.map(()=>"?").join(",");if(!ph)continue;const rs=execRows(db,`SELECT code,date,c,h,l,adj_c,raw_json FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY code,date`,[from,asOf,...chunk]);for(const r of rs){let o={};try{o=JSON.parse(String(r.raw_json||"{}"))}catch(_){}const code=norm(r.code),dt=String(r.date||"").slice(0,10),adjClose=num(o.AdjC)??num(o.AdjustmentClose)??num(o.AdjClose)??num(o.C)??num(o.Close)??num(r.adj_c)??num(r.c),rawClose=num(o.C)??num(o.Close)??num(r.c)??adjClose,rawHigh=num(o.AdjustmentHigh)??num(o.AdjHigh)??num(o.High)??num(o.H)??num(r.h)??rawClose,rawLow=num(o.AdjustmentLow)??num(o.AdjLow)??num(o.Low)??num(o.L)??num(r.l)??rawClose;if(!code||!dt||adjClose==null||rawClose==null||rawClose===0)continue;const scale=adjClose/rawClose,hi=rawHigh==null?adjClose:rawHigh*scale,lo=rawLow==null?adjClose:rawLow*scale,key=code+"|"+dt;if(!bars.has(key))bars.set(key,{high:hi,low:lo,close:adjClose,source:String(sh.shard_key||"")})}}}finally{try{if(db)db.close()}catch(_){}}}
+
+     stage="04-calc";const horizons=[5,10,20,40,60],out=[];
+     for(const x of masters){const m=parse(x.row_json),id=String(x.event_id||m.EventID||""),code=norm(m.Code||x.code),rows=(dm.get(id)||[]).slice().sort((a,b)=>Number(a.DaysFromStart??999999)-Number(b.DaysFromStart??999999)||String(a.Date||"").localeCompare(String(b.Date||"")));if(!id)continue;
+       const byDay=new Map(rows.map(r=>[Number(r.DaysFromStart),r])),initial=num(m.InitialPrice),base={DiscoveryEpisodeId:id,Code:String(m.Code||x.code||""),CompanyName:m.CompanyName||"",DiscoveryDate:String(m.DiscoveryDate||m.EpisodeStartDate||x.episode_start_date||"").slice(0,10),DiscoveryEndDate:String(m.PerfEpisodeEndDate||"").slice(0,10),ReferencePrice:m.InitialPrice??"",PrimaryStrategy:m.PrimaryStrategy||"",SelectedByStrategies:m.SelectedByStrategies||"",SelectionPolicyVersion:m.SelectionPolicyVersion||(String(m.DiscoveryDate||m.EpisodeStartDate||x.episode_start_date||"").slice(0,10)<"2026-09-15"?"pre_20260915":"v20260915"),ScreeningProfileHash:m.ScreeningProfileHash||"",StrategyConfigHash:m.StrategyConfigHash||"",AppVersion:m.AppVersion||"legacy",SnapshotQuality:m.SnapshotQuality||"PARTIAL",FinalStatus:m.PerfEpisodeStatus||"",ExitReason:m.PerfEpisodeEndReason||"",DataAsOf:asOf,OutcomeCalculatedAt:new Date().toISOString(),OutcomeEngineVersion:"FeedbackPhase1B_v1",MfeMaeBasis:"IntradayHighLow_AdjustedToDiscoveryClose"};
+       for(const h of horizons){const rr=byDay.get(h),mature=!!rr;base[`IsMature${h}D`]=mature?1:0;base[`Return${h}D`]=mature?(num(rr.ReturnFromStart)??""):"";base[`TOPIXRelative${h}D`]=mature?(num(rr.RelativeTOPIX)??""):"";if(mature&&initial!=null&&initial!==0){const win=rows.filter(z=>Number(z.DaysFromStart)>=0&&Number(z.DaysFromStart)<=h),his=[],los=[];for(const z of win){const b=bars.get(code+"|"+String(z.Date||"").slice(0,10));if(b){his.push((b.high/initial-1)*100);los.push((b.low/initial-1)*100)}}base[`MFE${h}D`]=his.length?r6(Math.max(...his)):"";base[`MAE${h}D`]=los.length?r6(Math.min(...los)):""}else{base[`MFE${h}D`]="";base[`MAE${h}D`]=""}}
        out.push(base)}
-     pdb.close();pdb=null;self.postMessage({ok:true,type:"result",asOf,count:out.length,rows:out,engineVersion:"FeedbackPhase1A_v1",mfeMaeBasis:"CloseObservation_PROVISIONAL",elapsedMs:Math.round(performance.now()-t0)});return;
-   }catch(err){try{if(pdb)pdb.close()}catch(_){}throw new Error(`[discovery-feedback:${stage}] ${err?.message||err}`)}
+     pdb.close();pdb=null;self.postMessage({ok:true,type:"result",asOf,count:out.length,rows:out,engineVersion:"FeedbackPhase1B_v1",mfeMaeBasis:"IntradayHighLow_AdjustedToDiscoveryClose",elapsedMs:Math.round(performance.now()-t0)});return;
+   }catch(err){try{if(pdb)pdb.close()}catch(_){}try{if(cdb)cdb.close()}catch(_){}throw new Error(`[discovery-feedback:${stage}] ${err?.message||err}`)}
  }
 
  if(cmd==="equities-master-write"){
