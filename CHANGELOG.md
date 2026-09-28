@@ -1,3 +1,9 @@
+# Feedback Phase 2C — 2026-09-28
+
+- Condition Feedback CSV の空集合仕様を固定。履歴が0件でも `discovery_condition_history.csv` / `discovery_condition_outcomes.csv` / `discovery_condition_performance.csv` は正式ヘッダーを必ず出力する。
+- 「ファイル欠落」と「正常だが対象0件」をAI/CSV parser側で区別可能にした。
+- Phase 2BのCondition履歴ロジック、既存Screening/Discovery/Watchlist処理、Phase 1/2A集計ロジックは変更なし。
+
 # Feedback Phase 2B (2026-09-28)
 - Watchlistの押し目/上抜け条件をEpisode単位のimmutable Condition Historyとして保存。
 - 条件変更はConditionVersionとして追加し、過去Versionを上書きしない。
