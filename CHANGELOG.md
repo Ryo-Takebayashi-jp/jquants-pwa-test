@@ -581,3 +581,10 @@
 - 既存Episode更新時は既存Snapshotを保持し、現在値で過去Snapshotを上書きしない。
 - Screening runtimeが無い登録はPARTIALとして保存し、look-ahead補完を行わない。
 - discovery_episode_outcomes.csv にSnapshot列を露出。
+
+## 2026-09-28 Feedback Phase 2A
+- Added `discovery_strategy_performance.csv` to Screening Share. Aggregates PrimaryStrategy and normalized strategy combinations separately, with policy-version and ALL scopes.
+- Added mature-horizon 5/10/20/40/60D metrics: SampleCount, UniqueCodeCount, absolute win rate, TOPIX beat rate, mean/median absolute and relative returns, MFE/MAE, ProfitFactorLike, and confidence flag.
+- Confidence is deliberately conservative: LOW <20 mature Episodes, MEDIUM 20-49, HIGH >=50. No automatic Screening weight changes are made.
+- Added `discovery_feedback_summary.csv` as a compact long-form AI feedback file. Every row is explicitly marked `REFERENCE_ONLY_NO_AUTO_WEIGHTING`.
+- Existing Screening/Discovery/Watchlist pipelines remain independent; feedback aggregation consumes Phase 1 outcomes only.
