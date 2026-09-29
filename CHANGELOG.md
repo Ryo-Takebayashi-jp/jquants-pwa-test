@@ -1,3 +1,16 @@
+## v10.2.1 User Backup Fix Phase 2K (2026-09-30)
+
+- ユーザーデータZIPの事前監査をprivate DBだけに限定。無関係なcatalog DBのI/Oエラーで個人データのバックアップが止まる問題を解消。
+- private DBのquick_check失敗時は実際のエラーを表示し、安全確認を維持。全DataLakeバックアップの対象と監査は変更しない。
+
+## v10.2.1 Credit Trade DB Phase 2J (2026-09-30)
+
+- 信用売買の約定IDと建玉Episode IDを分離。既存約定を削除せず、残高ゼロの区切りと開始前建玉を事実ベースで移行。
+- 新規建て時の初期ストップ、初期1R、型、理由、目標、期限を不変の計画としてprivate DBに保存。追加理由・返済理由・ルール遵守を約定に記録。
+- 取消済み約定を除いたEpisode集計を都度再計算。初期計画がない過去取引と後日報告の計画は実現Rを空欄にする。
+- AI共有に全件の `web_credit_trade_episodes.csv` を追加し、既存 `web_trade_history.csv` に episode_id 等4列を追加。画面は直近30Episode・100約定のみ表示。
+- private DBのユーザーバックアップに新テーブルを含める。
+
 ## v10.2.1 Split Fix Phase 2I (2026-09-29)
 
 - 保有画面の読み込みと日次DataLake更新後に分割イベントを自動適用。未実行日も2026-09-29以降を日付順に確認。

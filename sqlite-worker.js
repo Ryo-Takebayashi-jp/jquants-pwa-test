@@ -95,6 +95,46 @@ function scalarBind(db,sql,bind=[]){let out=null;db.exec({sql,bind,rowMode:"arra
 function execRows(db,sql,bind=[]){
  const rows=[]; db.exec({sql,bind,rowMode:"object",callback:r=>rows.push(r)}); return rows;
 }
+// An event trade_id identifies one execution. An episode_id identifies one
+// continuous position from a zero balance through its final reduction.
+function ensureCreditTradeSchema(db){
+ db.exec(`CREATE TABLE IF NOT EXISTS portfolio_trade_episode(
+   episode_id TEXT PRIMARY KEY,code TEXT NOT NULL,account TEXT NOT NULL,
+   source_quality TEXT NOT NULL,first_trade_id TEXT,opened_on TEXT,
+   initial_shares REAL,initial_entry_price REAL,initial_stop_price REAL,
+   risk_per_share REAL,initial_risk_yen REAL,entry_type TEXT,entry_reason TEXT,
+   initial_target_price REAL,catalyst_deadline TEXT,created_at TEXT NOT NULL)`);
+ const columns=new Set(execRows(db,"PRAGMA table_info(portfolio_trade_log)").map(r=>String(r.name)));
+ for(const [name,type] of [["episode_id","TEXT"],["entry_reason","TEXT"],["exit_reason","TEXT"],["rule_compliance","TEXT"]]){
+   if(!columns.has(name))db.exec(`ALTER TABLE portfolio_trade_log ADD COLUMN ${name} ${type}`);
+ }
+ db.exec("CREATE INDEX IF NOT EXISTS idx_portfolio_trade_episode ON portfolio_trade_log(episode_id,trade_date,created_at)");
+}
+function migrateCreditTradeEpisodes(db){
+ const pending=Number(scalarBind(db,"SELECT COUNT(*) FROM portfolio_trade_log WHERE account IN ('信用買','信用売') AND status!='VOID' AND episode_id IS NULL")||0);
+ if(!pending)return 0;
+ const rows=execRows(db,"SELECT trade_id,trade_date,code,account,action,shares,price,before_shares,after_shares,created_at,status,episode_id FROM portfolio_trade_log WHERE account IN ('信用買','信用売') ORDER BY trade_date,created_at,trade_id"),active=new Map();let migrated=0;
+ db.exec("BEGIN");try{
+   for(const r of rows){if(String(r.status||"ACTIVE")==="VOID")continue;
+     const key=String(r.code)+"|"+String(r.account),before=Number(r.before_shares||0),after=Number(r.after_shares||0);
+     let episode=r.episode_id||active.get(key),quality="LEDGER_ONLY";
+     if(!episode){quality=before>0?"OPENING_SNAPSHOT":"LEDGER_ONLY";episode=(before>0?"E-LEGACY-":"E-")+String(r.trade_id);
+       db.exec({sql:`INSERT OR IGNORE INTO portfolio_trade_episode(episode_id,code,account,source_quality,first_trade_id,opened_on,initial_shares,initial_entry_price,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,bind:[episode,r.code,r.account,quality,quality==="LEDGER_ONLY"?r.trade_id:null,quality==="LEDGER_ONLY"?r.trade_date:null,quality==="LEDGER_ONLY"?r.shares:null,quality==="LEDGER_ONLY"?r.price:null,r.created_at]});
+     }
+     if(!r.episode_id){db.exec({sql:"UPDATE portfolio_trade_log SET episode_id=? WHERE trade_id=?",bind:[episode,r.trade_id]});migrated++}
+     if(after>0)active.set(key,episode);else active.delete(key);
+   }
+   db.exec("COMMIT");return migrated;
+ }catch(err){try{db.exec("ROLLBACK")}catch(_){}throw err}
+}
+function creditEpisodeSummaries(db){
+ const episodes=execRows(db,"SELECT * FROM portfolio_trade_episode ORDER BY opened_on,created_at,episode_id"),events=execRows(db,"SELECT episode_id,trade_id,trade_date,action,shares,realized_pnl,after_shares,exit_reason,rule_compliance,status FROM portfolio_trade_log WHERE episode_id IS NOT NULL ORDER BY trade_date,created_at,trade_id"),byId=new Map();
+ for(const e of events){if(e.status==="VOID")continue;if(!byId.has(e.episode_id))byId.set(e.episode_id,[]);byId.get(e.episode_id).push(e)}
+ const dayDiff=(a,b)=>{if(!a||!b)return null;const n=(Date.parse(b+"T00:00:00Z")-Date.parse(a+"T00:00:00Z"))/86400000;return Number.isFinite(n)?n:null};
+ return episodes.map(ep=>{const es=byId.get(ep.episode_id)||[],last=es.at(-1),closed=!!last&&Number(last.after_shares||0)<=0,exits=es.filter(x=>x.action==="REDUCE"),pnl=exits.reduce((a,x)=>a+Number(x.realized_pnl||0),0),risk=ep.initial_risk_yen==null?null:Number(ep.initial_risk_yen),compliance=exits.some(x=>x.rule_compliance==="NO")?"NO":exits.length&&exits.every(x=>x.rule_compliance==="YES")?"YES":"UNKNOWN";
+   return {...ep,status:!es.length?"VOID":closed?"CLOSED":"OPEN",last_trade_date:last?.trade_date??null,last_event_shares:last?.after_shares??null,event_count:es.length,entry_count:es.filter(x=>x.action==="ADD").length,exit_count:exits.length,realized_pnl:pnl,realized_r:closed&&ep.source_quality==="RECORDED_PLAN"&&risk>0?pnl/risk:null,holding_days:closed?dayDiff(ep.opened_on,last.trade_date):null,exit_reasons:[...new Set(exits.map(x=>String(x.exit_reason||"")).filter(Boolean))].join(";"),rule_compliance:compliance};
+ });
+}
 function ensureRuntimeTables(db){
  db.exec(`CREATE TABLE IF NOT EXISTS web_sync_checkpoint(
    dataset TEXT PRIMARY KEY,
@@ -635,11 +675,12 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
 
  if(cmd==="shard-backup-inventory"){
    const files=poolFileNamesSafe(p);
-   const wanted=new Set();
+   const privateOnly=e.data.payload?.privateOnly===true;
+   const wanted=new Set(privateOnly?["/jq_private_v1.sqlite"]:[]);
    const catalogName="/jq_catalog_v1.sqlite";
    let cdb=null;
    try{
-     if(files.includes(catalogName)){
+     if(!privateOnly && files.includes(catalogName)){
        wanted.add(catalogName);
        try{
          cdb=new p.OpfsSAHPoolDb(catalogName,"r");
@@ -653,7 +694,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          }
        }finally{try{if(cdb)cdb.close()}catch(_){} cdb=null}
      }
-     for(const n of files){
+     if(!privateOnly) for(const n of files){
        if(/^\/jq_bars_(?:recent|\d{4})_v1\.sqlite$/.test(n)) wanted.add(n);
        if(/^\/jq_(?!market_v7c)[a-z0-9_-]+_v\d+\.sqlite$/i.test(n)) wanted.add(n);
      }
@@ -838,6 +879,8 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      if(!tradeCols.has("status"))db.exec("ALTER TABLE portfolio_trade_log ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'");
      if(!tradeCols.has("voided_at"))db.exec("ALTER TABLE portfolio_trade_log ADD COLUMN voided_at TEXT");
      if(!tradeCols.has("void_reason"))db.exec("ALTER TABLE portfolio_trade_log ADD COLUMN void_reason TEXT");
+     ensureCreditTradeSchema(db);
+     migrateCreditTradeEpisodes(db);
      const now=new Date().toISOString();
      if(cmd==="portfolio-memo-upsert"){const x=e.data.payload||{},code=String(x.code||"").trim().toUpperCase(),account=String(x.account||"").trim(),memo=String(x.memo??"").slice(0,500);if(!/^[0-9A-Z]{4,5}$/.test(code))throw new Error("銘柄コードが不正です");if(!["NISA","現物","信用買","信用売"].includes(account))throw new Error("口座/区分が不正です");db.exec({sql:`INSERT INTO portfolio_position_memo(code,account,memo,updated_at) VALUES(?,?,?,?) ON CONFLICT(code,account) DO UPDATE SET memo=excluded.memo,updated_at=excluded.updated_at`,bind:[code,account,memo,now]});db.exec({sql:"UPDATE user_stocks SET memo=?,updated_at=? WHERE code=? AND account=?",bind:[memo,now,code,account]});self.postMessage({ok:true,type:"result",stage:"PASS",code,account,memo,elapsedMs:Math.round(performance.now()-t0)});return}
      if(cmd==="portfolio-trade-void-preview"||cmd==="portfolio-trade-void-commit"){
@@ -855,23 +898,45 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      if(cmd==="portfolio-trade-commit"){
        stage="02-commit";const x=e.data.payload||{},code=String(x.code||"").trim().toUpperCase(),account=String(x.account||"").trim(),action=String(x.action||"").toUpperCase(),tradeDate=String(x.tradeDate||"").slice(0,10),qty=Number(x.shares),price=Number(x.price),name=String(x.name||""),memo=String(x.memo||"");
        if(!/^[0-9A-Z]{4,5}$/.test(code))throw new Error("銘柄コードが不正です");if(!["NISA","現物","信用買","信用売"].includes(account))throw new Error("口座/区分が不正です");if(!["ADD","REDUCE"].includes(action))throw new Error("操作が不正です");if(!(qty>0)||!(price>=0)||!tradeDate)throw new Error("株数・約定単価・売買日を確認してください");
+       if(account.startsWith("信用")&&Number(scalarBind(db,"SELECT COUNT(*) FROM portfolio_trade_log WHERE code=? AND account=? AND status!='VOID' AND trade_date>?",[code,account,tradeDate])||0)>0)throw new Error("この銘柄・口座には入力日より後の有効な売買があります。建玉の紐付けを守るため、日付順に入力してください");
        const cur=execRows(db,"SELECT * FROM user_stocks WHERE code=? AND account=?",[code,account])[0]||{},beforeShares=Number(cur.shares||0),beforeAvg=cur.avg_cost==null?null:Number(cur.avg_cost),isShort=account==="信用売";let afterShares=beforeShares,afterAvg=beforeAvg,realized=0;
        if(action==="ADD"){afterShares=beforeShares+qty;afterAvg=afterShares>0?(((beforeAvg||0)*beforeShares)+(price*qty))/afterShares:price}
        else{if(qty>beforeShares+1e-9)throw new Error(`縮小株数 ${qty} が現在株数 ${beforeShares} を超えています`);afterShares=Math.max(0,beforeShares-qty);realized=(beforeAvg==null?0:(isShort?(beforeAvg-price):(price-beforeAvg))*qty);afterAvg=afterShares>0?beforeAvg:null}
        const tradeId=`T${tradeDate.replaceAll("-","")}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+       const credit=account==="信用買"||account==="信用売",opening=credit&&action==="ADD"&&beforeShares===0;
+       const lastCredit=credit?execRows(db,"SELECT episode_id,after_shares FROM portfolio_trade_log WHERE code=? AND account=? AND status!='VOID' AND episode_id IS NOT NULL ORDER BY trade_date DESC,created_at DESC,trade_id DESC LIMIT 1",[code,account])[0]:null;
+       const episodeId=credit?(opening?`E-${tradeId}`:(lastCredit&&Number(lastCredit.after_shares)>0?String(lastCredit.episode_id):`E-LEGACY-${tradeId}`)):null;
+       const textField=(v,max=1000)=>String(v??"").trim().slice(0,max)||null;
+       const entryReason=credit&&action==="ADD"?textField(x.entryReason):null,exitReason=credit&&action==="REDUCE"?textField(x.exitReason,100):null;
+       const compliance=credit&&action==="REDUCE"?String(x.ruleCompliance||"UNKNOWN").toUpperCase():null;
+       if(compliance!=null&&!['YES','NO','UNKNOWN'].includes(compliance))throw new Error("ルール遵守の値が不正です");
+       const rawStop=x.initialStopPrice,stop=opening&&rawStop!==""&&rawStop!=null?Number(rawStop):null;
+       if(stop!=null&&(!Number.isFinite(stop)||stop<=0||!(isShort?stop>price:stop<price)))throw new Error("初期撤退価格は、信用買なら約定単価より下、信用売なら上を指定してください");
+       if(credit&&!opening&&rawStop!==""&&rawStop!=null)throw new Error("初期ストップは新規建て時だけ固定できます");
+       const target=opening&&x.initialTargetPrice!==""&&x.initialTargetPrice!=null?Number(x.initialTargetPrice):null;
+       if(target!=null&&(!Number.isFinite(target)||target<=0))throw new Error("当初の目標価格が不正です");
+       const deadline=opening?textField(x.catalystDeadline,10):null;
+       if(deadline&&!/^\d{4}-\d{2}-\d{2}$/.test(deadline))throw new Error("材料期限の日付が不正です");
+       const risk=stop!=null?Math.abs(price-stop):null,initialRisk=risk!=null?risk*qty:null;
+       const todayJst=new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+       if(credit&&tradeDate>todayJst)throw new Error("信用取引の売買日は未来日を指定できません");
+       if(opening&&tradeDate===todayJst&&tradeDate>="2026-09-30"&&(stop==null||!textField(x.entryType,50)||!entryReason))throw new Error("当日の新規信用建てでは初期ストップ・型・理由を記録してください");
+       const planQuality=stop==null?"LEDGER_ONLY":tradeDate<todayJst?"LATE_REPORTED_PLAN":"RECORDED_PLAN";
        db.exec("BEGIN");try{
+         if(credit&&!opening&&episodeId===`E-LEGACY-${tradeId}`){db.exec({sql:`INSERT INTO portfolio_trade_episode(episode_id,code,account,source_quality,created_at) VALUES(?,?,?,?,?)`,bind:[episodeId,code,account,"OPENING_SNAPSHOT",now]})}
+         if(opening){db.exec({sql:`INSERT INTO portfolio_trade_episode(episode_id,code,account,source_quality,first_trade_id,opened_on,initial_shares,initial_entry_price,initial_stop_price,risk_per_share,initial_risk_yen,entry_type,entry_reason,initial_target_price,catalyst_deadline,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,bind:[episodeId,code,account,planQuality,tradeId,tradeDate,qty,price,stop,risk,initialRisk,textField(x.entryType,50),entryReason,target,deadline,now]})}
          if(afterShares>0){db.exec({sql:`INSERT INTO user_stocks(code,name,account,shares,avg_cost,strategy,memo,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(code,account) DO UPDATE SET name=excluded.name,shares=excluded.shares,avg_cost=excluded.avg_cost,memo=excluded.memo,updated_at=excluded.updated_at`,bind:[code,name||String(cur.name||""),account,afterShares,afterAvg,String(cur.strategy||""),memo,String(cur.created_at||now),now]})}
          else db.exec({sql:"DELETE FROM user_stocks WHERE code=? AND account=?",bind:[code,account]});
-         db.exec({sql:`INSERT INTO portfolio_trade_log(trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,bind:[tradeId,tradeDate,code,name||String(cur.name||""),account,action,qty,price,beforeShares,beforeAvg,afterShares,afterAvg,realized,memo,now]});
+         db.exec({sql:`INSERT INTO portfolio_trade_log(trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at,episode_id,entry_reason,exit_reason,rule_compliance) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,bind:[tradeId,tradeDate,code,name||String(cur.name||""),account,action,qty,price,beforeShares,beforeAvg,afterShares,afterAvg,realized,memo,now,episodeId,entryReason,exitReason,compliance]});
          db.exec({sql:`INSERT INTO portfolio_position_memo(code,account,memo,updated_at) VALUES(?,?,?,?) ON CONFLICT(code,account) DO UPDATE SET memo=excluded.memo,updated_at=excluded.updated_at`,bind:[code,account,memo,now]});
          db.exec("COMMIT");
        }catch(err){try{db.exec("ROLLBACK")}catch(_){}throw err}
-       self.postMessage({ok:true,type:"result",stage:"PASS",tradeId,beforeShares,beforeAvg,afterShares,afterAvg,realizedPnl:realized,elapsedMs:Math.round(performance.now()-t0)});return;
+       self.postMessage({ok:true,type:"result",stage:"PASS",tradeId,episodeId,beforeShares,beforeAvg,afterShares,afterAvg,realizedPnl:realized,initialRiskYen:initialRisk,elapsedMs:Math.round(performance.now()-t0)});return;
      }
      const positions=execRows(db,`SELECT u.code,u.name,u.account,u.shares,u.avg_cost,u.strategy,COALESCE(pm.memo,u.memo,'') AS memo,u.updated_at FROM user_stocks u LEFT JOIN portfolio_position_memo pm ON pm.code=u.code AND pm.account=u.account WHERE u.account IN ('NISA','現物','信用買','信用売') ORDER BY CASE u.account WHEN 'NISA' THEN 1 WHEN '現物' THEN 2 WHEN '信用買' THEN 3 WHEN '信用売' THEN 4 ELSE 9 END,u.code`);
      const memos=execRows(db,`SELECT code,account,memo,updated_at FROM portfolio_position_memo ORDER BY code,account`);
-     const history=execRows(db,`SELECT trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at,status,voided_at,void_reason FROM portfolio_trade_log ORDER BY trade_date DESC,created_at DESC LIMIT 100`); const latestActive=new Map();for(const h of history){const k=String(h.code)+"|"+String(h.account);if(String(h.status||"ACTIVE")!=="VOID"&&!latestActive.has(k))latestActive.set(k,h.trade_id)}for(const h of history){const active=String(h.status||"ACTIVE")!=="VOID",latest=latestActive.get(String(h.code)+"|"+String(h.account))===h.trade_id;h.can_void=active&&latest;h.can_void_reason=!active?"取消済":(!latest?"後続取引あり":"取消可能")};
-     self.postMessage({ok:true,type:"result",stage:"PASS",positions,memos,history,count:positions.length,elapsedMs:Math.round(performance.now()-t0)});return;
+     const history=execRows(db,`SELECT trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at,status,voided_at,void_reason,episode_id,entry_reason,exit_reason,rule_compliance FROM portfolio_trade_log ORDER BY trade_date DESC,created_at DESC LIMIT 100`); const latestActive=new Map();for(const h of history){const k=String(h.code)+"|"+String(h.account);if(String(h.status||"ACTIVE")!=="VOID"&&!latestActive.has(k))latestActive.set(k,h.trade_id)}for(const h of history){const active=String(h.status||"ACTIVE")!=="VOID",latest=latestActive.get(String(h.code)+"|"+String(h.account))===h.trade_id;h.can_void=active&&latest;h.can_void_reason=!active?"取消済":(!latest?"後続取引あり":"取消可能")};
+     self.postMessage({ok:true,type:"result",stage:"PASS",positions,memos,history,creditEpisodes:creditEpisodeSummaries(db),count:positions.length,elapsedMs:Math.round(performance.now()-t0)});return;
    }catch(err){self.postMessage({ok:false,type:"error",stage,message:String(err?.message||err),stack:String(err?.stack||""),elapsedMs:Math.round(performance.now()-t0)});return}finally{try{if(db)db.close()}catch(_){}}
  }
  if(cmd==="my-stocks-list"||cmd==="my-stocks-upsert"||cmd==="my-stocks-delete"||cmd==="my-stocks-import"){
@@ -2639,7 +2704,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    const wanted=new Set(codes.map(norm));
    if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("asOf invalid");
    const cutoff=new Date(asOf+"T00:00:00Z");cutoff.setUTCFullYear(cutoff.getUTCFullYear()-5);const from=cutoff.toISOString().slice(0,10);
-   const out={priceHistory:[],financialHistory:[],marginHistory:[],marketShortRatioHistory:[],largeShortHistory:[],marketFlow:[],tradeHistory:[],meta:{asOf,from,codes:[...wanted],errors:[]}};
+   const out={priceHistory:[],financialHistory:[],marginHistory:[],marketShortRatioHistory:[],largeShortHistory:[],marketFlow:[],tradeHistory:[],creditEpisodes:[],meta:{asOf,from,codes:[...wanted],errors:[]}};
    // Price history: J-Quants bars are normally stored as 5-digit codes ending in 0. Open catalog paths canonically.
    let cdb=null;try{
      cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
@@ -2670,7 +2735,15 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    readRaw("/jq_short_sale_report_v1.sqlite","short_sale_report",(r,x,code)=>{if(!wanted.has(code))return;const n=(...ks)=>{for(const k of ks){const v=Number(x[k]);if(x[k]!==""&&x[k]!=null&&Number.isFinite(v))return v}return null};out.largeShortHistory.push({Code:code,StoredDate:String(r.data_date||"").slice(0,10),DisclosureDate:String(x.DiscDate??"").slice(0,10),CalculationDate:String(x.CalcDate??"").slice(0,10),ShortSeller:x.SSName??x.ShortSellerName??"",FundName:x.FundName??"",Ratio:n("ShrtPosToSO","ShortPositionRatio"),Shares:n("ShrtPosShares","ShortPositionShares")})});
    // Investor types are market-wide. Preserve J-Quants fields instead of treating Section as a security code.
    readRaw("/jq_investor_types_v1.sqlite","investor_types",(r,x)=>{out.marketFlow.push({DataDate:String(r.data_date||"").slice(0,10),...x})});
-   let pdb=null;try{pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");if(Number(scalarBind(pdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='portfolio_trade_log'",[])||0)>0){/* Use a fresh read-write connection so same-session commits are visible in AI Share export. */out.tradeHistory=execRows(pdb,"SELECT trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at,status,voided_at,void_reason FROM portfolio_trade_log ORDER BY trade_date,created_at")};pdb.close();pdb=null}catch(e){try{if(pdb)pdb.close()}catch(__){}out.meta.errors.push(`trade:${String(e?.message||e)}`)}
+   let pdb=null;try{pdb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");if(Number(scalarBind(pdb,"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='portfolio_trade_log'",[])||0)>0){
+     const cols=new Set(execRows(pdb,"PRAGMA table_info(portfolio_trade_log)").map(x=>String(x.name)));
+     if(!cols.has("status"))pdb.exec("ALTER TABLE portfolio_trade_log ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'");
+     if(!cols.has("voided_at"))pdb.exec("ALTER TABLE portfolio_trade_log ADD COLUMN voided_at TEXT");
+     if(!cols.has("void_reason"))pdb.exec("ALTER TABLE portfolio_trade_log ADD COLUMN void_reason TEXT");
+     ensureCreditTradeSchema(pdb);migrateCreditTradeEpisodes(pdb);
+     out.tradeHistory=execRows(pdb,"SELECT trade_id,trade_date,code,name,account,action,shares,price,before_shares,before_avg_cost,after_shares,after_avg_cost,realized_pnl,memo,created_at,status,voided_at,void_reason,episode_id,entry_reason,exit_reason,rule_compliance FROM portfolio_trade_log ORDER BY trade_date,created_at,trade_id");
+     out.creditEpisodes=creditEpisodeSummaries(pdb);
+   }pdb.close();pdb=null}catch(e){try{if(pdb)pdb.close()}catch(__){}out.meta.errors.push(`trade:${String(e?.message||e)}`)}
    // Canonical export layer: keep raw DataLake intact, but remove repeated rows
    // before analytics/share so historical changes and averages cannot double-count.
    const dq={};
@@ -2686,7 +2759,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    const shortRatioPctValid=out.marketShortRatioHistory.filter(x=>x.ShortRatioPct!=null&&Number.isFinite(Number(x.ShortRatioPct))&&Number(x.ShortRatioPct)>=0&&Number(x.ShortRatioPct)<=100).length;
    const shortRatioNonZero=out.marketShortRatioHistory.filter(x=>x.ShortRatioPct!=null&&Number(x.ShortRatioPct)>0).length;
    const shortRatioValid=out.marketShortRatioHistory.filter(x=>(x.ShortWithRestrictionValue!=null||x.ShortNoRestrictionValue!=null||x.ShortTotalValue!=null)&&x.ShortRatioPct!=null&&Number.isFinite(Number(x.ShortRatioPct))&&Number(x.ShortRatioPct)>=0&&Number(x.ShortRatioPct)<=100).length;
-   self.postMessage({ok:true,type:"result",...out,dq,counts:{priceHistory:out.priceHistory.length,financialHistory:out.financialHistory.length,marginHistory:out.marginHistory.length,marketShortRatioHistory:out.marketShortRatioHistory.length,marketShortRatioValid:shortRatioValid,marketShortRatioComponentValid:shortRatioComponentValid,marketShortRatioPctValid:shortRatioPctValid,marketShortRatioNonZero:shortRatioNonZero,largeShortHistory:out.largeShortHistory.length,marketFlow:out.marketFlow.length,tradeHistory:out.tradeHistory.length}});return;
+   self.postMessage({ok:true,type:"result",...out,dq,counts:{priceHistory:out.priceHistory.length,financialHistory:out.financialHistory.length,marginHistory:out.marginHistory.length,marketShortRatioHistory:out.marketShortRatioHistory.length,marketShortRatioValid:shortRatioValid,marketShortRatioComponentValid:shortRatioComponentValid,marketShortRatioPctValid:shortRatioPctValid,marketShortRatioNonZero:shortRatioNonZero,largeShortHistory:out.largeShortHistory.length,marketFlow:out.marketFlow.length,tradeHistory:out.tradeHistory.length,creditEpisodes:out.creditEpisodes.length}});return;
  }
 
  if(cmd==="technical-screening-poc"){

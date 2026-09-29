@@ -3,7 +3,7 @@
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#08111f" name="theme-color"/>
 <link href="./manifest.webmanifest" rel="manifest"/>
-<title>J-Quants Invest v10.2.1 Split Fix Phase 2I</title>
+<title>J-Quants Invest v10.2.1 User Backup Fix Phase 2K</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;background:#f3f4f6;color:#111827}
 header{padding:22px 18px;background:#08111f;color:#fff}header h1{margin:0 0 6px;font-size:21px}header p{margin:0;font-size:13px;opacity:.86;line-height:1.55}
@@ -38,7 +38,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 /* v10.1 screening controls */
 .screen-axis-choice{display:flex!important;gap:14px!important;flex-wrap:wrap!important;align-items:center!important;max-width:none!important}.screen-axis-choice label{display:inline-flex!important;align-items:center!important;gap:5px!important;position:static!important;font-weight:700!important}.screen-axis-choice input{position:static!important;opacity:1!important;pointer-events:auto!important;width:18px!important;height:18px!important;margin:0!important}.screen-axis-choice span{display:inline!important;padding:0!important;border:0!important;background:transparent!important;font-weight:700!important}.screen-axis-choice input:checked+span{border:0!important;background:transparent!important}.screen-axis-meta{grid-column:1/-1;font-size:11px;color:#667085;line-height:1.45;margin-top:-2px}.screen-axis-meta b{color:#374151}#screenCfgResult.screen-action-only{display:none;margin-top:10px}.screen-config-actions{display:flex;gap:8px;flex-wrap:wrap}.screen-config-actions .secondary{margin-top:0}@media(max-width:640px){.screen-axis-row{grid-template-columns:1fr!important}.screen-axis-choice{gap:18px!important}.screen-axis-meta{margin-top:0}}
 </style>
-</head><body><header><h1>J-Quants Invest v10.2.1 Split Fix Phase 2I</h1><p>J-Quants × AI 投資分析・運用プラットフォーム</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
+</head><body><header><h1>J-Quants Invest v10.2.1 User Backup Fix Phase 2K</h1><p>J-Quants × AI 投資分析・運用プラットフォーム</p></header><nav aria-label="メインメニュー" class="app-nav" id="appNav">
 <div class="app-nav-row primary">
 <button class="active" data-page="daily" type="button">日々分析</button>
 <button data-page="stocks" type="button">銘柄登録</button>
@@ -92,6 +92,19 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <label>売買日 <input id="pfTradeDate" type="date"/></label>
 <label class="trade-memo-label">メモ <input autocomplete="off" id="pfTradeMemo" maxlength="500" placeholder="例: 決算跨ぎなし / 3,900円割れ再評価" type="text"/></label>
 </div>
+<details id="pfCreditPlan" style="margin:12px 0"><summary>信用取引の事前計画・決済理由</summary>
+<p class="desc">新規建て時の初期ストップと1Rは保存後に変更できません。既存建玉の追加では初期ストップ欄を空にしてください。過去に記録のない計画は推定しません。</p>
+<div class="row" style="flex-wrap:wrap">
+<label>初期ストップ（新規時） <input id="pfInitialStop" inputmode="decimal" min="0" step="0.01" type="number" placeholder="例: 2350"/></label>
+<label>型 <select id="pfEntryType"><option value="">未記録</option><option value="Dip">押し目</option><option value="Breakout">上抜け</option><option value="Earnings">決算</option><option value="Catalyst">材料</option><option value="Other">その他</option></select></label>
+<label>当初目標価格 <input id="pfInitialTarget" inputmode="decimal" min="0" step="0.01" type="number"/></label>
+<label>材料・時間期限 <input id="pfCatalystDeadline" type="date"/></label>
+</div>
+<label>建て・追加の理由 <input id="pfEntryReason" maxlength="1000" type="text" placeholder="建てた時点の仮説や追加理由"/></label>
+<div class="row" style="flex-wrap:wrap">
+<label>返済理由 <select id="pfExitReason"><option value="">未記録</option><option value="StopLoss">損切り</option><option value="ProfitProtection">利益保護</option><option value="TimeLimit">時間切れ</option><option value="ThesisBroken">仮説崩壊</option><option value="CapitalEfficiency">資金効率</option><option value="TargetReached">目標到達</option><option value="Other">その他</option></select></label>
+<label>事前ルール遵守 <select id="pfRuleCompliance"><option value="UNKNOWN">未判定</option><option value="YES">遵守</option><option value="NO">逸脱</option></select></label>
+</div></details>
 <button id="pfTradePreviewBtn">売買をプレビュー</button>
 <button disabled="" id="pfTradeCommitBtn">この売買を確定・保存</button>
 <button class="secondary" id="pfTradeRefreshBtn">現在の保有一覧を更新</button>
@@ -101,6 +114,7 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 <div id="pfPortfolioSummary"></div>
 <div class="account-tabs" id="pfAccountTabs"></div>
 <div id="pfTradePositions"></div>
+<details style="margin-top:10px"><summary>信用売買の検証履歴</summary><div id="pfCreditEpisodes"></div></details>
 <details style="margin-top:10px"><summary>最近の売買履歴</summary><div id="pfTradeHistory"></div></details>
 <p class="desc">既存保有は現在の平均取得単価を起点に継続管理します。縮小時の実現損益はWeb上の平均取得単価を基準に計算します。税・手数料は含みません。誤入力は最近の売買履歴から「入力取消」→確認→確定できます。同一銘柄・口座は新しい入力から順に取消し、取消済み記録は監査用に残します。</p>
 </section></section><section class="app-page" id="page-screening"><h2 class="page-title">スクリーニング</h2><p class="page-lead">標準設定を基準に、探したい対象範囲と5つの探索戦略だけを調整できます。迷ったら「標準設定に戻す」で、これまでのスクリーニング条件へ戻せます。</p>
@@ -245,4 +259,4 @@ footer{font-size:12px;color:#6b7280;line-height:1.55;padding:8px 4px 28px} detai
 
   activate(initial);
 })();
-</script><script src="./app-v10.2.1.js?v=split-phase2i"></script></body></html>
+</script><script src="./app-v10.2.1.js?v=user-backup-phase2k"></script></body></html>
