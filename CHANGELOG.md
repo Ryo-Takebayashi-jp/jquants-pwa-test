@@ -1,3 +1,15 @@
+## v10.2.1 Split Fix Phase 2I (2026-09-29)
+
+- 保有画面の読み込みと日次DataLake更新後に分割イベントを自動適用。未実行日も2026-09-29以降を日付順に確認。
+- 最新終値を複数保存先の最大日付から選択し、元の終値Cを表示。
+- 当日手入力の曖昧な保有は画面で確認して調整・調整済みを選択可能。監査記録と重複防止を維持。
+
+## v10.2.1 Split Fix Phase 2H (2026-09-29)
+
+- Adjust technical price history to the latest date using the raw bar and daily AdjFactor exactly once.
+- Synchronize split share counts and average cost in private holdings with an idempotent event ledger; same-day manual edits require review.
+- Add technicalSplitFactorOnDate and accurate technicalPriceBasis to AI portfolio CSV. Raw DataLake remains unchanged.
+
 ## v10.2.1 Feedback Phase 2G (2026-09-28)
 - 日次Screening候補を日付・Codeごとに初回観測で固定保存し、CSV/画面登録時に優先利用。保存済み候補がない当日は再構築して固定し、日付とCode一致時だけEXACT Snapshotを保存。CompanyName、主戦略、選定戦略もEpisodeへ保存。
 - 既存PARTIALのうち、登録日が今日のEpisodeのみ同日Screening候補から修復。元のEXACTや過去Episodeは変更しない。再構築由来はWebScreeningSameDayRecomputedと明記。

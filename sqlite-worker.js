@@ -932,6 +932,58 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    finally{try{if(db)db.close()}catch(_){}}
  }
 
+ if(cmd==="portfolio-split-resolve"){
+   const x=d.payload||{},code=String(x.code||""),account=String(x.account||""),date=String(x.date||""),action=String(x.action||"");let db=null;
+   try{
+     if(!["APPLY","CONFIRM"].includes(action))throw new Error("確認操作が不正です");
+     db=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     const ev=execRows(db,"SELECT * FROM portfolio_split_events WHERE code=? AND account=? AND effective_date=?",[code,account,date])[0];
+     if(!ev||ev.status!=="REVIEW")throw new Error("確認待ちの分割イベントがありません");
+     const st=execRows(db,"SELECT shares,avg_cost FROM user_stocks WHERE code=? AND account=?",[code,account])[0];
+     if(!st||Math.abs(Number(st.shares)-Number(ev.shares_before))>1e-8||Math.abs(Number(st.avg_cost)-Number(ev.avg_cost_before))>1e-8)throw new Error("保有情報が確認待ち登録時から変わっています。自動処理を停止しました");
+     db.exec("BEGIN");try{
+       if(action==="APPLY")db.exec({sql:"UPDATE user_stocks SET shares=?,avg_cost=?,updated_at=? WHERE code=? AND account=?",bind:[ev.shares_after,ev.avg_cost_after,new Date().toISOString(),code,account]});
+       db.exec({sql:"UPDATE portfolio_split_events SET status=? WHERE code=? AND account=? AND effective_date=?",bind:[action==="APPLY"?"APPLIED":"MANUAL",code,account,date]});db.exec("COMMIT")
+     }catch(err){try{db.exec("ROLLBACK")}catch(_){}throw err}
+     self.postMessage({ok:true,type:"result",stage:"PASS",code,account,date,status:action==="APPLY"?"APPLIED":"MANUAL"});return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage:"split-resolve",message:String(err?.message||err)});return}
+   finally{try{if(db)db.close()}catch(_){}}
+ }
+ if(cmd==="portfolio-split-sync"){
+   const asOf=String(d.payload?.asOf||"").slice(0,10),since="2026-09-29",events=new Map();
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error("分割確認日の形式が不正です");
+   let catalog=null,privateDb=null;
+   try{
+     privateDb=new p.OpfsSAHPoolDb("/jq_private_v1.sqlite","c");
+     privateDb.exec(`CREATE TABLE IF NOT EXISTS user_stocks(code TEXT NOT NULL,name TEXT,account TEXT NOT NULL DEFAULT '',shares REAL,avg_cost REAL,strategy TEXT,memo TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(code,account)) WITHOUT ROWID`);
+     privateDb.exec(`CREATE TABLE IF NOT EXISTS portfolio_split_events(code TEXT NOT NULL,account TEXT NOT NULL,effective_date TEXT NOT NULL,price_factor REAL NOT NULL,shares_before REAL,avg_cost_before REAL,shares_after REAL,avg_cost_after REAL,status TEXT NOT NULL,source TEXT,created_at TEXT NOT NULL,PRIMARY KEY(code,account,effective_date)) WITHOUT ROWID`);
+     const positions=execRows(privateDb,"SELECT code,account,shares,avg_cost,created_at,updated_at FROM user_stocks"),codes=[...new Set(positions.map(x=>String(x.code).length===4?String(x.code)+"0":String(x.code)))];
+     if(codes.length&&asOf>=since){
+       catalog=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");
+       const shards=execRows(catalog,`SELECT shard_key,logical_name FROM shard_catalog WHERE dataset='bars_daily' AND state='ready' AND range_start<=? AND range_end>=? AND shard_key GLOB 'bars_[0-9][0-9][0-9][0-9]' ORDER BY shard_key`,[asOf,since]);catalog.close();catalog=null;
+       for(const sh of shards){let bars=null;try{const name=String(sh.logical_name||"");bars=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");const ph=codes.map(()=>"?").join(",");for(const r of execRows(bars,`SELECT code,date,adj_factor,raw_json FROM bars_daily WHERE date>=? AND date<=? AND code IN (${ph}) ORDER BY date`,[since,asOf,...codes])){let raw={};try{raw=JSON.parse(String(r.raw_json||"{}"))}catch(_){}const f=Number(raw.AdjFactor??raw.AdjustmentFactor??r.adj_factor);if(Number.isFinite(f)&&f>0&&Math.abs(f-1)>1e-8){const code=String(r.code).length===5&&String(r.code).endsWith("0")?String(r.code).slice(0,4):String(r.code);events.set(code+"|"+r.date,{code,date:String(r.date),factor:f,source:name})}}}finally{try{if(bars)bars.close()}catch(_){}}}
+     }
+     const applied=[],review=[];
+     privateDb.exec("BEGIN");try{
+       for(const ev of [...events.values()].sort((a,b)=>a.date.localeCompare(b.date))){for(const st of positions.filter(x=>x.code===ev.code)){
+         const existing=execRows(privateDb,"SELECT status FROM portfolio_split_events WHERE code=? AND account=? AND effective_date=?",[ev.code,st.account,ev.date]);
+         if(existing.length){if(existing[0].status==="REVIEW")review.push({code:ev.code,account:st.account,date:ev.date,status:"REVIEW"});continue}
+         if(String(st.created_at||"").slice(0,10)>ev.date)continue;
+         const before=Number(st.shares),cost=st.avg_cost==null?null:Number(st.avg_cost),after=before/ev.factor,nextCost=cost==null?null:cost*ev.factor;
+         const status=String(st.updated_at||"").slice(0,10)>=ev.date?"REVIEW":"APPLIED";
+         if(status==="APPLIED"){
+           privateDb.exec({sql:"UPDATE user_stocks SET shares=?,avg_cost=?,updated_at=? WHERE code=? AND account=?",bind:[after,nextCost,new Date().toISOString(),ev.code,st.account]});
+           st.shares=after;st.avg_cost=nextCost;st.updated_at=ev.date;
+         }
+         privateDb.exec({sql:"INSERT INTO portfolio_split_events(code,account,effective_date,price_factor,shares_before,avg_cost_before,shares_after,avg_cost_after,status,source,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",bind:[ev.code,st.account,ev.date,ev.factor,before,cost,after,nextCost,status,ev.source,new Date().toISOString()]});
+         (status==="APPLIED"?applied:review).push({code:ev.code,account:st.account,date:ev.date,priceFactor:ev.factor,sharesBefore:before,sharesAfter:after,avgCostBefore:cost,avgCostAfter:nextCost,status});
+       }}privateDb.exec("COMMIT")
+     }catch(err){try{privateDb.exec("ROLLBACK")}catch(_){}throw err}
+     self.postMessage({ok:true,type:"result",stage:"PASS",asOf,applied,review,events:events.size});return;
+   }catch(err){self.postMessage({ok:false,type:"error",stage:"split-sync",message:String(err?.message||err)});return}
+   finally{try{if(catalog)catalog.close()}catch(_){}try{if(privateDb)privateDb.close()}catch(_){}}
+ }
+
  if(cmd==="portfolio-latest-prices"){
    const payload=e.data.payload||{},asOf=String(payload.asOf||"").slice(0,10),codes=[...new Set((payload.codes||[]).map(v=>{let c=String(v??"").trim().toUpperCase();if(c.length===5&&c.endsWith("0"))c=c.slice(0,4);return c}).filter(Boolean))];
    if(!codes.length){self.postMessage({ok:true,type:"result",asOf,rows:[],count:0});return}
@@ -939,7 +991,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    // Canonical latest-close resolver: recent DB first, then catalog shards as fallback.
    dbNames.push("/jq_bars_recent_v1.sqlite");
    let cdb=null;try{cdb=new p.OpfsSAHPoolDb("/jq_catalog_v1.sqlite","r");for(const r of execRows(cdb,`SELECT logical_name FROM shard_catalog WHERE dataset='bars_daily' AND state IN ('ready','pilot-migrated') ORDER BY CASE WHEN shard_key='bars_recent' THEN 0 ELSE 1 END, range_end DESC, shard_key DESC`)){const n=String(r.logical_name||"");if(n&&!dbNames.includes(n.startsWith("/")?n:"/"+n))dbNames.push(n.startsWith("/")?n:"/"+n)}}catch(_){}finally{try{if(cdb)cdb.close()}catch(_){}}
-   for(const nm of dbNames){let db=null;try{db=new p.OpfsSAHPoolDb(nm,"r");const ph=jq.map(()=>"?").join(",");if(!ph)continue;const rs=execRows(db,`SELECT code,date,c,adj_c,raw_json FROM bars_daily WHERE date<=? AND code IN (${ph}) AND COALESCE(adj_c,c) IS NOT NULL ORDER BY date DESC`,[asOf||"9999-12-31",...jq]);for(const r of rs){let code=String(r.code||"").trim().toUpperCase();if(code.length===5&&code.endsWith("0"))code=code.slice(0,4);if(best.has(code))continue;let o={};try{o=JSON.parse(String(r.raw_json||"{}"))}catch(_){}const n=v=>{if(v==null||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)?x:null},close=n(o.AdjC)??n(o.AdjustmentClose)??n(o.AdjClose)??n(o.C)??n(o.Close)??n(r.adj_c)??n(r.c);if(close!=null&&close>0)best.set(code,{code,date:String(r.date||""),close,source:nm})}}catch(_){}finally{try{if(db)db.close()}catch(_){}}}
+   for(const nm of dbNames){let db=null;try{db=new p.OpfsSAHPoolDb(nm,"r");const ph=jq.map(()=>"?").join(",");if(!ph)continue;const rs=execRows(db,`SELECT code,date,c,adj_c,raw_json FROM bars_daily WHERE date<=? AND code IN (${ph}) AND COALESCE(adj_c,c) IS NOT NULL ORDER BY date DESC`,[asOf||"9999-12-31",...jq]);for(const r of rs){let code=String(r.code||"").trim().toUpperCase();if(code.length===5&&code.endsWith("0"))code=code.slice(0,4);if(best.has(code)&&String(best.get(code).date)>=String(r.date))continue;let o={};try{o=JSON.parse(String(r.raw_json||"{}"))}catch(_){}const n=v=>{if(v==null||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)?x:null},close=n(o.C)??n(o.Close)??n(r.c)??n(o.AdjC)??n(o.AdjustmentClose)??n(o.AdjClose)??n(r.adj_c);if(close!=null&&close>0)best.set(code,{code,date:String(r.date||""),close,source:nm})}}catch(_){}finally{try{if(db)db.close()}catch(_){}}}
    const rows=codes.map(code=>best.get(code)||{code,date:"",close:null,source:""});self.postMessage({ok:true,type:"result",asOf,rows,count:rows.filter(x=>x.close!=null).length,missing:rows.filter(x=>x.close==null).map(x=>x.code)});return;
  }
 
@@ -2536,7 +2588,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      const unrealizedPct=cost?unrealized/cost*100:null;
      return {code,name:st.name??st.Name??m.company_name??"",account:st.account??st.Account??"",
        shares,avgCost,amount:Number(st.amount??st.Amount??0)||cost,strategy:st.strategy??st.Strategy??"",close,marketValue,unrealized,unrealizedPct,
-       date:t.date??null,technicalHistoryDays:t.historyDays??null,technicalPriceBasis:"AdjFactorLatestBasis",
+       date:t.date??null,technicalHistoryDays:t.historyDays??null,technicalPriceBasis:t.priceBasis??"Unknown",technicalSplitFactorOnDate:t.splitFactorOnDate??null,
        ma5:t.ma5??null,ma25:t.ma25??null,ma75:t.ma75??null,ma200:t.ma200??null,rsi14:t.rsi14??null,
        return5D:t.ret5??null,return20D:t.ret20??null,return60D:t.ret60??null,return120D:t.ret120??null,
        topixReturn5D:t.topixRet5??null,topixReturn20D:t.topixRet20??null,topixReturn60D:t.topixRet60??null,topixReturn120D:t.topixRet120??null,
@@ -2682,21 +2734,21 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          const name=String(s.logical_name||"");
          db=new p.OpfsSAHPoolDb(name.startsWith("/")?name:"/"+name,"r");
          const rs=execRows(db,`SELECT code,date,
-                  COALESCE(adj_h,h,adj_c,c) AS h,
-                  COALESCE(adj_l,l,adj_c,c) AS l,
-                  COALESCE(adj_c,c) AS c,
+                  h,l,c,adj_factor,raw_json,
                   volume AS volume,
                   COALESCE(turnover_value,value) AS turnover_value FROM bars_daily
            WHERE date>=? AND date<=? AND COALESCE(adj_c,c) IS NOT NULL ORDER BY code,date`,[from,actualAsOf]);
          usedShards.push(String(s.shard_key));
          for(const r of rs){
            const d=String(r.date); if(!chosenSet.has(d))continue;
-           const code=String(r.code), c=Number(r.c),v=(r.volume==null||r.volume==="")?null:Number(r.volume),
-                 tv=(r.turnover_value==null||r.turnover_value==="")?null:Number(r.turnover_value),
-                 h=Number(r.h),l=Number(r.l);
+           let raw={};try{raw=JSON.parse(String(r.raw_json||"{}"))}catch(_){}
+           const n=x=>x==null||String(x).trim()===""?null:(Number.isFinite(Number(x))?Number(x):null);
+           const code=String(r.code), c=n(raw.C)??n(raw.Close)??n(r.c),v=n(r.volume),
+                 tv=n(r.turnover_value),h=n(raw.H)??n(raw.High)??n(r.h),l=n(raw.L)??n(raw.Low)??n(r.l),
+                 factor=n(raw.AdjFactor)??n(raw.AdjustmentFactor)??n(r.adj_factor)??1;
            if(!Number.isFinite(c)||c<=0)continue;
            if(!byCode.has(code))byCode.set(code,[]);
-           byCode.get(code).push({date:d,c,v,tv:Number.isFinite(tv)?tv:null,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c});
+           byCode.get(code).push({date:d,c,v,tv,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c,factor});
          }
        }finally{try{if(db)db.close()}catch(_){}}
      }
@@ -2750,7 +2802,11 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      const trendState=(price,m5,m25,m75,m200,s25,s75,s200)=>{if([m5,m25,m75,m200].every(x=>x!=null)){if(price>m5&&m5>m25&&m25>m75&&m75>m200&&[s25,s75,s200].every(x=>(x||0)>0))return"PerfectOrderBull";if(price<m5&&m5<m25&&m25<m75&&m75<m200&&[s25,s75,s200].every(x=>(x||0)<0))return"PerfectOrderBear"}if(m25!=null&&m75!=null){if(price>m25&&m25>m75&&(s25||0)>0)return"ShortTermBull";if(price>m25&&m25<=m75&&(s25||0)>0)return"Recovery";if(price<m25&&m25<m75&&(s25||0)<0)return"ShortTermBear";if(price<m25&&m25>=m75&&(s25||0)<0)return"Deteriorating"}return"Consolidation"};
      const rows=[];
      for(const [code,a0] of byCode){
-       const a=a0.sort((x,y)=>x.date.localeCompare(y.date));
+       // AdjFactor is effective on its own date. Walk backwards so that earlier raw
+       // bars are expressed in the latest trading day's share basis, once only.
+       const rawBars=a0.sort((x,y)=>x.date.localeCompare(y.date));
+       let cumulative=1;const a=new Array(rawBars.length);
+       for(let i=rawBars.length-1;i>=0;i--){const x=rawBars[i];a[i]={...x,c:x.c*cumulative,h:x.h*cumulative,l:x.l*cumulative};cumulative*=Number.isFinite(x.factor)&&x.factor>0?x.factor:1}
        if(a.length<60)continue;
        const closes=a.map(x=>x.c), vols=a.map(x=>x.v), highs=a.map(x=>x.h), lows=a.map(x=>x.l), last=a[a.length-1];
        if(last.date!==actualAsOf)continue;
@@ -2833,7 +2889,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          maAlignment,trendState:trend,ret5,ret20,ret60,ret120,topixRet5:topixReturns.ret5,topixRet20:topixReturns.ret20,
          topixRet60:topixReturns.ret60,topixRet120:topixReturns.ret120,rel5,rel20,rel60,rel120,
          volume:last.v,vol20,volRatio,volumeRatio5To20,averageTradingValue20D,latestTradingValueRatioTo20D,positionVs60DHighPct,
-         macdHistogramChange5D,historyDays:a.length,score});
+         macdHistogramChange5D,historyDays:a.length,priceBasis:"AdjFactorLatestBasis",splitFactorOnDate:last.factor,score});
      }
      rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);
      self.postMessage({ok:true,type:"result",stage:"PASS",requestedAsOf:asOf,asOf:actualAsOf,

@@ -84,7 +84,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=feedback-phase2g");
+ const w=new Worker("./sqlite-worker.js?v=split-phase2i");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -233,7 +233,7 @@ async function showHistory(){
 }
 if($("historyBtn")) $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=feedback-phase2g").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=split-phase2i").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -2371,6 +2371,8 @@ if($("earningsDateBackfillResumeBtn"))$("earningsDateBackfillResumeBtn").onclick
 setTimeout(earningsDateStatusRender,300);
 
 async function buildWebPortfolioIntegrated(asOf){
+ const splitSync=await workerCall("portfolio-split-sync",180000,null,null,{asOf});
+ if(splitSync.review?.length)throw new Error("分割日に保有情報が更新された銘柄があります。二重調整を避けるため共有を停止しました: "+splitSync.review.map(x=>x.code+"/"+x.account).join(", "));
  const ls=await workerCall("my-stocks-list",300000),stocks=(ls.rows||[]).map(x=>({code:x.code,name:x.name,account:x.account,shares:x.shares,avgCost:x.avg_cost,strategy:x.strategy,memo:x.memo}));
  if(!stocks.length)throw new Error("Web private DBに登録銘柄がありません。先にマイ銘柄へportfolio.csvを一度移行してください。");
  const tech=await workerCall("technical-screening-poc",300000,null,null,{asOf,lookback:320,topN:200,returnAll:true});
@@ -3645,8 +3647,11 @@ function pfPct(v){return Number.isFinite(Number(v))?`${Number(v)>=0?"+":""}${Num
 async function pfTradeRefresh(){
  const btn=$("pfTradeRefreshBtn");if(btn)btn.disabled=true;
  try{
+  const asOf=await quickInvCanonicalDate();
+  const splitSync=await workerCall("portfolio-split-sync",180000,null,null,{asOf});
   const r=await workerCall("portfolio-trade-list",120000),codes=[...new Set((r.positions||[]).map(x=>normalizeInvestmentCode(x.code)))],names=new Map();try{const nm=await workerCall("equities-master-names",120000,null,null,{codes});for(const x of nm.rows||[])names.set(normalizeInvestmentCode(x.code),x.company_name||"")}catch(_){}
-  const asOf=await quickInvCanonicalDate();let pr={rows:[],count:0,missing:[]};try{pr=await workerCall("portfolio-latest-prices",300000,null,null,{asOf,codes})}catch(e){throw new Error(`最新終値の取得に失敗しました: ${e?.message||e}`)}const pm=new Map((pr.rows||[]).map(x=>[normalizeInvestmentCode(x.code),x]));
+  let pr={rows:[],count:0,missing:[]};try{pr=await workerCall("portfolio-latest-prices",300000,null,null,{asOf,codes})}catch(e){throw new Error(`最新終値の取得に失敗しました: ${e?.message||e}`)}const pm=new Map((pr.rows||[]).map(x=>[normalizeInvestmentCode(x.code),x]));
+  const reviewBox=$("pfSplitReview");if(reviewBox){reviewBox.innerHTML=(splitSync.review||[]).map(x=>`<div class="portfolio-row"><b>分割調整の確認: ${pfEsc(x.code)} / ${pfEsc(x.account)} (${pfEsc(x.date)})</b><p>この日に保有を手入力したため、自動調整を保留しています。証券口座の株数・取得単価と照合してください。</p><button type="button" class="pfSplitResolve" data-code="${pfEsc(x.code)}" data-account="${pfEsc(x.account)}" data-date="${pfEsc(x.date)}" data-action="APPLY">旧株数なので調整する</button> <button type="button" class="secondary pfSplitResolve" data-code="${pfEsc(x.code)}" data-account="${pfEsc(x.account)}" data-date="${pfEsc(x.date)}" data-action="CONFIRM">既に調整済み</button></div>`).join("");for(const b of reviewBox.querySelectorAll(".pfSplitResolve"))b.onclick=async()=>{b.disabled=true;try{await workerCall("portfolio-split-resolve",120000,null,null,{code:b.dataset.code,account:b.dataset.account,date:b.dataset.date,action:b.dataset.action});await pfTradeRefresh()}catch(e){box("pfTradeResult","fail","分割確認 FAIL\n"+(e?.message||e));b.disabled=false}}}
   const pos=(r.positions||[]).map(x=>{const a=pm.get(normalizeInvestmentCode(x.code))||{},shares=Number(x.shares||0),avg=Number(x.avg_cost||0),close=Number.isFinite(Number(a.close))?Number(a.close):null,mv=close==null?null:close*shares,cost=avg*shares,isShort=x.account==="信用売",pnl=close==null?null:(isShort?(avg-close):(close-avg))*shares,pct=cost?pnl/cost*100:null;return {...x,name:x.name||names.get(normalizeInvestmentCode(x.code))||"銘柄名未取得",close,priceDate:a.date||"",marketValue:mv,cost,pnl,pnlPct:pct}});
   const accounts=["全体","NISA","現物","信用買","信用売"];$('pfAccountTabs').innerHTML=accounts.map(a=>`<button type="button" data-account="${a}" class="${a===pfActiveAccount?'active':''}">${a}</button>`).join('');for(const b of $('pfAccountTabs').querySelectorAll('button'))b.onclick=()=>{pfActiveAccount=b.dataset.account;pfTradeRefresh()};
   const filtered=pfActiveAccount==="全体"?pos:pos.filter(x=>x.account===pfActiveAccount),sumMV=filtered.reduce((z,x)=>z+(x.marketValue||0),0),sumCost=filtered.reduce((z,x)=>z+(x.cost||0),0),sumPnl=filtered.reduce((z,x)=>z+(x.pnl||0),0),sumPct=sumCost?sumPnl/sumCost*100:null;
@@ -3801,6 +3806,8 @@ async function runDailyPipeline(){
      const started=pipelineIsoNow(),progress=msg=>{const row={RunID:run.run_id,TargetDate:run.target_date,Mode:run.mode,Ordinal:stage.ordinal,Stage:stage.key,Status:"RUNNING",Reason:String(msg||""),StartedAt:started,FinishedAt:"",UpdatedAt:pipelineIsoNow(),Detail:""};latestDailyPipelineDiagRows=latestDailyPipelineDiagRows.filter(x=>x.Stage!==stage.key);latestDailyPipelineDiagRows.push(row);renderDailyPipeline(run,latestDailyPipelineDiagRows)};await workerCall("daily-pipeline-step-save",120000,null,null,{runId:run.run_id,stage:stage.key,ordinal:stage.ordinal,status:"RUNNING",detail:{reason:"stage started"},startedAt:started});progress("実行中");
      try{const detail=await fn(progress),status=stage.key==="DATA_UPDATE"&&run.mode==="REPAIR"?"REPAIR":"PASS",reason=detail?.reason||"完了";await workerCall("daily-pipeline-step-save",120000,null,null,{runId:run.run_id,stage:stage.key,ordinal:stage.ordinal,status,detail:{...detail,reason}});const row={RunID:run.run_id,TargetDate:run.target_date,Mode:run.mode,Ordinal:stage.ordinal,Stage:stage.key,Status:status,Reason:reason,StartedAt:started,FinishedAt:pipelineIsoNow(),UpdatedAt:pipelineIsoNow(),Detail:JSON.stringify(detail||{})};latestDailyPipelineDiagRows=latestDailyPipelineDiagRows.filter(x=>x.Stage!==stage.key);latestDailyPipelineDiagRows.push(row);renderDailyPipeline(run,latestDailyPipelineDiagRows);return detail}catch(e){const message=String(e?.message||e);await workerCall("daily-pipeline-step-save",120000,null,null,{runId:run.run_id,stage:stage.key,ordinal:stage.ordinal,status:"FAIL",detail:{reason:message},runStatus:"FAIL",runNote:`${stage.key}: ${message}`});const row={RunID:run.run_id,TargetDate:run.target_date,Mode:run.mode,Ordinal:stage.ordinal,Stage:stage.key,Status:"FAIL",Reason:message,StartedAt:started,FinishedAt:pipelineIsoNow(),UpdatedAt:pipelineIsoNow(),Detail:JSON.stringify({reason:message})};latestDailyPipelineDiagRows=latestDailyPipelineDiagRows.filter(x=>x.Stage!==stage.key);latestDailyPipelineDiagRows.push(row);renderDailyPipeline(run,latestDailyPipelineDiagRows,"途中停止。次回はこの工程から再開します。");throw e}}
    await execute(DAILY_PIPELINE_STAGES[0],p=>pipelineDataLakeStage(run.target_date,run.mode,token,p));
+   const corporateActions=await workerCall("portfolio-split-sync",180000,null,null,{asOf:run.target_date});
+   if(corporateActions.review?.length)throw new Error(`分割調整の要確認: ${corporateActions.review.map(x=>x.code+"/"+x.account).join(", ")}`);
    // v10: every press re-runs derived analysis from the current saved Screening settings.
    // DataLake/API work may reuse its checkpoint, but Screening and downstream analysis never reuse old PASS results.
    latestScreeningBaseRows=[];latestScreeningBaseAsOf="";latestScreeningBaseProfileSig="";latestScreeningCandidates=[];latestScreeningScoredRows=[];latestFactorBaseRows=[];
