@@ -2587,7 +2587,19 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
    const mmap=new Map(); let mdb=null;
    try{mdb=new p.OpfsSAHPoolDb("/jq_equities_master_v1.sqlite","r");for(const r of execRows(mdb,"SELECT code,company_name,market_name AS market,sector17_name AS sector17,sector33_name AS sector33,margin_name AS margin_category,product_category FROM equities_master")){mmap.set(norm(r.code),r)}mdb.close();mdb=null}catch(e){try{if(mdb)mdb.close()}catch(_){}}
    let master=0,financial=0,forecast=0;
-   const rows=techRows.map(t=>{const code=norm(t.code),m=mmap.get(code)||{},f=fmap.get(code)||{};if(m.company_name)master++;if(f.discDate)financial++;if(f.forecastEPS!=null||f.forecastSales!=null||f.forecastOP!=null)forecast++;return {
+   const rows=techRows.map(t=>{const code=norm(t.code),m=mmap.get(code)||{},f=fmap.get(code)||{};if(m.company_name)master++;if(f.discDate)financial++;if(f.forecastEPS!=null||f.forecastSales!=null||f.forecastOP!=null)forecast++;
+     const splitEvents=(t.splitEvents||[]).filter(x=>String(x.date||"")<=String(payload.asOf||t.date||""));
+     const factorSince=ref=>splitEvents.length&&(!ref||!/^\d{4}-\d{2}-\d{2}$/.test(String(ref)))?null:
+       splitEvents.filter(x=>String(x.date)>String(ref)).reduce((v,x)=>v*Number(x.factor),1);
+     const currentFactor=factorSince(f.FactorCurrentDisclosureDate||f.discDate),
+       actualFactor=factorSince(f.FactorLatestFYDisclosureDate),
+       bpsFactor=factorSince(f.BPSReferenceDate),
+       forecastFactor=factorSince(f.FactorForecastDisclosureDate);
+     const perShare=(value,factor)=>value==null||value===""||factor==null?null:Number(value)*factor;
+     const shares=f.EffectiveShares==null||f.EffectiveShares===""||currentFactor==null?null:Number(f.EffectiveShares)/currentFactor;
+     const actualEPS=perShare(f.ActualEPS??f.eps,actualFactor),forecastEPS=perShare(f.ForecastEPS,forecastFactor),
+       bps=perShare(f.BPS,bpsFactor),forecastDividend=perShare(f.ForecastAnnualDividend,forecastFactor);
+     return {
      Date:payload.asOf||t.date||null,NormalizedCode:code,CompanyName:m.company_name||null,Market:m.market||null,Sector17:m.sector17||null,Sector33:m.sector33||null,MarginCategory:m.margin_category||null,ProductCategory:m.product_category||null,
      Close:t.close??null,PriceHistoryDays:t.historyDays??null,AverageTradingValue20D:t.averageTradingValue20D??null,LatestTradingValueRatioTo20D:t.latestTradingValueRatioTo20D??null,VolumeRatio5To20:t.volumeRatio5To20??null,
      MA5:t.ma5??null,MA25:t.ma25??null,MA75:t.ma75??null,MA200:t.ma200??null,RSI14:t.rsi14??null,Return5D:t.ret5??null,Return20D:t.ret20??null,Return60D:t.ret60??null,Return120D:t.ret120??null,
@@ -2595,14 +2607,15 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      MA25DeviationPct:t.distMa25??null,MA75DeviationPct:t.distMa75??null,MA25Slope5DPct:t.slope25??null,MA75Slope20DPct:t.slope75??null,
      MACDHistogram:t.macdHistogram??null,MACDHistogramChange5D:t.macdHistogramChange5D??null,MACDState:t.macdState??null,
      PositionVs60DHighPct:t.positionVs60DHighPct??null,DistanceFrom52WLowPct:t.low52?((t.close/t.low52-1)*100):null,TrendState:t.trendState??null,
-     DiscDate:f.discDate??null,LatestDisclosureDate:f.discDate??null,LatestFinancialDisclosureDate:f.discDate??null,LatestEarningsEventDate:f.earningsEventDate??f.discDate??null,LatestPeriodType:f.curPerType??null,ProfitType:f.ProfitType??null,Sales:f.sales??null,OperatingProfit:f.op??null,OrdinaryProfit:f.odp??null,NetProfit:f.np??null,CurrentPrimaryProfit:(f.op??f.odp??null),EPS:f.eps??null,BPS:f.bps??null,Equity:f.equity??null,TotalAssets:f.totalAssets??null,CFO:f.cfo??null,CFI:f.cfi??null,CFF:f.cff??null,ForecastSales:f.forecastSales??null,ForecastOperatingProfit:f.forecastOP??null,ForecastOrdinaryProfit:f.forecastOdP??null,ForecastNetProfit:f.forecastNP??null,ForecastPrimaryProfit:(f.forecastOP??f.forecastOdP??null),PrimaryProfitProgressPct:(String(f.curPerType||"").toUpperCase()==="FY"||((f.op??f.odp??null)==null)||((f.forecastOP??f.forecastOdP??null)==null)||(f.forecastOP??f.forecastOdP??null)===0)?null:((f.op??f.odp??null)/(f.forecastOP??f.forecastOdP??null)*100),ForecastEPS:f.forecastEPS??null,
+     DiscDate:f.discDate??null,LatestDisclosureDate:f.discDate??null,LatestFinancialDisclosureDate:f.discDate??null,LatestEarningsEventDate:f.earningsEventDate??f.discDate??null,LatestPeriodType:f.curPerType??null,ProfitType:f.ProfitType??null,Sales:f.sales??null,OperatingProfit:f.op??null,OrdinaryProfit:f.odp??null,NetProfit:f.np??null,CurrentPrimaryProfit:(f.op??f.odp??null),EPS:perShare(f.eps,currentFactor),BPS:bps,Equity:f.equity??null,TotalAssets:f.totalAssets??null,CFO:f.cfo??null,CFI:f.cfi??null,CFF:f.cff??null,ForecastSales:f.forecastSales??null,ForecastOperatingProfit:f.forecastOP??null,ForecastOrdinaryProfit:f.forecastOdP??null,ForecastNetProfit:f.forecastNP??null,ForecastPrimaryProfit:(f.forecastOP??f.forecastOdP??null),PrimaryProfitProgressPct:(String(f.curPerType||"").toUpperCase()==="FY"||((f.op??f.odp??null)==null)||((f.forecastOP??f.forecastOdP??null)==null)||(f.forecastOP??f.forecastOdP??null)===0)?null:((f.op??f.odp??null)/(f.forecastOP??f.forecastOdP??null)*100),ForecastEPS:forecastEPS,
      SalesYoY:f.SalesYoY??null,PrimaryProfitYoY:f.PrimaryProfitYoY??null,CurrentOperatingMarginPct:f.CurrentOperatingMarginPct??null,PreviousOperatingMarginPct:f.PreviousOperatingMarginPct??null,OperatingMarginChangePt:f.OperatingMarginChangePt??null,ForecastSalesGrowthPct:f.ForecastSalesGrowthPct??null,ForecastPrimaryProfitGrowthPct:f.ForecastPrimaryProfitGrowthPct??null,ROE:f.ROE??null,ROESource:f.ROESource??"",ROEReferenceDate:f.ROEReferenceDate??"",ROESourcePeriod:f.ROESourcePeriod??"",BPSSource:f.BPSSource??"",BPSReferenceDate:f.BPSReferenceDate??"",BPSSourcePeriod:f.BPSSourcePeriod??"",EquityRatioPct:f.EquityRatioPct??null,EquityRatioSource:f.EquityRatioSource??"",EquityRatioReferenceDate:f.EquityRatioReferenceDate??"",EquityRatioSourcePeriod:f.EquityRatioSourcePeriod??"",CFO:f.CFO??f.cfo??null,LatestAvailableCFO:f.LatestAvailableCFO??null,LatestAvailableFCF:f.LatestAvailableFCF??null,
-     EffectiveShares:f.EffectiveShares??null,FactorCurrentDisclosureDate:f.FactorCurrentDisclosureDate??"",FactorLatestFYDisclosureDate:f.FactorLatestFYDisclosureDate??"",FactorLatestFYCurFYEnd:f.FactorLatestFYCurFYEnd??"",FactorLatestFYCurPerEnd:f.FactorLatestFYCurPerEnd??"",FactorForecastDisclosureDate:f.FactorForecastDisclosureDate??"",FactorForecastFYEnd:f.FactorForecastFYEnd??"",FactorTargetFYEnd:f.FactorTargetFYEnd??"",FactorPreviousFYDisclosureDate:f.FactorPreviousFYDisclosureDate??"",FactorPreviousFYEnd:f.FactorPreviousFYEnd??"",FactorPreviousFYCurFYEnd:f.FactorPreviousFYCurFYEnd??"",FactorPreviousFYCurPerEnd:f.FactorPreviousFYCurPerEnd??"",FactorPreviousFYPrimaryProfit:f.FactorPreviousFYPrimaryProfit??null,FactorPreviousFYResolver:f.FactorPreviousFYResolver??"",FactorPreviousFYCandidateCount:f.FactorPreviousFYCandidateCount??0,FactorFYHistoryTrace:f.FactorFYHistoryTrace??"",ActualAnnualDividend:f.ActualAnnualDividend??null,ForecastAnnualDividend:f.ForecastAnnualDividend??null,
-     ActualEPS:f.ActualEPS??f.eps??null,FinancialDataFlag:f.FinancialDataFlag??"",
-     ActualPER:(t.close!=null&&f.ActualEPS>0)?t.close/f.ActualEPS:null,ForecastPER:(t.close!=null&&f.ForecastEPS>0)?t.close/f.ForecastEPS:null,
-     PBR:(t.close!=null&&f.BPS>0)?t.close/f.BPS:null,
-     EstimatedMarketCap:(t.close!=null&&f.EffectiveShares>0)?t.close*f.EffectiveShares:null,
-     ForecastDividendYieldPct:(t.close!=null&&f.ForecastAnnualDividend!=null)?f.ForecastAnnualDividend/t.close*100:null,
+     EffectiveShares:shares,FactorCurrentDisclosureDate:f.FactorCurrentDisclosureDate??"",FactorLatestFYDisclosureDate:f.FactorLatestFYDisclosureDate??"",FactorLatestFYCurFYEnd:f.FactorLatestFYCurFYEnd??"",FactorLatestFYCurPerEnd:f.FactorLatestFYCurPerEnd??"",FactorForecastDisclosureDate:f.FactorForecastDisclosureDate??"",FactorForecastFYEnd:f.FactorForecastFYEnd??"",FactorTargetFYEnd:f.FactorTargetFYEnd??"",FactorPreviousFYDisclosureDate:f.FactorPreviousFYDisclosureDate??"",FactorPreviousFYEnd:f.FactorPreviousFYEnd??"",FactorPreviousFYCurFYEnd:f.FactorPreviousFYCurFYEnd??"",FactorPreviousFYCurPerEnd:f.FactorPreviousFYCurPerEnd??"",FactorPreviousFYPrimaryProfit:f.FactorPreviousFYPrimaryProfit??null,FactorPreviousFYResolver:f.FactorPreviousFYResolver??"",FactorPreviousFYCandidateCount:f.FactorPreviousFYCandidateCount??0,FactorFYHistoryTrace:f.FactorFYHistoryTrace??"",ActualAnnualDividend:perShare(f.ActualAnnualDividend,actualFactor),ForecastAnnualDividend:forecastDividend,
+     ActualEPS:actualEPS,FinancialDataFlag:splitEvents.length&&[currentFactor,actualFactor,bpsFactor].some(x=>x==null)?"SplitReferenceMissing":f.FinancialDataFlag??"",
+     SplitFinancialFactor:currentFactor,SplitFinancialEvents:splitEvents.map(x=>x.date+":"+x.factor).join(";"),
+     ActualPER:(t.close!=null&&actualEPS>0)?t.close/actualEPS:null,ForecastPER:(t.close!=null&&forecastEPS>0)?t.close/forecastEPS:null,
+     PBR:(t.close!=null&&bps>0)?t.close/bps:null,
+     EstimatedMarketCap:(t.close!=null&&shares>0)?t.close*shares:null,
+     ForecastDividendYieldPct:(t.close!=null&&forecastDividend!=null)?forecastDividend/t.close*100:null,
      FinancialHistoryCount:f.FinancialHistoryCount??0,ComparablePriorFound:!!f.ComparablePriorFound
    }});
    const cfg=payload.screeningConfig||{};
@@ -2878,6 +2891,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        // AdjFactor is effective on its own date. Walk backwards so that earlier raw
        // bars are expressed in the latest trading day's share basis, once only.
        const rawBars=a0.sort((x,y)=>x.date.localeCompare(y.date));
+       const splitEvents=rawBars.filter(x=>Number.isFinite(x.factor)&&x.factor>0&&Math.abs(x.factor-1)>1e-8).map(x=>({date:x.date,factor:x.factor}));
        let cumulative=1;const a=new Array(rawBars.length);
        for(let i=rawBars.length-1;i>=0;i--){const x=rawBars[i];a[i]={...x,c:x.c*cumulative,h:x.h*cumulative,l:x.l*cumulative};cumulative*=Number.isFinite(x.factor)&&x.factor>0?x.factor:1}
        if(a.length<60)continue;
@@ -2972,7 +2986,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
          maAlignment,trendState:trend,ret5,ret20,ret60,ret120,topixRet5:topixReturns.ret5,topixRet20:topixReturns.ret20,
          topixRet60:topixReturns.ret60,topixRet120:topixReturns.ret120,rel5,rel20,rel60,rel120,
          volume:last.v,vol20,volRatio,volumeRatio5To20,averageTradingValue20D,latestTradingValueRatioTo20D,positionVs60DHighPct,
-         macdHistogramChange5D,historyDays:a.length,priceBasis:"AdjFactorLatestBasis",splitFactorOnDate:last.factor,score});
+         macdHistogramChange5D,historyDays:a.length,priceBasis:"AdjFactorLatestBasis",splitFactorOnDate:last.factor,splitEvents,score});
      }
      rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);
      self.postMessage({ok:true,type:"result",stage:"PASS",requestedAsOf:asOf,asOf:actualAsOf,

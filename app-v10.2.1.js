@@ -84,7 +84,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=screening-split-phase2l");
+ const w=new Worker("./sqlite-worker.js?v=split-valuation-phase2m");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -233,7 +233,7 @@ async function showHistory(){
 }
 if($("historyBtn")) $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=screening-split-phase2l").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=split-valuation-phase2m").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1421,7 +1421,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v10.2.1 Screening Split Fix Phase 2L",
+   appVersion:"v10.2.1 Split Valuation Fix Phase 2M",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -2343,7 +2343,7 @@ if($("userBackupZipBtn")) $("userBackupZipBtn").onclick=async()=>{
   if(!priv)throw new Error("jq_private_v1.sqlite が見つかりません。データを初期化せず、バックアップ対象を確認してください");
   if(priv.quickCheck!=="ok")throw new Error("jq_private_v1.sqlite の確認に失敗しました: "+(priv.error||"quick_check="+priv.quickCheck));
   const r=await workerCall("shard-backup-export",900000,null,null,{name:"/jq_private_v1.sqlite"});
-  const bytes=new Uint8Array(r.buffer),manifest={format:"JQ-USER-BACKUP-v1",appVersion:"v10.2.1 Screening Split Fix Phase 2L",createdAt:new Date().toISOString(),db:"jq_private_v1.sqlite",bytes:r.bytes,sha256:r.sha256||null,quickCheck:priv.quickCheck,tables:priv.tables||[],includes:["portfolio","watchlist","discovery","investment-tracking","web-trade-ledger","credit-trade-episodes","immutable-initial-plans","void-audit","pipeline-checkpoints"],excludes:["J-Quants API key","market DataLake"]};
+  const bytes=new Uint8Array(r.buffer),manifest={format:"JQ-USER-BACKUP-v1",appVersion:"v10.2.1 Split Valuation Fix Phase 2M",createdAt:new Date().toISOString(),db:"jq_private_v1.sqlite",bytes:r.bytes,sha256:r.sha256||null,quickCheck:priv.quickCheck,tables:priv.tables||[],includes:["portfolio","watchlist","discovery","investment-tracking","web-trade-ledger","credit-trade-episodes","immutable-initial-plans","void-audit","pipeline-checkpoints"],excludes:["J-Quants API key","market DataLake"]};
   const blob=zipStoreBlob([{name:"jq_private_v1.sqlite",data:bytes},{name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:"J-Quants User Data Backup v9.4\nAPI key is intentionally excluded.\nRestore only from the Settings / Maintenance page.\n"}]);
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");latestUserBackupArtifact={blob,name:`jquants_user_backup_${stamp}.zip`,manifest};$("userBackupDownloadBtn").disabled=false;
   box("userBackupResult","pass",`PASS\nPortfolio / Watchlist / Discovery / 売買履歴を含むprivate DBをバックアップしました。\nサイズ: ${fmt(r.bytes)}\nquick_check: ${priv.quickCheck}\nSHA-256: ${r.sha256||"未取得"}`);
