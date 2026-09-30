@@ -2818,7 +2818,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
            const n=x=>x==null||String(x).trim()===""?null:(Number.isFinite(Number(x))?Number(x):null);
            const code=String(r.code), c=n(raw.C)??n(raw.Close)??n(r.c),v=n(r.volume),
                  tv=n(r.turnover_value),h=n(raw.H)??n(raw.High)??n(r.h),l=n(raw.L)??n(raw.Low)??n(r.l),
-                 factor=n(raw.AdjFactor)??n(raw.AdjustmentFactor)??n(r.adj_factor)??1;
+                 factor=n(payload.splitOverrides?.[code+"|"+d])??n(raw.AdjFactor)??n(raw.AdjustmentFactor)??n(r.adj_factor)??1;
            if(!Number.isFinite(c)||c<=0)continue;
            if(!byCode.has(code))byCode.set(code,[]);
            byCode.get(code).push({date:d,c,v,tv,h:Number.isFinite(h)?h:c,l:Number.isFinite(l)?l:c,factor});
@@ -2873,7 +2873,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      const breakout=(close,hs,ls,n)=>hs.length<=n?["",""]:[close>Math.max(...hs.slice(-1-n,-1))?"1":"0",close<Math.min(...ls.slice(-1-n,-1))?"1":"0"];
      const alignment=(m5,m25,m75,m200)=>[m5,m25,m75,m200].some(x=>x==null)?"":m5>m25&&m25>m75&&m75>m200?"Bullish":m5<m25&&m25<m75&&m75<m200?"Bearish":"Mixed";
      const trendState=(price,m5,m25,m75,m200,s25,s75,s200)=>{if([m5,m25,m75,m200].every(x=>x!=null)){if(price>m5&&m5>m25&&m25>m75&&m75>m200&&[s25,s75,s200].every(x=>(x||0)>0))return"PerfectOrderBull";if(price<m5&&m5<m25&&m25<m75&&m75<m200&&[s25,s75,s200].every(x=>(x||0)<0))return"PerfectOrderBear"}if(m25!=null&&m75!=null){if(price>m25&&m25>m75&&(s25||0)>0)return"ShortTermBull";if(price>m25&&m25<=m75&&(s25||0)>0)return"Recovery";if(price<m25&&m25<m75&&(s25||0)<0)return"ShortTermBear";if(price<m25&&m25>=m75&&(s25||0)<0)return"Deteriorating"}return"Consolidation"};
-     const rows=[];
+     const rows=[],splitAnomalies=[];
      for(const [code,a0] of byCode){
        // AdjFactor is effective on its own date. Walk backwards so that earlier raw
        // bars are expressed in the latest trading day's share basis, once only.
@@ -2881,6 +2881,16 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
        let cumulative=1;const a=new Array(rawBars.length);
        for(let i=rawBars.length-1;i>=0;i--){const x=rawBars[i];a[i]={...x,c:x.c*cumulative,h:x.h*cumulative,l:x.l*cumulative};cumulative*=Number.isFinite(x.factor)&&x.factor>0?x.factor:1}
        if(a.length<60)continue;
+       // A missing corporate-action factor can turn a 1:3 split into a false
+       // -67% return. Never score a mixed price basis as a genuine selloff.
+       const suspicious=[];
+       for(let i=1;i<a.length;i++){
+         const ratio=a[i].c/a[i-1].c;
+         if(!Number.isFinite(ratio))continue;
+         const nearSplit=[2,3,4,5,10].some(k=>Math.abs(ratio-k)/k<0.08||Math.abs(ratio-1/k)/(1/k)<0.08);
+         if(nearSplit)suspicious.push({code,date:a[i].date,previousDate:a[i-1].date,ratio,sourceFactor:rawBars[i].factor,sourceClose:rawBars[i].c,previousClose:rawBars[i-1].c});
+       }
+       if(suspicious.length){splitAnomalies.push(...suspicious);continue}
        const closes=a.map(x=>x.c), vols=a.map(x=>x.v), highs=a.map(x=>x.h), lows=a.map(x=>x.l), last=a[a.length-1];
        if(last.date!==actualAsOf)continue;
        const ms5=rollingMA(closes,5),ms25=rollingMA(closes,25),ms75=rollingMA(closes,75),ms200=rollingMA(closes,200);
@@ -2966,7 +2976,7 @@ const d=e.data||{},cmd=d.cmd,name=d.dbName||"/jq_market_v7c.sqlite",t0=performan
      }
      rows.sort((a,b)=>b.score-a.score||b.ret20-a.ret20);
      self.postMessage({ok:true,type:"result",stage:"PASS",requestedAsOf:asOf,asOf:actualAsOf,
-       from,tradingDates:chosen.length,usedShards,topixStatus,topixReturns,candidates:rows.length,top:rows.slice(0,topN),
+       from,tradingDates:chosen.length,usedShards,topixStatus,topixReturns,candidates:rows.length,splitAnomalies,top:rows.slice(0,topN),
        all:payload.returnAll?rows:undefined,
        elapsedMs:Math.round(performance.now()-t0)});
      return;

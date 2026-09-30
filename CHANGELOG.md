@@ -1,3 +1,9 @@
+## v10.2.1 Screening Split Fix Phase 2L (2026-09-30)
+
+- Screeningの日足が分割前後で混在している銘柄を検知し、誤った騰落率・RSI・順位を候補から除外して件数・日付・係数を表示。
+- APIキーがある場合、異常日のJ-Quants日足を再照会し、同じ銘柄・終値で公式AdjFactorが確認できた場合だけその回のテクニカルを再計算。DataLake原本は書き換えない。取得不能や照合不一致時は除外を維持。
+- ユーザーデータZIPの修正（Phase 2K）、信用売買履歴DB（Phase 2J）、保有銘柄の分割対応（Phase 2I）を継承。
+
 ## v10.2.1 User Backup Fix Phase 2K (2026-09-30)
 
 - ユーザーデータZIPの事前監査をprivate DBだけに限定。無関係なcatalog DBのI/Oエラーで個人データのバックアップが止まる問題を解消。

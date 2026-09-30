@@ -84,7 +84,7 @@ let jqWorkerQueue=Promise.resolve();
 
 function ensureSqliteWorker(){
  if(jqSqliteWorker) return jqSqliteWorker;
- const w=new Worker("./sqlite-worker.js?v=user-backup-phase2k");
+ const w=new Worker("./sqlite-worker.js?v=screening-split-phase2l");
  jqSqliteWorker=w;
  w.onmessage=e=>{
    const d=e.data||{}, id=d.requestId;
@@ -233,7 +233,7 @@ async function showHistory(){
 }
 if($("historyBtn")) $("historyBtn").onclick=showHistory;
 
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=user-backup-phase2k").catch(()=>{}));
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=screening-split-phase2l").catch(()=>{}));
 
 if($("schemaBtn")) $("schemaBtn").onclick=async()=>{
  box("schemaResult","run","1.12GB DataLakeの実スキーマ検査中…");
@@ -1421,7 +1421,7 @@ function backupManifestObject(){
  if(!shardBackupInventory) throw new Error("先に①バックアップ対象を確認してください");
  return {
    format:"JQ-LOCAL-BACKUP-MANIFEST-v1",
-   appVersion:"v10.2.1 User Backup Fix Phase 2K",
+   appVersion:"v10.2.1 Screening Split Fix Phase 2L",
    createdAt:new Date().toISOString(),
    pool:{capacity:shardBackupInventory.capacity,allocated:shardBackupInventory.allocated},
    files:shardBackupInventory.items.map(x=>({
@@ -2343,7 +2343,7 @@ if($("userBackupZipBtn")) $("userBackupZipBtn").onclick=async()=>{
   if(!priv)throw new Error("jq_private_v1.sqlite が見つかりません。データを初期化せず、バックアップ対象を確認してください");
   if(priv.quickCheck!=="ok")throw new Error("jq_private_v1.sqlite の確認に失敗しました: "+(priv.error||"quick_check="+priv.quickCheck));
   const r=await workerCall("shard-backup-export",900000,null,null,{name:"/jq_private_v1.sqlite"});
-  const bytes=new Uint8Array(r.buffer),manifest={format:"JQ-USER-BACKUP-v1",appVersion:"v10.2.1 User Backup Fix Phase 2K",createdAt:new Date().toISOString(),db:"jq_private_v1.sqlite",bytes:r.bytes,sha256:r.sha256||null,quickCheck:priv.quickCheck,tables:priv.tables||[],includes:["portfolio","watchlist","discovery","investment-tracking","web-trade-ledger","credit-trade-episodes","immutable-initial-plans","void-audit","pipeline-checkpoints"],excludes:["J-Quants API key","market DataLake"]};
+  const bytes=new Uint8Array(r.buffer),manifest={format:"JQ-USER-BACKUP-v1",appVersion:"v10.2.1 Screening Split Fix Phase 2L",createdAt:new Date().toISOString(),db:"jq_private_v1.sqlite",bytes:r.bytes,sha256:r.sha256||null,quickCheck:priv.quickCheck,tables:priv.tables||[],includes:["portfolio","watchlist","discovery","investment-tracking","web-trade-ledger","credit-trade-episodes","immutable-initial-plans","void-audit","pipeline-checkpoints"],excludes:["J-Quants API key","market DataLake"]};
   const blob=zipStoreBlob([{name:"jq_private_v1.sqlite",data:bytes},{name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:"J-Quants User Data Backup v9.4\nAPI key is intentionally excluded.\nRestore only from the Settings / Maintenance page.\n"}]);
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");latestUserBackupArtifact={blob,name:`jquants_user_backup_${stamp}.zip`,manifest};$("userBackupDownloadBtn").disabled=false;
   box("userBackupResult","pass",`PASS\nPortfolio / Watchlist / Discovery / 売買履歴を含むprivate DBをバックアップしました。\nサイズ: ${fmt(r.bytes)}\nquick_check: ${priv.quickCheck}\nSHA-256: ${r.sha256||"未取得"}`);
@@ -2471,7 +2471,7 @@ if($("screeningShareZipBtn")) $("screeningShareZipBtn").onclick=async()=>{
   const omitted=[],manifest={bundle:"Web Screening Share",version:"v9.4",asOf,generatedAt:new Date().toISOString(),canonical:"Web-first",feedbackBuild:"phase2g",feedbackError,conditionBaseline:{captureDate:baseline.captureDate||"",inserted:baseline.inserted?.length||0,skipped:baseline.skipped?.length||0,error:baselineError},discoveryTopixAsOfCoverage:{present:topixAsOfPresent,total:topixAsOfRows.length,missingPolicy:"BLANK_UNTIL_OBSERVED"},canonicalAsOfSource:canon.source,dataLakeDate:canon.dataLakeDate,lastPassPipelineDate:canon.passDate,screeningProfile:profileRows[0],counts:{watchlistConditions:watchlistConditions.length,screeningCandidates:enrichedCandidates.length,screeningParityTrace:parityTrace.length,factors:factors.length,factorSummary:summary.length,candidateEarningsHistory:eh.count||0,candidateEarningsCodes:eh.codes||0,managementGuidance:gh.count||0,managementGuidanceCodes:(gh.rows||[]).filter(x=>Number(x.ObservedFiscalYears||0)>0).length,discoveryEpisodes:episodes.length,discoveryDaily:daily.length,discoveryOutcomes:(feedback.rows||[]).length,discoveryStrategyPerformance:strategyPerformance.length,discoveryConditionHistory:(conditionFeedback.history||[]).length,discoveryConditionOutcomes:(conditionFeedback.rows||[]).length,discoveryConditionPerformance:(conditionFeedback.performance||[]).length,discoveryConditionLegacyExcluded:Number(conditionFeedback.legacyExcluded||0),discoveryFeedbackSummary:feedbackSummary.length},earningsDataQuality:{requestedCodes:new Set(codes.map(String)).size,candidateHistoryCodes:eh.codes||0,candidateHistoryRows:eh.count||0,guidanceRows:gh.count||0,guidanceObservedCodes:(gh.rows||[]).filter(x=>Number(x.ObservedFiscalYears||0)>0).length},files:files.map(x=>x.name),omitted,engines:{candidateEarnings:eh.engineVersion||"WebNativeV1",managementGuidance:gh.engineVersion||"WebNativeV1"},notes:["screening_parity_trace.csv is an audit-only compact trace of the full Web scored universe for PC/Web migration diagnostics.","PC refresh is not required.","ZIP generation and download are separated; re-download never reruns analysis.","Candidate earnings history and management guidance are generated natively from the Web DataLake. Guidance confidence is explicitly versioned WebNativeV1 and is not claimed to be byte-for-byte PC parity until real-device comparison is completed."]};
   files.push({name:"manifest.json",data:JSON.stringify(manifest,null,2)},{name:"README.txt",data:`J-Quants Web-first Screening Share v9.4\nAsOf: ${asOf}\nCandidates: ${enrichedCandidates.length}\nWatchlist conditions: ${watchlistConditions.length}\nCandidate earnings rows: ${eh.count||0}\nManagement guidance rows: ${gh.count||0}\nFactors: ${factors.length}\nDiscovery Episodes: ${episodes.length}\nDiscovery Daily rows: ${daily.length}\nDiscovery Outcomes: ${(feedback.rows||[]).length}\nStrategy Performance: ${strategyPerformance.length}\nCondition History: ${(conditionFeedback.history||[]).length}\nCondition Outcomes: ${(conditionFeedback.rows||[]).length}\nCondition Performance: ${(conditionFeedback.performance||[]).length}\nCondition Legacy Excluded: ${Number(conditionFeedback.legacyExcluded||0)}\nCondition trigger: ${conditionFeedback.triggerDefinition||"DAILY_ADJUSTED_CLOSE"}\nFeedback Summary: ${feedbackSummary.length}\nFeedback engine: ${feedback.engineVersion||"skipped"}\nFeedback build: phase2g\nFeedback error: ${feedbackError||"none"}\nCondition baseline captured: ${(baseline.inserted||[]).length} / skipped: ${(baseline.skipped||[]).length} / date: ${baseline.captureDate||"not captured"}\nCondition baseline error: ${baselineError||"none"}\nDiscovery TOPIX current-day coverage: ${topixAsOfPresent}/${topixAsOfRows.length} (missing remains blank)\nMFE/MAE basis: ${feedback.mfeMaeBasis||"n/a"}\n`});
   const blob=zipStoreBlob(files),name=`web_screening_${asOf.replaceAll("-","")}.zip`;latestScreeningShareArtifact={blob,name,asOf,generatedAt:new Date().toISOString()};artifactReady("screeningShareDownloadBtn",latestScreeningShareArtifact);
-  box("screeningShareZipResult","pass",`Screening共有ZIP 生成PASS\n基準日: ${asOf}\nDataLake: ${canon.dataLakeDate}\n候補: ${enrichedCandidates.length}\nWatchlist価格条件: ${watchlistConditions.length}\n決算履歴: ${eh.count||0}行\nGuidance: ${gh.count||0}銘柄\nFactor: ${factors.length}\nDiscovery Episode: ${episodes.length}\nDiscovery Daily: ${daily.length}\n\n${name} を生成済みです。下のダウンロードボタンから何度でも取得できます。`);
+  box("screeningShareZipResult","pass",`Screening共有ZIP 生成PASS\n基準日: ${asOf}\nDataLake: ${canon.dataLakeDate}\n候補: ${enrichedCandidates.length}\nJ-Quants再照会で分割係数を補完: ${latestScreeningSplitRecovered.length}件\n分割疑い・価格基準不整合で除外: ${latestScreeningSplitAnomalies.length}件\nWatchlist価格条件: ${watchlistConditions.length}\n決算履歴: ${eh.count||0}行\nGuidance: ${gh.count||0}銘柄\nFactor: ${factors.length}\nDiscovery Episode: ${episodes.length}\nDiscovery Daily: ${daily.length}\n\n${name} を生成済みです。下のダウンロードボタンから何度でも取得できます。`);
  }catch(e){latestScreeningShareArtifact=null;artifactReady("screeningShareDownloadBtn",null);box("screeningShareZipResult","fail","Screening共有ZIP FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
 };
 if($("screeningShareDownloadBtn")) $("screeningShareDownloadBtn").onclick=()=>{try{downloadArtifact(latestScreeningShareArtifact)}catch(e){box("screeningShareZipResult","fail",String(e?.message||e))}};
@@ -2614,12 +2614,12 @@ if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",
 window.addEventListener("pageshow",()=>{try{applyScreeningConfigUi(loadScreeningConfig());bindScreeningConfigControls()}catch(e){console.error("screening-config-pageshow",e)}});
 
 let latestScreeningBaseProfileSig="";
-let latestScreeningBaseRows=[],latestScreeningBaseAsOf="";
+let latestScreeningBaseRows=[],latestScreeningBaseAsOf="",latestScreeningSplitAnomalies=[],latestScreeningSplitRecovered=[];
 if($("screeningBaseBtn")) $("screeningBaseBtn").onclick=async()=>{
  const btn=$("screeningBaseBtn"),asOf=$("screeningBaseAsOf")?.value||$("screeningAsOf")?.value||todayIsoLocal();
  btn.disabled=true; box("screeningBaseResult","run",`${asOf} Screening統合母集団を構築中…`);
  try{
-   const tech=await workerCall("technical-screening-poc",600000,null,null,{asOf,lookback:320,topN:5000,returnAll:true});
+   const tech=await technicalScreeningWithSplitRecovery(asOf);latestScreeningSplitAnomalies=tech.splitAnomalies||[];latestScreeningSplitRecovered=tech.splitRecovered||[];
    if(!latestFinancialNormalized||latestFinancialNormalizedAsOf!==asOf){const fr=await workerCall("financial-normalize-latest",180000,null,null,{asOf});latestFinancialNormalized=fr.rows;latestFinancialNormalizedAsOf=asOf}
    const r=await workerCall("screening-base-snapshot",240000,null,null,{asOf,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized,screeningConfig:loadScreeningConfig()});
    latestScreeningBaseRows=r.rows||[];latestScreeningBaseAsOf=asOf;latestScreeningBaseProfileSig=screeningConfigSig();
@@ -2627,7 +2627,7 @@ if($("screeningBaseBtn")) $("screeningBaseBtn").onclick=async()=>{
    const sm=new Map((sf.rows||[]).map(x=>[String(x.NormalizedCode),x]));
    latestScreeningBaseRows=latestScreeningBaseRows.map(x=>({...x,...(sm.get(String(x.NormalizedCode))||{})}));const er=await workerCall("earnings-date-next",120000,null,null,{asOf,codes:latestScreeningBaseRows.map(x=>x.NormalizedCode)}),em=new Map((er.rows||[]).map(x=>[String(x.Code),x]));latestScreeningBaseRows=latestScreeningBaseRows.map(x=>({...x,...(em.get(String(x.NormalizedCode))||{})}));
    const x=r.coverage||{};
-   box("screeningBaseResult",(x.technical===r.count&&x.master===r.count)?"pass":"warn",`Screening統合母集団\n基準日: ${asOf}\nフィルタ前: ${x.preFilter??"-"}\nフィルタ後: ${r.count}\nテクニカル: ${x.technical}/${r.count}\nMaster: ${x.master}/${r.count}\n財務: ${x.financial}/${r.count}\n会社予想: ${x.forecast}/${r.count}\n\n${x.master===r.count?"Master JOIN: PASS":"Master JOIN: 要確認"}\n母集団設定: ${screeningConfigLabel()}\n次段階: 5戦略スコア/Top20選抜`);
+   box("screeningBaseResult",(x.technical===r.count&&x.master===r.count&&!(tech.splitAnomalies||[]).length)?"pass":"warn",`Screening統合母集団\n基準日: ${asOf}\nフィルタ前: ${x.preFilter??"-"}\nフィルタ後: ${r.count}\nテクニカル: ${x.technical}/${r.count}\nMaster: ${x.master}/${r.count}\n財務: ${x.financial}/${r.count}\n会社予想: ${x.forecast}/${r.count}\nJ-Quants再照会で分割係数を補完: ${tech.splitRecovered?.length||0}件\n分割疑い・価格基準不整合で除外: ${tech.splitAnomalies?.length||0}件\n${(tech.splitAnomalies||[]).slice(0,10).map(z=>z.code+" "+z.date+" / 前日比 "+(z.ratio*100).toFixed(1)+"% / 保存係数 "+z.sourceFactor).join("\n")}\n\n${x.master===r.count?"Master JOIN: PASS":"Master JOIN: 要確認"}\n母集団設定: ${screeningConfigLabel()}\n次段階: 5戦略スコア/Top20選抜`);
    if($("screeningBaseExportBtn")) $("screeningBaseExportBtn").disabled=!latestScreeningBaseRows.length;
  }catch(e){box("screeningBaseResult","fail","FAIL\n"+(e?.message||e))}finally{btn.disabled=false}
 };
@@ -3075,15 +3075,16 @@ if($("technicalScreeningBtn")) $("technicalScreeningBtn").onclick=async()=>{
  $("technicalScreeningTable").innerHTML="";
  box("technicalScreeningResult","run",`${asOf} を基準にCatalogから直近100取引日を読み込み中…`);
  try{
-   const r=await workerCall("technical-screening-poc",600000,
-     s=>box("technicalScreeningResult","run",`${asOf}
-${s.stage||"-"} ${s.detail||""}`),null,{asOf,lookback:100,topN:50});
+   const r=await technicalScreeningWithSplitRecovery(asOf,100,50,false);
    box("technicalScreeningResult","pass",`PASS
 基準日: ${r.asOf}
 読込開始: ${r.from}
 取引日: ${r.tradingDates}
 使用Shard: ${r.usedShards.join(", ")}
 75日以上データ有: ${r.candidates.toLocaleString()}銘柄
+J-Quants再照会で分割係数を補完: ${r.splitRecovered?.length||0}件
+分割疑い・価格基準不整合で除外: ${r.splitAnomalies?.length||0}件
+${(r.splitAnomalies||[]).slice(0,10).map(x=>x.code+" "+x.date+" / 前日比 "+(x.ratio*100).toFixed(1)+"% / 保存係数 "+x.sourceFactor).join("\n")}
 処理時間: ${(r.elapsedMs/1000).toFixed(2)}秒
 
 判定: Catalog → Shard → Screening Core 1 PASS`);
@@ -3713,7 +3714,28 @@ function factorMembershipDiagnostics(base){
 function factorCompare(pc,web,fields,key="FactorKey"){const wm=new Map(web.map(r=>[String(r[key]||""),r])),diffs=[];let perfect=0,missing=0;const numFields=new Set(fields.filter(f=>!['Date','FactorMonitorVersion','FactorType','FactorName','FactorKey','FactorDefinition','Phase','Alert','FlowDefinition','HistoricalMembershipQuality','SeasonState','SeasonalAlert','Bucket'].includes(f)));for(const p of pc){const k=String(p[key]||"");const w=wm.get(k);if(!w){missing++;diffs.push({FactorKey:k,Field:"__ROW__",Group:"Missing",PC:"present",Web:"missing"});continue}let bad=0;for(const f of fields){const a=p[f]??"",b=w[f]??"";if(numFields.has(f)){const x=factorNum(a),y=factorNum(b);if(x==null&&y==null)continue;const tol=x==null?1e-6:Math.max(1e-6,Math.abs(x)*1e-8);if(x==null||y==null||Math.abs(x-y)>tol){diffs.push({FactorKey:k,Field:f,Group:FACTOR_SEASON_FIELDS.has(f)?"Seasonality":f==="StrengthChange1D"?"History":"Core",PC:a,Web:b,AbsDiff:x!=null&&y!=null?Math.abs(x-y):""});bad++}}else if(String(a).trim()!==String(b).trim()){diffs.push({FactorKey:k,Field:f,Group:FACTOR_SEASON_FIELDS.has(f)?"Seasonality":"Core",PC:a,Web:b});bad++}}if(!bad)perfect++}const pk=new Set(pc.map(r=>String(r[key]||""))),webOnly=web.filter(r=>!pk.has(String(r[key]||""))).map(r=>String(r[key]||""));return{perfect,missing,diffs,webOnly}}
 function factorSummaryCompare(pc,web){const key=r=>`${String(r.Bucket||"")}|${String(r.Rank||"")}|${String(r.FactorKey||"")}`,wm=new Map(web.map(r=>[key(r),r])),diffs=[];let perfect=0,missing=0;const strFields=new Set(["Date","Bucket","FactorType","FactorName","FactorKey","Phase","Alert","SeasonState","SeasonalAlert"]);for(const p of pc){const k=key(p),w=wm.get(k);if(!w){missing++;diffs.push({FactorKey:k,Field:"__ROW__",Group:"Summary",PC:"present",Web:"missing"});continue}let bad=0;for(const f of FACTOR_SUMMARY_FIELDS){const a=p[f]??"",b=w[f]??"";if(strFields.has(f)){if(String(a).trim()!==String(b).trim()){diffs.push({FactorKey:k,Field:f,Group:"Summary",PC:a,Web:b});bad++}}else{const x=factorNum(a),y=factorNum(b);if(x==null&&y==null)continue;const tol=x==null?1e-6:Math.max(1e-6,Math.abs(x)*1e-8);if(x==null||y==null||Math.abs(x-y)>tol){diffs.push({FactorKey:k,Field:f,Group:"Summary",PC:a,Web:b,AbsDiff:x!=null&&y!=null?Math.abs(x-y):""});bad++}}}if(!bad)perfect++}const pk=new Set(pc.map(key)),webOnly=web.filter(r=>!pk.has(key(r))).map(key);return{perfect,missing,diffs,webOnly}}
 function factorDiffCsv(rows){return simpleCsv(rows,["FactorKey","Field","Group","PC","Web","AbsDiff"])}
-async function ensureFactorBase(asOf){const profileSig=screeningConfigSig();if(latestScreeningBaseRows.length&&latestScreeningBaseAsOf===asOf&&latestScreeningBaseProfileSig===profileSig)return latestScreeningBaseRows;const tech=await workerCall("technical-screening-poc",600000,null,null,{asOf,lookback:320,topN:5000,returnAll:true});if(!latestFinancialNormalized||latestFinancialNormalizedAsOf!==asOf){const fr=await workerCall("financial-normalize-latest",180000,null,null,{asOf});latestFinancialNormalized=fr.rows;latestFinancialNormalizedAsOf=asOf}const r=await workerCall("screening-base-snapshot",240000,null,null,{asOf,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized,screeningConfig:loadScreeningConfig()});latestScreeningBaseRows=r.rows||[];latestScreeningBaseAsOf=asOf;latestScreeningBaseProfileSig=profileSig;const sf=await workerCall("screening-supply-features",300000,null,null,{asOf,codes:latestScreeningBaseRows.map(x=>x.NormalizedCode)}),sm=new Map((sf.rows||[]).map(x=>[String(x.NormalizedCode),x]));latestScreeningBaseRows=latestScreeningBaseRows.map(x=>({...x,...(sm.get(String(x.NormalizedCode))||{})}));const er=await workerCall("earnings-date-next",120000,null,null,{asOf,codes:latestScreeningBaseRows.map(x=>x.NormalizedCode)}),em=new Map((er.rows||[]).map(x=>[String(x.Code),x]));latestScreeningBaseRows=latestScreeningBaseRows.map(x=>({...x,...(em.get(String(x.NormalizedCode))||{})}));if($('screeningBaseAsOf'))$('screeningBaseAsOf').value=asOf;return latestScreeningBaseRows}
+async function technicalScreeningWithSplitRecovery(asOf,lookback=320,topN=5000,returnAll=true){
+ const payload={asOf,lookback,topN,returnAll};
+ let result=await workerCall("technical-screening-poc",600000,null,null,payload);
+ const anomalies=result.splitAnomalies||[],token=prodTokenValue(),overrides={},recovered=[];
+ if(!anomalies.length||!token)return {...result,splitRecovered:recovered};
+ const dates=[...new Set(anomalies.map(x=>x.date))].filter(d=>d<=jstTodayIso()).slice(0,10);
+ for(const date of dates){
+  let fresh;try{fresh=await jqFetchDaily(date,token)}catch(e){console.warn("split-factor-lookup",date,e);continue}
+  const byCode=new Map((fresh.rows||[]).map(x=>[normalizeInvestmentCode(x.Code??x.code),x]));
+  for(const x of anomalies.filter(z=>z.date===date)){
+   const row=byCode.get(normalizeInvestmentCode(x.code));if(!row)continue;
+   const close=Number(row.C??row.Close),factor=Number(row.AdjFactor??row.AdjustmentFactor);
+   if(!Number.isFinite(close)||!Number.isFinite(factor)||factor<=0||factor===1)continue;
+   if(Math.abs(close/Number(x.sourceClose)-1)>0.01)continue;
+   if(Math.abs(x.ratio/factor-1)>0.25)continue;
+   overrides[x.code+"|"+date]=factor;recovered.push({code:x.code,date,factor,source:"JQuantsFreshDay"});
+  }
+ }
+ if(recovered.length)result=await workerCall("technical-screening-poc",600000,null,null,{...payload,splitOverrides:overrides});
+ return {...result,splitRecovered:recovered};
+}
+async function ensureFactorBase(asOf){const profileSig=screeningConfigSig();if(latestScreeningBaseRows.length&&latestScreeningBaseAsOf===asOf&&latestScreeningBaseProfileSig===profileSig)return latestScreeningBaseRows;const tech=await technicalScreeningWithSplitRecovery(asOf);latestScreeningSplitAnomalies=tech.splitAnomalies||[];latestScreeningSplitRecovered=tech.splitRecovered||[];if(!latestFinancialNormalized||latestFinancialNormalizedAsOf!==asOf){const fr=await workerCall("financial-normalize-latest",180000,null,null,{asOf});latestFinancialNormalized=fr.rows;latestFinancialNormalizedAsOf=asOf}const r=await workerCall("screening-base-snapshot",240000,null,null,{asOf,techRows:(tech.all||tech.top||[]),finRows:latestFinancialNormalized,screeningConfig:loadScreeningConfig()});latestScreeningBaseRows=r.rows||[];latestScreeningBaseAsOf=asOf;latestScreeningBaseProfileSig=profileSig;const sf=await workerCall("screening-supply-features",300000,null,null,{asOf,codes:latestScreeningBaseRows.map(x=>x.NormalizedCode)}),sm=new Map((sf.rows||[]).map(x=>[String(x.NormalizedCode),x]));latestScreeningBaseRows=latestScreeningBaseRows.map(x=>({...x,...(sm.get(String(x.NormalizedCode))||{})}));const er=await workerCall("earnings-date-next",120000,null,null,{asOf,codes:latestScreeningBaseRows.map(x=>x.NormalizedCode)}),em=new Map((er.rows||[]).map(x=>[String(x.Code),x]));latestScreeningBaseRows=latestScreeningBaseRows.map(x=>({...x,...(em.get(String(x.NormalizedCode))||{})}));if($('screeningBaseAsOf'))$('screeningBaseAsOf').value=asOf;return latestScreeningBaseRows}
 if($("factorParityBtn"))$("factorParityBtn").onclick=async()=>{const lf=$("factorLatestFile")?.files?.[0],sf=$("factorSummaryFile")?.files?.[0];if(!lf){box("factorParityResult","warn","PC版 factor_monitor_latest.csv を選択してください。screening.zip内にあります。");return}const btn=$("factorParityBtn");btn.disabled=true;try{const pc=parseCsv(await lf.text()).rows,asOf=String(pc[0]?.Date||$("factorAsOf")?.value||todayIsoLocal()).slice(0,10);if($("factorAsOf"))$("factorAsOf").value=asOf;box("factorParityResult","run",`Factor / Seasonalityを再計算中…\n基準日 ${asOf}\nScreening母集団を準備中`);const base=await ensureFactorBase(asOf);latestFactorBaseRows=base;latestFactorMembershipRows=factorMembershipDiagnostics(base);let web=buildFactorCore(base,asOf),state=await workerCall("factor-state-load",120000),compatibleState=(state.rows||[]).filter(x=>String(x.date||"")<asOf&&String(x.row?.FactorEngineVersion||"")===FACTOR_ENGINE_VERSION),prev=new Map(compatibleState.map(x=>[String(x.factorKey),factorNum(x.strength)])),historyMode=prev.size?"Web前日state(同一engine)":"PC currentから前日Strengthを再seed(engine更新)";const pcm=new Map(pc.map(r=>[String(r.FactorKey||""),r]));for(const r of web){let pv=prev.get(r.FactorKey);if(pv==null){const pr=pcm.get(r.FactorKey),s=factorNum(pr?.Strength),chg=factorNum(pr?.StrengthChange1D);if(s!=null&&chg!=null)pv=s-chg}r.StrengthChange1D=pv!=null&&r.Strength!=null?r.Strength-pv:null}
  const monthKey=asOf.slice(0,7).replace("-",""),seedFile=$("factorSeasonalitySeedFile")?.files?.[0];let sp={profile:[],stockMonths:"-",topixMonths:"-"},seasonalitySource="";
  if(seedFile){const seed=parseCsv(await seedFile.text()).rows.filter(r=>String(r.FactorKey||"").trim()&&String(r.SeasonMonth||"").trim());if(!seed.length)throw new Error("PC Seasonality profileが空です");await workerCall("factor-seasonality-cache-save",120000,null,null,{monthKey,rows:seed,source:"PCMonthlyCacheSeed"});latestFactorSeasonalityProfile=seed;seasonalitySource="PC月次cacheを移行"}
@@ -3788,7 +3810,7 @@ async function runScreeningWebDaily(asOf,progress){
  const workerPending=(ev.rows||[]).filter(x=>x.EarningsReactionPending===true).length,candidatePending=latestScreeningCandidates.filter(x=>x.CandidateStatus==="ReactionPending").length;
  if(workerPending>0&&candidatePending!==Math.min(workerPending,20))throw new Error(`Screening ReactionPending invariant failed: worker=${workerPending}, candidate=${candidatePending}`);
  if($("screeningCandidatesExportBtn"))$("screeningCandidatesExportBtn").disabled=!latestScreeningCandidates.length;
- if($("screeningStrategyResult"))box("screeningStrategyResult","pass",`日次Screening PASS\n基準日: ${asOf}\n母集団: ${base.length}\n候補ユニーク: ${latestScreeningCandidates.length}\n設定: ${screeningConfigLabel()}`);
+ if($("screeningStrategyResult"))box("screeningStrategyResult","pass",`日次Screening PASS\n基準日: ${asOf}\n母集団: ${base.length}\n候補ユニーク: ${latestScreeningCandidates.length}\nJ-Quants再照会で分割係数を補完: ${latestScreeningSplitRecovered.length}件\n分割疑い・価格基準不整合で除外: ${latestScreeningSplitAnomalies.length}件\n${latestScreeningSplitAnomalies.slice(0,10).map(z=>z.code+" "+z.date+" / 前日比 "+(z.ratio*100).toFixed(1)+"% / 保存係数 "+z.sourceFactor).join("\n")}\n設定: ${screeningConfigLabel()}`);
  return{baseCount:base.length,candidateCount:latestScreeningCandidates.length,reactionPending:latestScreeningCandidates.filter(x=>x.CandidateStatus==="ReactionPending").length,eventWorkerRows:(ev.rows||[]).length,eventJoinedCount,pedScoredCount:latestScreeningCandidates.filter(x=>x.PostEarningsDriftScore!=null).length,pedSelectedCount:latestScreeningCandidates.filter(x=>x.PostEarningsDriftRank!=null).length};
 }
 async function runDiscoveryDailyWeb(asOf,progress){
